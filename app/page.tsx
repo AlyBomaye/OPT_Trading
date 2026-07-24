@@ -1,19 +1,55 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import Link from "next/link";
+import { create } from "zustand";
+import { persist } from "zustand/middleware";
 import { useMarket } from "@/store/market";
 import { netGreeks, var95 } from "@/lib/portfolio";
 import { DEFAULT_POZINHO_FILTERS, scanPozinhos, skewInfo, suggestFromSkew } from "@/lib/scanner";
 import { expectedMove } from "@/lib/black-scholes";
 import { fmtBRL, fmtNum, fmtPct, pnlColor } from "@/lib/format";
 
+/** Valores manuais de GEX + carimbo de edição (WO-14), persistidos por ticker. */
+interface GexValues {
+  gammaFlip: string;
+  callWall: string;
+  putWall: string;
+  volTrigger: string;
+  editedAt: string | null;
+}
+const EMPTY_GEX: GexValues = { gammaFlip: "", callWall: "", putWall: "", volTrigger: "", editedAt: null };
+
+interface GexState {
+  byTicker: Record<string, GexValues>;
+  patchFor: (ticker: string, patch: Partial<GexValues>) => void;
+}
+
+const useGexInputs = create<GexState>()(
+  persist(
+    (set) => ({
+      byTicker: {},
+      patchFor: (ticker, patch) =>
+        set((st) => ({
+          byTicker: {
+            ...st.byTicker,
+            [ticker]: { ...(st.byTicker[ticker] ?? EMPTY_GEX), ...patch, editedAt: new Date().toISOString() },
+          },
+        })),
+    }),
+    { name: "gex-manual", version: 1 }
+  )
+);
+
 /** Cockpit Pré-Market — réplica web do diagnóstico matinal da planilha. */
 export default function CockpitPage() {
-  const { chain, selic, positions, selectedExpiry } = useMarket();
+  const { chain, selic, positions, selectedExpiry, ticker } = useMarket();
 
-  // Inputs manuais de GEX (fonte externa, ex.: OpLab) — como na aba Vol Map
-  const [gex, setGex] = useState({ gammaFlip: "", callWall: "", putWall: "", volTrigger: "" });
+  // Inputs manuais de GEX (fonte externa, ex.: OpLab) — como na aba Vol Map;
+  // persistidos por ticker com proveniência MANUAL (WO-14)
+  const { byTicker, patchFor } = useGexInputs();
+  const gex = byTicker[ticker] ?? EMPTY_GEX;
+  const setGexField = (k: keyof Omit<GexValues, "editedAt">, v: string) => patchFor(ticker, { [k]: v });
 
   const skew = chain && selectedExpiry ? skewInfo(chain, selectedExpiry) : null;
   const suggestion = skew ? suggestFromSkew(skew) : null;
@@ -60,7 +96,17 @@ export default function CockpitPage() {
 
         {/* [2] Skew / GEX */}
         <div className="panel">
-          <div className="panel-title">[2] Skew / GEX — {chain?.ticker ?? "—"}</div>
+          <div className="panel-title">
+            [2] Skew / GEX — {chain?.ticker ?? "—"}
+            {gex.editedAt && (gex.gammaFlip || gex.callWall || gex.putWall || gex.volTrigger) && (
+              <span
+                className="tag bg-term-gold/15 text-term-gold ml-2"
+                title="Níveis de GEX digitados manualmente (ex.: OpLab) — não são analytics computados. Carimbo da última edição."
+              >
+                MANUAL — {new Date(gex.editedAt).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}
+              </span>
+            )}
+          </div>
           <div className="px-3 pb-3 space-y-1 text-xs font-mono">
             <Row k="IV Call ATM" v={fmtPct(skew?.ivCallAtm ?? null)} />
             <Row k="IV Put ATM" v={fmtPct(skew?.ivPutAtm ?? null)} />
@@ -92,7 +138,7 @@ export default function CockpitPage() {
                     type="number"
                     step="0.01"
                     value={gex[k]}
-                    onChange={(e) => setGex((o) => ({ ...o, [k]: e.target.value }))}
+                    onChange={(e) => setGexField(k, e.target.value)}
                     className="cell-input !w-full"
                   />
                 </label>

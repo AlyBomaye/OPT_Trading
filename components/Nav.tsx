@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { Gauge, Table2, GitBranch, Search, Briefcase, Newspaper, History, LayoutGrid } from "lucide-react";
 import clsx from "clsx";
 
@@ -20,12 +20,22 @@ const ITEMS = [
 export function Nav() {
   const pathname = usePathname();
   const router = useRouter();
+  // WO-14: overlay de ajuda de atalhos (tecla ?)
+  const [showHelp, setShowHelp] = useState(false);
 
-  // Atalhos: teclas 1–8 navegam entre módulos (fora de inputs)
+  // Atalhos: teclas 1–8 navegam entre módulos, ? abre a ajuda (fora de inputs)
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const tag = (e.target as HTMLElement)?.tagName;
       if (tag === "INPUT" || tag === "SELECT" || tag === "TEXTAREA") return;
+      if (e.key === "?") {
+        setShowHelp((s) => !s);
+        return;
+      }
+      if (e.key === "Escape") {
+        setShowHelp(false);
+        return;
+      }
       const item = ITEMS.find((i) => i.key === e.key);
       if (item) router.push(item.href);
     };
@@ -58,8 +68,43 @@ export function Nav() {
         ))}
       </div>
       <div className="px-3 py-2 text-xxs text-term-dim border-t border-term-line">
-        Atalhos: <kbd>1</kbd>–<kbd>8</kbd> módulos · <kbd>R</kbd> atualizar
+        Atalhos: <kbd>1</kbd>–<kbd>8</kbd> módulos · <kbd>R</kbd> atualizar · <kbd>?</kbd> ajuda
       </div>
+
+      {showHelp && (
+        <div
+          className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center"
+          onClick={() => setShowHelp(false)}
+        >
+          <div className="panel border border-term-line p-4 w-72" onClick={(e) => e.stopPropagation()}>
+            <div className="font-mono font-bold text-term-cyan mb-2">Atalhos de teclado</div>
+            <table className="w-full text-xs">
+              <tbody>
+                {ITEMS.map((i) => (
+                  <tr key={i.href} className="border-t border-term-line/40">
+                    <td className="py-1">
+                      <kbd className="text-xxs bg-term-panel2 border border-term-line rounded px-1">{i.key}</kbd>
+                    </td>
+                    <td className="py-1">{i.label}</td>
+                  </tr>
+                ))}
+                <tr className="border-t border-term-line/40">
+                  <td className="py-1">
+                    <kbd className="text-xxs bg-term-panel2 border border-term-line rounded px-1">R</kbd>
+                  </td>
+                  <td className="py-1">Atualizar chain</td>
+                </tr>
+                <tr className="border-t border-term-line/40">
+                  <td className="py-1">
+                    <kbd className="text-xxs bg-term-panel2 border border-term-line rounded px-1">?</kbd>
+                  </td>
+                  <td className="py-1">Abrir/fechar esta ajuda (Esc fecha)</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
     </nav>
   );
 }
