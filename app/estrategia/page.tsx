@@ -6,7 +6,7 @@ import { useMarket } from "@/store/market";
 import { PRESETS } from "@/lib/strategies";
 import { strategyMetrics } from "@/lib/payoff";
 import { allocatedCapital, journalStats } from "@/lib/portfolio";
-import { skewInfo, suggestFromSkew, kellyFraction } from "@/lib/scanner";
+import { atmIvNearest, skewInfo, suggestFromSkew, kellyFraction } from "@/lib/scanner";
 import { fmtBRL, fmtNum, fmtPct, pnlColor } from "@/lib/format";
 import { PayoffChart } from "@/components/PayoffChart";
 import { SensitivityMatrix } from "@/components/SensitivityMatrix";
@@ -28,9 +28,16 @@ export default function EstrategiaPage() {
   } = useMarket();
   const [tnDay, setTnDay] = useState(5);
 
+  // WO-13: sigma da PoP = IV ATM do vencimento da estrutura (perna mais curta)
+  const structExpiry = useMemo(() => {
+    const opts = legs.filter((l) => l.kind === "OPTION" && l.expiry);
+    return opts.length ? [...opts].sort((a, b) => (a.du ?? 0) - (b.du ?? 0))[0].expiry ?? null : null;
+  }, [legs]);
+  const atmIvStruct = chain && structExpiry ? atmIvNearest(chain, structExpiry) : null;
+
   const metrics = useMemo(
-    () => (chain && legs.length ? strategyMetrics(legs, chain.spot, selic) : null),
-    [chain, legs, selic]
+    () => (chain && legs.length ? strategyMetrics(legs, chain.spot, selic, atmIvStruct) : null),
+    [chain, legs, selic, atmIvStruct]
   );
 
   const skew = chain && selectedExpiry ? skewInfo(chain, selectedExpiry) : null;
@@ -198,7 +205,11 @@ export default function EstrategiaPage() {
           <Kpi label="Máx lucro" value={metrics.maxProfit == null ? "Ilimitado" : fmtBRL(metrics.maxProfit)} cls="text-term-up" />
           <Kpi label="Máx perda" value={metrics.maxLoss == null ? "Ilimitada" : fmtBRL(metrics.maxLoss)} cls="text-term-down" />
           <Kpi label="Breakeven(s)" value={metrics.breakevens.length ? metrics.breakevens.map((b) => fmtNum(b)).join(" · ") : "—"} />
-          <Kpi label="PoP (risco-neutra)" value={metrics.pop != null ? fmtPct(metrics.pop) : "—"} cls="text-term-cyan" />
+          <Kpi
+            label={atmIvStruct != null ? "PoP (lognormal, IV ATM)" : "PoP (lognormal, IV média)"}
+            value={metrics.pop != null ? fmtPct(metrics.pop) : "—"}
+            cls="text-term-cyan"
+          />
           <Kpi
             label="¼-Kelly (fração)"
             value={kelly ? fmtPct(kelly.quarter) : "sem edge/indef."}

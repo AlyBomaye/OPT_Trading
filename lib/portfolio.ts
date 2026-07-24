@@ -48,17 +48,40 @@ export function stressBook(positions: Leg[], chain: ChainData, r: number, shocks
   }));
 }
 
+export interface VarResult {
+  var95: number;
+  /** Proxy de expected shortfall: média dos 2 piores cenários da grade. */
+  es: number;
+}
+
 /**
- * VaR 1 dia (95%) por reavaliação: pior P&L entre choques de ±1,645·σ_diária.
- * σ_diária = IV ATM média / √252.
+ * VaR 1 dia (95%) por reavaliação em grade 3×3 (WO-13):
+ * spot {−1,645σ, 0, +1,645σ} × vol {−20%, 0, +30%}, com theta carry (T+1).
+ * σ_diária = IV ATM / √252. Pior célula = VaR95; média das 2 piores = ES proxy.
+ * Sem choque de vol, um strangle vendido mostrava VaR ~zero — o eixo de vol
+ * corrige isso.
  */
-export function var95(positions: Leg[], chain: ChainData, r: number, atmIv: number | null): number | null {
+export function varGrid(positions: Leg[], chain: ChainData, r: number, atmIv: number | null): VarResult | null {
   if (atmIv == null || !positions.length) return null;
   const move = 1.645 * (atmIv / Math.sqrt(252));
   const base = pnlAtDay(positions, chain.spot, 0, r);
-  const up = pnlAtDay(positions, chain.spot * (1 + move), 1, r) - base;
-  const dn = pnlAtDay(positions, chain.spot * (1 - move), 1, r) - base;
-  return Math.min(up, dn, 0);
+  const pnls: number[] = [];
+  for (const sShock of [-move, 0, move]) {
+    for (const vShock of [-0.2, 0, 0.3]) {
+      // choque multiplicativo de vol → volOffset aditivo em pontos por perna
+      const shocked = positions.map((l) =>
+        l.kind === "OPTION" ? { ...l, volOffset: (l.volOffset ?? 0) + (l.iv ?? atmIv) * vShock * 100 } : l
+      );
+      pnls.push(pnlAtDay(shocked, chain.spot * (1 + sShock), 1, r) - base);
+    }
+  }
+  const sorted = [...pnls].sort((a, b) => a - b);
+  return { var95: Math.min(sorted[0], 0), es: Math.min((sorted[0] + sorted[1]) / 2, 0) };
+}
+
+/** VaR 95% 1d — pior célula da grade spot×vol (mantido por compatibilidade). */
+export function var95(positions: Leg[], chain: ChainData, r: number, atmIv: number | null): number | null {
+  return varGrid(positions, chain, r, atmIv)?.var95 ?? null;
 }
 
 /** P&L não realizado por posição. */

@@ -46,7 +46,12 @@ export default function CockpitPage() {
             <Row k="Γ líquido" v={fmtNum(greeks.gamma, 4)} />
             <Row k="Vega R$ / +1% vol" v={fmtBRL(greeks.vegaPer1pct, 0)} cls={pnlColor(greeks.vegaPer1pct)} />
             <Row k="Θ R$ / dia" v={fmtBRL(greeks.thetaPerDay, 0)} cls={pnlColor(greeks.thetaPerDay)} />
-            <Row k="VaR 95% 1d (reaval.)" v={risk != null ? fmtBRL(risk, 0) : "—"} cls="text-term-down" />
+            <Row
+              k="VaR 95% 1d (spot×vol)"
+              v={risk != null ? fmtBRL(risk, 0) : "—"}
+              cls="text-term-down"
+              title="Reavaliação em grade 3×3: spot {−1,645σ, 0, +1,645σ} × vol {−20%, 0, +30%}, com theta carry"
+            />
             <div className="text-xxs text-term-dim pt-1">
               {positions.length} posição(ões) aberta(s) · <Link href="/carteira" className="text-term-cyan">ver carteira →</Link>
             </div>
@@ -136,9 +141,9 @@ export default function CockpitPage() {
   );
 }
 
-function Row({ k, v, cls }: { k: string; v: string; cls?: string }) {
+function Row({ k, v, cls, title }: { k: string; v: string; cls?: string; title?: string }) {
   return (
-    <div className="flex justify-between gap-2">
+    <div className="flex justify-between gap-2" title={title}>
       <span className="text-term-dim">{k}</span>
       <span className={cls}>{v}</span>
     </div>

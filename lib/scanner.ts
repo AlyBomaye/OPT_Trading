@@ -68,6 +68,20 @@ export function skewInfo(chain: ChainData, expiry: string, band = 0.05): SkewInf
   return { ivCallAtm, ivPutAtm, ratio, signal };
 }
 
+/** IV ATM "honesta" de um vencimento (WO-13): strike negociado mais próximo
+ * do spot, marcações stale excluídas. Usada como sigma da PoP. */
+export function atmIvNearest(chain: ChainData, expiry: string): number | null {
+  const rows = chain.options.filter(
+    (o) => o.expiry === expiry && o.iv != null && o.markQuality !== "stale"
+  );
+  if (!rows.length) return null;
+  let best: OptionQuote | null = null;
+  for (const o of rows) {
+    if (best == null || Math.abs(o.strike - chain.spot) < Math.abs(best.strike - chain.spot)) best = o;
+  }
+  return best?.iv ?? null;
+}
+
 /** Sugestão de estrutura orientada a decisão, a partir do skew. */
 export function suggestFromSkew(s: SkewInfo): { title: string; reason: string; preset: string } | null {
   if (s.signal === "PUTS_CARAS") {

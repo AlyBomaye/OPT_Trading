@@ -12,7 +12,7 @@ import {
   realizedPnl,
   stressBook,
   unrealizedPnl,
-  var95,
+  varGrid,
 } from "@/lib/portfolio";
 import { skewInfo } from "@/lib/scanner";
 import { useSnapshots, type IvSnapshot } from "@/lib/snapshots";
@@ -58,7 +58,7 @@ export default function CarteiraPage() {
   const greeks = useMemo(() => netGreeks(positions, chain, selic), [positions, chain, selic]);
   const skew = chain && selectedExpiry ? skewInfo(chain, selectedExpiry) : null;
   const atmIv = skew?.ivCallAtm && skew?.ivPutAtm ? (skew.ivCallAtm + skew.ivPutAtm) / 2 : null;
-  const risk = chain && positions.length ? var95(positions, chain, selic, atmIv) : null;
+  const risk = chain && positions.length ? varGrid(positions, chain, selic, atmIv) : null;
   const stress = chain && positions.length ? stressBook(positions, chain, selic) : [];
 
   const rows = positions.map((p) => {
@@ -103,7 +103,7 @@ export default function CarteiraPage() {
   const exportJson = () =>
     downloadText(
       "carteira.json",
-      JSON.stringify({ exportedAt: new Date().toISOString(), greeks, var95: risk, positions: rows, closed }, null, 2),
+      JSON.stringify({ exportedAt: new Date().toISOString(), greeks, var95: risk?.var95 ?? null, es: risk?.es ?? null, positions: rows, closed }, null, 2),
       "application/json"
     );
 
@@ -309,8 +309,13 @@ export default function CarteiraPage() {
       {/* Stress + VaR */}
       {stress.length > 0 && (
         <div className="panel">
-          <div className="panel-title">
-            Stress do book (choque de spot, T+0) · VaR 95% 1d: <span className="text-term-down">{risk != null ? fmtBRL(risk, 0) : "—"}</span>
+          <div
+            className="panel-title"
+            title="VaR por reavaliação em grade 3×3: spot {−1,645σ, 0, +1,645σ} × vol {−20%, 0, +30%}, com theta carry (T+1). ES = média dos 2 piores cenários."
+          >
+            Stress do book (choque de spot, T+0) · VaR 95% 1d (spot×vol):{" "}
+            <span className="text-term-down">{risk != null ? fmtBRL(risk.var95, 0) : "—"}</span> · ES proxy:{" "}
+            <span className="text-term-down">{risk != null ? fmtBRL(risk.es, 0) : "—"}</span>
           </div>
           <div className="overflow-x-auto px-2 pb-2">
             <table className="text-xs font-mono">

@@ -77,7 +77,13 @@ export function findBreakevens(legs: Leg[], spot: number): number[] {
   return bes;
 }
 
-export function strategyMetrics(legs: Leg[], spot: number, r: number): StrategyMetrics {
+/**
+ * @param atmIv WO-13: IV ATM do vencimento da estrutura (strike mais próximo
+ * do spot, negociado). Quando informada, substitui a média das IVs das pernas
+ * na integração lognormal da PoP — a média enviesa estruturas com skew
+ * (backspreads, ratios).
+ */
+export function strategyMetrics(legs: Leg[], spot: number, r: number, atmIv?: number | null): StrategyMetrics {
   const optLegs = legs.filter((l) => l.kind === "OPTION");
   const netDebit = legs.reduce((a, l) => a + l.side * l.qty * l.price, 0);
 
@@ -103,12 +109,13 @@ export function strategyMetrics(legs: Leg[], spot: number, r: number): StrategyM
     pnlAtExpiry(legs, lo * 1.01) < pnlAtExpiry(legs, lo);
   const maxLoss = minSideUnbounded && maxL < 0 ? null : maxL;
 
-  // PoP risco-neutra: integra densidade lognormal na região lucrativa
+  // PoP risco-neutra: integra densidade lognormal na região lucrativa.
+  // Sigma: IV ATM do vencimento (WO-13) quando disponível; senão média das pernas.
   let pop: number | null = null;
   const ivs = optLegs.map((l) => l.iv ?? 0).filter((x) => x > 0);
   const du = Math.min(...optLegs.map((l) => l.du ?? 0));
-  if (ivs.length && Number.isFinite(du) && du > 0) {
-    const sigma = ivs.reduce((a, b) => a + b, 0) / ivs.length;
+  if ((atmIv != null || ivs.length) && Number.isFinite(du) && du > 0) {
+    const sigma = atmIv ?? ivs.reduce((a, b) => a + b, 0) / ivs.length;
     const t = du / 252;
     let acc = 0;
     const m = 1200;
