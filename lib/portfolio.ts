@@ -69,5 +69,66 @@ export function unrealizedPnl(p: Position, currentPrice: number | null): number 
 
 export function realizedPnl(p: Position): number | null {
   if (p.closePrice == null) return null;
-  return p.side * p.qty * (p.closePrice - p.price);
+  return p.side * p.qty * (p.closePrice - p.price) - (p.fees ?? 0);
+}
+
+/* ---------------- WO-11: contabilidade de capital + journal ---------------- */
+
+/**
+ * Capital alocado do book: compras = |prêmio × qtd|; vendas = margem estimada
+ * com haircut de 20% do strike × qtd (semântica da planilha, Dashboard).
+ * qty aqui já é a quantidade de contratos/ações — sem multiplicador de lote.
+ */
+export function allocatedCapital(positions: Position[]): number {
+  let total = 0;
+  for (const p of positions) {
+    if (p.side === 1) {
+      total += Math.abs(p.price * p.qty);
+    } else if (p.kind === "OPTION" && p.strike != null) {
+      total += 0.2 * p.strike * p.qty;
+    } else {
+      total += 0.2 * p.price * p.qty; // venda de ação: mesmo haircut
+    }
+  }
+  return total;
+}
+
+export interface JournalStats {
+  n: number;
+  wins: number;
+  losses: number;
+  winRate: number;
+  /** média dos ganhos ÷ |média das perdas| (payoff ratio b do Kelly). */
+  payoffRatio: number | null;
+  /** Kelly realizado f* = (b·p − (1−p))/b — ≤ 0 = sem edge comprovado. */
+  realizedKelly: number | null;
+}
+
+/** Estatísticas do journal sobre trades encerrados. */
+export function journalStats(closed: Position[]): JournalStats | null {
+  const pnls = closed.map((p) => realizedPnl(p)).filter((x): x is number => x != null);
+  if (!pnls.length) return null;
+  const winsArr = pnls.filter((x) => x > 0);
+  const lossArr = pnls.filter((x) => x < 0);
+  const winRate = winsArr.length / pnls.length;
+  const avgWin = winsArr.length ? winsArr.reduce((a, b) => a + b, 0) / winsArr.length : 0;
+  const avgLoss = lossArr.length ? Math.abs(lossArr.reduce((a, b) => a + b, 0) / lossArr.length) : 0;
+  const payoffRatio = avgLoss > 0 ? avgWin / avgLoss : null;
+  const realizedKelly =
+    payoffRatio != null && payoffRatio > 0 ? (payoffRatio * winRate - (1 - winRate)) / payoffRatio : null;
+  return { n: pnls.length, wins: winsArr.length, losses: lossArr.length, winRate, payoffRatio, realizedKelly };
+}
+
+/** Curva de patrimônio: P&L realizado acumulado partindo de capitalTotal. */
+export function equityCurve(closed: Position[], capitalTotal: number): { date: string; equity: number }[] {
+  const done = closed
+    .filter((p) => p.closedAt != null && realizedPnl(p) != null)
+    .sort((a, b) => ((a.closedAt as string) < (b.closedAt as string) ? -1 : 1));
+  let eq = capitalTotal;
+  const out: { date: string; equity: number }[] = [{ date: "início", equity: capitalTotal }];
+  for (const p of done) {
+    eq += realizedPnl(p) as number;
+    out.push({ date: (p.closedAt as string).slice(0, 10), equity: eq });
+  }
+  return out;
 }

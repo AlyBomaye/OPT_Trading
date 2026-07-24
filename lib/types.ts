@@ -82,6 +82,12 @@ export interface Position extends Leg {
   /** Última marcação conhecida (WO-4) — usada quando o chain do ativo não está em cache. */
   lastMark?: number;
   lastMarkAt?: string;
+  // ---- journal (WO-11): custos, snapshot de entrada e anotações ----
+  fees?: number;
+  /** Gregas por unidade congeladas na abertura — base da atribuição pós-trade. */
+  entryGreeks?: { delta: number | null; vega: number | null; theta: number | null };
+  notes?: string;
+  tags?: string[];
 }
 
 export interface StrategyMetrics {

@@ -5,15 +5,28 @@ import { Trash2, Plus, Save } from "lucide-react";
 import { useMarket } from "@/store/market";
 import { PRESETS } from "@/lib/strategies";
 import { strategyMetrics } from "@/lib/payoff";
+import { allocatedCapital, journalStats } from "@/lib/portfolio";
 import { skewInfo, suggestFromSkew, kellyFraction } from "@/lib/scanner";
 import { fmtBRL, fmtNum, fmtPct, pnlColor } from "@/lib/format";
 import { PayoffChart } from "@/components/PayoffChart";
 import { SensitivityMatrix } from "@/components/SensitivityMatrix";
 
 export default function EstrategiaPage() {
-  const { chain, selic, legs, updateLeg, removeLeg, setLegs, clearLegs, openPositions, selectedExpiry } = useMarket();
+  const {
+    chain,
+    selic,
+    legs,
+    updateLeg,
+    removeLeg,
+    setLegs,
+    clearLegs,
+    openPositions,
+    selectedExpiry,
+    positions,
+    closed,
+    capitalTotal,
+  } = useMarket();
   const [tnDay, setTnDay] = useState(5);
-  const [capital, setCapital] = useState(10_000);
 
   const metrics = useMemo(
     () => (chain && legs.length ? strategyMetrics(legs, chain.spot, selic) : null),
@@ -31,6 +44,20 @@ export default function EstrategiaPage() {
     const f = kellyFraction(metrics.pop, b);
     return f != null ? { quarter: f / 4, half: f / 2, full: f, b } : { quarter: 0, half: 0, full: 0, b };
   }, [metrics]);
+
+  // WO-11: Kelly amarrado ao bankroll real (capital livre do book)
+  const capitalLivre = capitalTotal - allocatedCapital(positions);
+  /** Alocação real da estrutura: débito pago, ou risco máximo em crédito. */
+  const custoEstrutura =
+    metrics == null ? null : metrics.netDebit > 0 ? metrics.netDebit : metrics.maxLoss != null ? Math.abs(metrics.maxLoss) : null;
+  const orcamentoKelly = kelly && kelly.quarter > 0 ? kelly.quarter * Math.max(capitalLivre, 0) : null;
+  const alocSugerida =
+    orcamentoKelly != null && custoEstrutura != null ? Math.min(orcamentoKelly, custoEstrutura) : orcamentoKelly;
+  const excedeKelly = orcamentoKelly != null && custoEstrutura != null && custoEstrutura > orcamentoKelly;
+
+  // Gate do journal: com ≥ 20 trades encerrados, o realizado valida o assumido
+  const journal = useMemo(() => journalStats(closed), [closed]);
+  const noEdge = journal != null && journal.n >= 20 && (journal.realizedKelly ?? 0) <= 0;
 
   const applyPreset = (key: string) => {
     if (!chain || !selectedExpiry) return;
@@ -166,21 +193,39 @@ export default function EstrategiaPage() {
 
       {/* Métricas */}
       {chain && metrics && (
-        <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-2">
+        <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-2">
           <Kpi label={metrics.netDebit >= 0 ? "Débito líquido" : "Crédito líquido"} value={fmtBRL(Math.abs(metrics.netDebit))} cls={metrics.netDebit >= 0 ? "text-term-down" : "text-term-up"} />
           <Kpi label="Máx lucro" value={metrics.maxProfit == null ? "Ilimitado" : fmtBRL(metrics.maxProfit)} cls="text-term-up" />
           <Kpi label="Máx perda" value={metrics.maxLoss == null ? "Ilimitada" : fmtBRL(metrics.maxLoss)} cls="text-term-down" />
           <Kpi label="Breakeven(s)" value={metrics.breakevens.length ? metrics.breakevens.map((b) => fmtNum(b)).join(" · ") : "—"} />
           <Kpi label="PoP (risco-neutra)" value={metrics.pop != null ? fmtPct(metrics.pop) : "—"} cls="text-term-cyan" />
           <Kpi
-            label="¼-Kelly sugerido"
-            value={kelly ? `${fmtPct(kelly.quarter)} · ${fmtBRL(capital * kelly.quarter, 0)}` : "sem edge/indef."}
+            label="¼-Kelly (fração)"
+            value={kelly ? fmtPct(kelly.quarter) : "sem edge/indef."}
             cls={kelly && kelly.quarter > 0 ? "text-term-gold" : "text-term-dim"}
           />
-          <div className="panel px-2 py-1.5 flex flex-col justify-center">
-            <span className="text-xxs text-term-dim uppercase">Capital (R$)</span>
-            <input type="number" value={capital} onChange={(e) => setCapital(Number(e.target.value) || 0)} className="cell-input !w-full" />
-          </div>
+          <Kpi
+            label="Alocação sugerida"
+            value={alocSugerida != null ? fmtBRL(alocSugerida, 0) : "—"}
+            cls={excedeKelly ? "text-term-down" : "text-term-gold"}
+          />
+          <Kpi label="Capital livre" value={fmtBRL(capitalLivre, 0)} cls={capitalLivre < 0 ? "text-term-down" : ""} />
+        </div>
+      )}
+
+      {/* WO-11: governança de Kelly amarrada ao bankroll */}
+      {chain && metrics && excedeKelly && (
+        <div className="panel px-3 py-2 text-xs text-term-down font-semibold border border-term-down/40">
+          ⚠ &gt; ¼-Kelly — a alocação desta estrutura ({custoEstrutura != null ? fmtBRL(custoEstrutura, 0) : "—"}) excede o
+          orçamento de ¼-Kelly sobre o capital livre ({orcamentoKelly != null ? fmtBRL(orcamentoKelly, 0) : "—"}). Reduza a
+          quantidade.
+        </div>
+      )}
+      {noEdge && (
+        <div className="panel px-3 py-2 text-xs text-term-down font-semibold border border-term-down/40">
+          NO EDGE — DO NOT TRADE: o journal ({journal?.n} trades) mostra Kelly realizado ≤ 0 — win rate{" "}
+          {journal ? fmtPct(journal.winRate) : "—"} e payoff {journal?.payoffRatio != null ? fmtNum(journal.payoffRatio, 2) : "—"}{" "}
+          não sustentam o p/b assumido pela PoP.
         </div>
       )}
 

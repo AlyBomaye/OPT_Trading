@@ -126,8 +126,12 @@ interface MarketState {
   legs: Leg[];
   positions: Position[];
   closed: Position[];
+  /** WO-11: capital total do book (denominador do Kelly e do caixa livre). */
+  capitalTotal: number;
 
   setTicker: (t: string) => void;
+  setCapitalTotal: (v: number) => void;
+  updatePosition: (id: string, patch: Partial<Position>) => void;
   setSelic: (r: number) => void;
   setSpotOverride: (s: number | null) => void;
   setSelectedExpiry: (e: string) => void;
@@ -159,8 +163,12 @@ export const useMarket = create<MarketState>()(
       legs: [],
       positions: [],
       closed: [],
+      capitalTotal: 100_000,
 
       setTicker: (t) => set({ ticker: t.toUpperCase(), chain: null, selectedExpiry: null }),
+      setCapitalTotal: (v) => set({ capitalTotal: Math.max(0, v) }),
+      updatePosition: (id, patch) =>
+        set((st) => ({ positions: st.positions.map((p) => (p.id === id ? { ...p, ...patch } : p)) })),
       setSelic: (r) => {
         set({ selic: r });
         void get().refresh();
@@ -221,7 +229,18 @@ export const useMarket = create<MarketState>()(
         set((st) => ({
           positions: [
             ...st.positions,
-            ...ls.map((l) => ({ ...l, id: `pos-${l.id}`, openedAt: new Date().toISOString() })),
+            ...ls.map((l) => {
+              // WO-11: congela gregas por unidade na abertura (atribuição pós-trade)
+              let entryGreeks: Position["entryGreeks"];
+              if (l.kind === "STOCK") {
+                entryGreeks = { delta: 1, vega: 0, theta: 0 };
+              } else {
+                const chain = st.chainCache[l.underlying] ?? st.chain;
+                const o = chain?.ticker === l.underlying ? chain.options.find((x) => x.opTicker === l.opTicker) : undefined;
+                entryGreeks = o ? { delta: o.delta, vega: o.vega, theta: o.theta } : undefined;
+              }
+              return { ...l, id: `pos-${l.id}`, openedAt: new Date().toISOString(), fees: 0, entryGreeks };
+            }),
           ],
         })),
       closePosition: (id, closePrice) =>
@@ -238,12 +257,20 @@ export const useMarket = create<MarketState>()(
     }),
     {
       name: "opcoes-terminal",
+      version: 1,
+      // Migração aditiva (WO-11): estados v0 ganham capitalTotal sem perder o book
+      migrate: (persisted, version) => {
+        const st = persisted as Partial<MarketState>;
+        if (version < 1 && st.capitalTotal == null) st.capitalTotal = 100_000;
+        return st as MarketState;
+      },
       partialize: (st) => ({
         ticker: st.ticker,
         selic: st.selic,
         positions: st.positions,
         closed: st.closed,
         legs: st.legs,
+        capitalTotal: st.capitalTotal,
       }),
     }
   )

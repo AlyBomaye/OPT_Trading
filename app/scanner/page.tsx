@@ -4,15 +4,35 @@ import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useMarket } from "@/store/market";
 import { DEFAULT_POZINHO_FILTERS, scanPozinhos, type PozinhoFilters } from "@/lib/scanner";
+import { allocatedCapital, journalStats } from "@/lib/portfolio";
 import { legFromOption } from "@/lib/strategies";
+import { sectorOf } from "@/lib/universe";
 import { fmtBRL, fmtCompact, fmtDateBR, fmtNum, fmtPct } from "@/lib/format";
 
 export default function ScannerPage() {
-  const { chain, addLeg } = useMarket();
+  const { chain, addLeg, positions, closed, capitalTotal } = useMarket();
   const router = useRouter();
   const [f, setF] = useState<PozinhoFilters>(DEFAULT_POZINHO_FILTERS);
 
   const rows = useMemo(() => (chain ? scanPozinhos(chain, f) : []), [chain, f]);
+
+  // WO-11: subtotal por setor com checagem de orçamento ¼-Kelly (planilha)
+  const capitalLivre = capitalTotal - allocatedCapital(positions);
+  const journal = useMemo(() => journalStats(closed), [closed]);
+  // Fração de Kelly: realizada (journal ≥ 20 trades) ou 10% conservador sem histórico
+  const kellyFrac = journal != null && journal.n >= 20 && journal.realizedKelly != null ? Math.max(journal.realizedKelly, 0) : 0.1;
+  const orcamentoSetor = (kellyFrac / 4) * Math.max(capitalLivre, 0);
+  const porSetor = useMemo(() => {
+    const acc = new Map<string, { n: number; premio: number }>();
+    for (const { opt: o } of rows.slice(0, 40)) {
+      const s = sectorOf(o.underlying) ?? "—";
+      const cur = acc.get(s) ?? { n: 0, premio: 0 };
+      cur.n++;
+      cur.premio += o.last ?? 0;
+      acc.set(s, cur);
+    }
+    return Array.from(acc.entries()).sort((a, b) => b[1].premio - a[1].premio);
+  }, [rows]);
 
   const set = (k: keyof PozinhoFilters) => (e: React.ChangeEvent<HTMLInputElement>) =>
     setF((old) => ({ ...old, [k]: Number(e.target.value) || 0 }));
@@ -39,7 +59,7 @@ export default function ScannerPage() {
         <table className="w-full text-xs">
           <thead>
             <tr className="border-b border-term-line">
-              {["Opção", "Tipo", "Venc", "DU", "Strike", "Dist %", "Prêmio", "Δ", "IV", "Δ/R$ ▼", "Dist σ", "% até BE", "Neg", "Vol fin", ""].map((h) => (
+              {["Opção", "Setor", "Tipo", "Venc", "DU", "Strike", "Dist %", "Prêmio", "Δ", "IV", "Δ/R$ ▼", "Dist σ", "% até BE", "Neg", "Vol fin", ""].map((h) => (
                 <th key={h} className="th text-right first:text-left">{h}</th>
               ))}
             </tr>
@@ -48,6 +68,7 @@ export default function ScannerPage() {
             {rows.slice(0, 40).map(({ opt: o, convexity, distSigma, pctToBE }) => (
               <tr key={o.opTicker} className="border-b border-term-line/40 hover:bg-term-panel2/50">
                 <td className="td font-semibold">{o.opTicker}</td>
+                <td className="td text-right text-term-dim text-xxs">{sectorOf(o.underlying) ?? "—"}</td>
                 <td className={`td text-right ${o.type === "CALL" ? "text-term-up" : "text-term-down"}`}>{o.type}</td>
                 <td className="td text-right">{fmtDateBR(o.expiry)}</td>
                 <td className="td text-right">{o.du}</td>
@@ -76,7 +97,7 @@ export default function ScannerPage() {
             ))}
             {!rows.length && (
               <tr>
-                <td colSpan={15} className="td text-term-dim py-4">
+                <td colSpan={16} className="td text-term-dim py-4">
                   Nenhum candidato com os filtros atuais — afrouxe prêmio/distância ou reduza o volume mínimo.
                 </td>
               </tr>
@@ -84,6 +105,41 @@ export default function ScannerPage() {
           </tbody>
         </table>
       </div>
+
+      {/* WO-11: alocação por setor vs. orçamento ¼-Kelly — evita concentração
+          em vol barata correlacionada (ex.: três siderúrgicas de uma vez) */}
+      {porSetor.length > 0 && (
+        <div className="panel">
+          <div className="panel-title">
+            Alocação por setor (1 un. por candidato exibido) · orçamento ¼-Kelly por setor: {fmtBRL(orcamentoSetor, 0)}
+            {journal == null || journal.n < 20 ? " (sem journal ≥ 20 trades: fração Kelly conservadora de 10%)" : " (Kelly realizado do journal)"}
+          </div>
+          <div className="px-3 pb-2 overflow-x-auto">
+            <table className="text-xs">
+              <thead>
+                <tr className="border-b border-term-line">
+                  {["Setor", "Candidatos", "Σ prêmio", "Orçamento"].map((h) => (
+                    <th key={h} className="th text-right first:text-left">{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {porSetor.map(([s, v]) => {
+                  const excede = v.premio > orcamentoSetor;
+                  return (
+                    <tr key={s} className="border-b border-term-line/40">
+                      <td className="td">{s}</td>
+                      <td className="td text-right">{v.n}</td>
+                      <td className={`td text-right font-semibold ${excede ? "text-term-down" : ""}`}>{fmtBRL(v.premio)}</td>
+                      <td className="td text-right">{excede ? <span className="text-term-down font-semibold">⚠ &gt; ¼-Kelly</span> : "ok"}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
     </>
   );
 }
