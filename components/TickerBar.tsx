@@ -16,6 +16,21 @@ export function TickerBar() {
     useMarket();
   const [tickerInput, setTickerInput] = useState(ticker);
   const interval = useRef<ReturnType<typeof setInterval> | null>(null);
+  // WO-9: Selic meta do BCB (via strip macro do /api/news) para sanity check
+  const [selicBcb, setSelicBcb] = useState<number | null>(null);
+
+  useEffect(() => {
+    let alive = true;
+    void fetch("/api/news")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((b: { macro?: { selicMeta: number | null } } | null) => {
+        if (alive && b?.macro?.selicMeta != null) setSelicBcb(b.macro.selicMeta);
+      })
+      .catch(() => undefined);
+    return () => {
+      alive = false;
+    };
+  }, []);
 
   // primeira carga + auto-refresh 60s
   useEffect(() => {
@@ -95,6 +110,15 @@ export function TickerBar() {
         />
         %
       </label>
+      {selicBcb != null && Math.abs(selic * 100 - selicBcb) > 0.25 && (
+        <button
+          className="tag bg-term-gold/15 text-term-gold border border-term-gold/40 hover:bg-term-gold/25"
+          title="Selic meta divulgada pelo BCB (SGS 432) difere da usada no pricing — clique para aplicar (nunca sobrescrita automaticamente)"
+          onClick={() => setSelic(selicBcb / 100)}
+        >
+          Selic BCB: {selicBcb.toFixed(2).replace(".", ",")}% — aplicar?
+        </button>
+      )}
       <Metric label="IV ATM" value={atmIv != null ? fmtPct(atmIv) : "—"} />
       <Metric
         label="Skew P/C"
