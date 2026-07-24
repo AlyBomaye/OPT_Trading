@@ -3,7 +3,9 @@
  * Valores de referência: Hull, "Options, Futures and Other Derivatives".
  */
 import { bsGreeks, bsPrice, binomialPrice, impliedVol, normCdf } from "../black-scholes";
+import { rollingHV, volCone } from "../historical";
 import { pnlAtExpiry, strategyMetrics } from "../payoff";
+import type { Candle } from "@/app/api/history/route";
 import type { Leg } from "../types";
 
 let failures = 0;
@@ -63,6 +65,38 @@ const m = strategyMetrics(legs, 100, 0.1);
 assertClose("trava: máx lucro", m.maxProfit ?? NaN, 3.8, 0.01);
 assertClose("trava: máx perda", m.maxLoss ?? NaN, -1.2, 0.01);
 assertClose("trava: breakeven", m.breakevens[0] ?? NaN, 101.2, 0.05);
+
+// ---- lib/historical (WO-8) ----
+const candle = (i: number, close: number, high = close, low = close): Candle => ({
+  date: `2026-01-${String(i + 1).padStart(2, "0")}`,
+  open: close,
+  high,
+  low,
+  close,
+  volume: 1000,
+});
+
+// Série de preço constante → HV 0
+const flat = Array.from({ length: 30 }, (_, i) => candle(i, 100));
+assertClose("HV série constante", rollingHV(flat, 10)[29] ?? NaN, 0, 1e-12);
+
+// Série de 5 pontos contra stdev calculada à mão:
+// closes 100,102,101,103,104 → HV4 = stdev(log-rets)·√252 ≈ 0.221196
+const five = [100, 102, 101, 103, 104].map((c, i) => candle(i, c));
+assertClose("HV 5 pontos (mão)", rollingHV(five, 4)[4] ?? NaN, 0.221196, 1e-3);
+
+// Cone: quantis monotônicos min ≤ p25 ≤ mediana ≤ p75 ≤ max
+const wavy = Array.from({ length: 90 }, (_, i) => candle(i, 100 + 5 * Math.sin(i / 3) + 0.3 * (i % 7)));
+const cone = volCone(wavy, [10, 21]);
+for (const row of cone) {
+  const mono = row.min <= row.p25 && row.p25 <= row.median && row.median <= row.p75 && row.p75 <= row.max;
+  console.log(`${mono ? "✔" : "✘"} cone ${row.window}d monotônico (min≤p25≤med≤p75≤max)`);
+  if (!mono) failures++;
+}
+if (cone.length === 0) {
+  console.log("✘ cone vazio para série sintética");
+  failures++;
+}
 
 console.log(failures === 0 ? "\nTODOS OS TESTES PASSARAM" : `\n${failures} TESTE(S) FALHARAM`);
 process.exit(failures === 0 ? 0 : 1);
