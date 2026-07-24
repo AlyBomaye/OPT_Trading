@@ -5,8 +5,9 @@ import { RefreshCw } from "lucide-react";
 import { useMarket } from "@/store/market";
 import { fmtBRL, fmtPct } from "@/lib/format";
 import { skewInfo } from "@/lib/scanner";
+import { tickers } from "@/lib/universe";
 
-const SUGGESTED = ["PETR4", "VALE3", "BOVA11", "ITUB4", "BBDC4", "BBAS3", "B3SA3", "MGLU3", "WEGE3", "ABEV3"];
+const SUGGESTED = tickers();
 
 export function TickerBar() {
   const { ticker, setTicker, selic, setSelic, spotOverride, setSpotOverride, chain, loading, error, refresh, selectedExpiry } =
