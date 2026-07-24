@@ -1,5 +1,7 @@
 export type OptionType = "CALL" | "PUT";
 export type ExerciseModel = "A" | "E"; // Americana | Europeia
+/** Qualidade da marcação (WO-5): stale = last < intrínseco ou sem negócios. */
+export type MarkQuality = "fresh" | "ok" | "stale";
 
 /** Uma opção do chain do opcoes.net.br, enriquecida pelo engine local. */
 export interface OptionQuote {
@@ -23,6 +25,7 @@ export interface OptionQuote {
   /** Dias corridos até o vencimento */
   dte: number;
   // ---- calculados pelo engine local (fonte anônima vem borrada) ----
+  markQuality: MarkQuality;
   iv: number | null;
   delta: number | null;
   gamma: number | null;

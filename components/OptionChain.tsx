@@ -158,7 +158,8 @@ function TradeBtns({ o, onAdd }: { o: OptionQuote; onAdd: (o: OptionQuote, s: 1 
 
 function CallCells({ o, spot, onAdd }: { o: OptionQuote | null; spot: number; onAdd: (o: OptionQuote, s: 1 | -1) => void }) {
   if (!o) return <td className="td text-term-dim text-right" colSpan={7}>—</td>;
-  const bg = itm(o, spot) ? "bg-term-up/5" : "";
+  const stale = o.markQuality === "stale";
+  const bg = clsx(itm(o, spot) && "bg-term-up/5", stale && "text-term-dim");
   return (
     <>
       <td className={clsx("td text-right", bg)}>
@@ -166,10 +167,15 @@ function CallCells({ o, spot, onAdd }: { o: OptionQuote | null; spot: number; on
         <TradeBtns o={o} onAdd={onAdd} />
       </td>
       <td className={clsx("td text-right font-semibold", bg)}>{fmtNum(o.last)}</td>
-      <td className={clsx("td text-right text-term-gold", bg)}>{fmtPct(o.iv)}</td>
-      <td className={clsx("td text-right text-term-cyan", bg)}>{fmtNum(o.delta, 3)}</td>
+      <td
+        className={clsx("td text-right", bg, stale ? "line-through" : "text-term-gold")}
+        title={stale ? "Marcação stale (last < intrínseco ou sem negócios) — excluída de smile/skew/scanner" : undefined}
+      >
+        {fmtPct(o.iv)}
+      </td>
+      <td className={clsx("td text-right", bg, !stale && "text-term-cyan")}>{fmtNum(o.delta, 3)}</td>
       <td className={clsx("td text-right", bg)}>{fmtNum(o.gamma, 4)}</td>
-      <td className={clsx("td text-right text-term-down", bg)}>{fmtNum(o.theta, 4)}</td>
+      <td className={clsx("td text-right", bg, !stale && "text-term-down")}>{fmtNum(o.theta, 4)}</td>
       <td className={clsx("td text-right text-term-dim", bg)}>
         {fmtCompact(o.trades)}/{fmtCompact(o.volumeFin)}
       </td>
@@ -179,16 +185,22 @@ function CallCells({ o, spot, onAdd }: { o: OptionQuote | null; spot: number; on
 
 function PutCells({ o, spot, onAdd }: { o: OptionQuote | null; spot: number; onAdd: (o: OptionQuote, s: 1 | -1) => void }) {
   if (!o) return <td className="td text-term-dim" colSpan={7}>—</td>;
-  const bg = itm(o, spot) ? "bg-term-up/5" : "";
+  const stale = o.markQuality === "stale";
+  const bg = clsx(itm(o, spot) && "bg-term-up/5", stale && "text-term-dim");
   return (
     <>
       <td className={clsx("td text-left text-term-dim", bg)}>
         {fmtCompact(o.trades)}/{fmtCompact(o.volumeFin)}
       </td>
-      <td className={clsx("td text-left text-term-down", bg)}>{fmtNum(o.theta, 4)}</td>
+      <td className={clsx("td text-left", bg, !stale && "text-term-down")}>{fmtNum(o.theta, 4)}</td>
       <td className={clsx("td text-left", bg)}>{fmtNum(o.gamma, 4)}</td>
-      <td className={clsx("td text-left text-term-cyan", bg)}>{fmtNum(o.delta, 3)}</td>
-      <td className={clsx("td text-left text-term-gold", bg)}>{fmtPct(o.iv)}</td>
+      <td className={clsx("td text-left", bg, !stale && "text-term-cyan")}>{fmtNum(o.delta, 3)}</td>
+      <td
+        className={clsx("td text-left", bg, stale ? "line-through" : "text-term-gold")}
+        title={stale ? "Marcação stale (last < intrínseco ou sem negócios) — excluída de smile/skew/scanner" : undefined}
+      >
+        {fmtPct(o.iv)}
+      </td>
       <td className={clsx("td text-left font-semibold", bg)}>{fmtNum(o.last)}</td>
       <td className={clsx("td text-left", bg)}>
         <TradeBtns o={o} onAdd={onAdd} />

@@ -53,6 +53,14 @@ function enrich(body: ApiBody, spot: number, r: number, divs: DividendEvent[] = 
   const options: OptionQuote[] = body.options.map((o) => {
     const t = o.du / 252;
     const sAdj = spotFor(o.expiry);
+    // WO-5: qualidade da marcação — intrínseco contra o spot ajustado por dividendo
+    const intrinsic = o.type === "CALL" ? Math.max(sAdj - o.strike, 0) : Math.max(o.strike - sAdj, 0);
+    const markQuality: OptionQuote["markQuality"] =
+      o.last == null || (o.trades ?? 0) === 0 || o.last < intrinsic
+        ? "stale"
+        : (o.trades ?? 0) < 5
+          ? "ok"
+          : "fresh";
     let iv: number | null = o.sourceIv != null ? o.sourceIv / 100 : null;
     if (iv == null && o.last != null && o.last > 0 && t > 0) {
       iv = impliedVol(o.last, sAdj, o.strike, t, r, o.type);
@@ -85,6 +93,7 @@ function enrich(body: ApiBody, spot: number, r: number, divs: DividendEvent[] = 
       expiry: o.expiry,
       du: o.du,
       dte: o.dte,
+      markQuality,
       iv,
       delta,
       gamma,

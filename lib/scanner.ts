@@ -32,6 +32,7 @@ export function scanPozinhos(chain: ChainData, f: PozinhoFilters): PozinhoRow[] 
     if ((o.volumeFin ?? 0) < f.volumeMin) continue;
     if (o.du < f.duMin || o.du > f.duMax) continue;
     if (o.delta == null || o.iv == null) continue;
+    if (o.markQuality === "stale") continue; // WO-5: marcação suspeita fora do scan
 
     const convexity = Math.abs(o.delta) / o.last;
     const distSigma = distInSigma(chain.spot, o.strike, o.iv, o.du / 252);
@@ -42,13 +43,21 @@ export function scanPozinhos(chain: ChainData, f: PozinhoFilters): PozinhoRow[] 
   return rows.sort((a, b) => b.convexity - a.convexity);
 }
 
-/** Skew Ratio = IV Put ATM / IV Call ATM (banda ±band do spot). */
+/** Skew Ratio = IV Put ATM / IV Call ATM (banda ±band do spot).
+ * WO-5: média ponderada por volume financeiro, marcações stale excluídas. */
 export function skewInfo(chain: ChainData, expiry: string, band = 0.05): SkewInfo {
   const near = chain.options.filter(
-    (o) => o.expiry === expiry && o.iv != null && Math.abs(o.strike / chain.spot - 1) <= band
+    (o) =>
+      o.expiry === expiry &&
+      o.iv != null &&
+      o.markQuality !== "stale" &&
+      Math.abs(o.strike / chain.spot - 1) <= band
   );
-  const avg = (xs: OptionQuote[]) =>
-    xs.length ? xs.reduce((a, o) => a + (o.iv as number), 0) / xs.length : null;
+  const avg = (xs: OptionQuote[]) => {
+    if (!xs.length) return null;
+    const wTot = xs.reduce((a, o) => a + Math.max(o.volumeFin ?? 0, 1), 0);
+    return xs.reduce((a, o) => a + (o.iv as number) * Math.max(o.volumeFin ?? 0, 1), 0) / wTot;
+  };
   const ivCallAtm = avg(near.filter((o) => o.type === "CALL"));
   const ivPutAtm = avg(near.filter((o) => o.type === "PUT"));
   const ratio = ivCallAtm && ivPutAtm ? ivPutAtm / ivCallAtm : null;

@@ -34,7 +34,7 @@ export function atmIvStats(chain: ChainData, band = 0.05): {
     (o) =>
       o.expiry === expiry &&
       o.iv != null &&
-      (o.trades ?? 0) > 0 &&
+      o.markQuality !== "stale" &&
       Math.abs(o.strike / chain.spot - 1) <= band
   );
   const vwAvg = (xs: typeof near) => {

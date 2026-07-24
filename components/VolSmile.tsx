@@ -26,6 +26,7 @@ export function VolSmile() {
     const byStrike = new Map<number, Record<string, number>>();
     for (const o of chain.options) {
       if (!exps.includes(o.expiry) || o.iv == null) continue;
+      if (o.markQuality === "stale") continue; // WO-5: IV de last < intrínseco distorce o smile
       if (Math.abs(o.strike / chain.spot - 1) > 0.25) continue;
       const rec = byStrike.get(o.strike) ?? {};
       // média call/put por strike/vencimento
