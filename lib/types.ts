@@ -76,6 +76,9 @@ export interface Position extends Leg {
   openedAt: string;
   closedAt?: string;
   closePrice?: number;
+  /** Última marcação conhecida (WO-4) — usada quando o chain do ativo não está em cache. */
+  lastMark?: number;
+  lastMarkAt?: string;
 }
 
 export interface StrategyMetrics {

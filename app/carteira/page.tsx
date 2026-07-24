@@ -1,8 +1,8 @@
 "use client";
 
-import { useMemo, useRef } from "react";
-import { Database, FileJson, FileSpreadsheet, Trash2, Upload, XCircle } from "lucide-react";
-import { currentPrice, useMarket } from "@/store/market";
+import { useMemo, useRef, useState } from "react";
+import { Database, FileJson, FileSpreadsheet, RefreshCw, Trash2, Upload, XCircle } from "lucide-react";
+import { markInfo, useMarket } from "@/store/market";
 import { netGreeks, realizedPnl, stressBook, unrealizedPnl, var95 } from "@/lib/portfolio";
 import { skewInfo } from "@/lib/scanner";
 import { useSnapshots, type IvSnapshot } from "@/lib/snapshots";
@@ -10,7 +10,10 @@ import { divsBeforeExpiry, effectiveDividends, useDividends } from "@/lib/divide
 import { downloadText, fmtBRL, fmtDateBR, fmtNum, fmtPct, pnlColor } from "@/lib/format";
 
 export default function CarteiraPage() {
-  const { chain, selic, positions, closed, closePosition, removePosition, selectedExpiry } = useMarket();
+  const { chain, chainCache, selic, positions, closed, closePosition, removePosition, selectedExpiry, refresh } =
+    useMarket();
+  // WO-4: progresso do "Reavaliar tudo"
+  const [reval, setReval] = useState<{ done: number; total: number; failed: string[] } | null>(null);
   const { snapshots, importSnapshots } = useSnapshots();
   const divsByTicker = useDividends((st) => st.byTicker);
   const importRef = useRef<HTMLInputElement | null>(null);
@@ -37,9 +40,26 @@ export default function CarteiraPage() {
   const stress = chain && positions.length ? stressBook(positions, chain, selic) : [];
 
   const rows = positions.map((p) => {
-    const cp = currentPrice(p, chain);
-    return { p, cp, pnl: unrealizedPnl(p, cp) };
+    const mark = markInfo(p, chainCache);
+    return { p, cp: mark.price, mark, pnl: unrealizedPnl(p, mark.price) };
   });
+
+  // WO-4: reavalia sequencialmente o chain de cada ativo distinto do book
+  const revalAll = async () => {
+    const tickers = Array.from(new Set(positions.map((p) => p.underlying)));
+    if (!tickers.length) return;
+    setReval({ done: 0, total: tickers.length, failed: [] });
+    const failed: string[] = [];
+    for (let i = 0; i < tickers.length; i++) {
+      try {
+        await refresh(tickers[i]);
+      } catch {
+        failed.push(tickers[i]);
+      }
+      setReval({ done: i + 1, total: tickers.length, failed: [...failed] });
+    }
+    setTimeout(() => setReval(null), 4000);
+  };
   const totalUnreal = rows.reduce((a, r) => a + (r.pnl ?? 0), 0);
   const totalReal = closed.reduce((a, p) => a + (realizedPnl(p) ?? 0), 0);
 
@@ -103,6 +123,15 @@ export default function CarteiraPage() {
         <div className="flex items-center px-3 pt-2">
           <span className="panel-title !p-0">Posições abertas</span>
           <div className="flex-1" />
+          <button
+            className="btn flex items-center gap-1 mr-1"
+            onClick={() => void revalAll()}
+            disabled={reval != null && reval.done < reval.total}
+            title="Atualiza o chain de cada ativo do book para reprecificar todas as posições"
+          >
+            <RefreshCw size={12} className={reval != null && reval.done < reval.total ? "animate-spin" : ""} />
+            {reval ? `Reavaliando ${reval.done}/${reval.total}${reval.failed.length ? ` · falhou: ${reval.failed.join(",")}` : ""}` : "Reavaliar tudo"}
+          </button>
           <button className="btn flex items-center gap-1" onClick={exportCsv}>
             <FileSpreadsheet size={12} /> CSV
           </button>
@@ -120,7 +149,7 @@ export default function CarteiraPage() {
               </tr>
             </thead>
             <tbody>
-              {rows.map(({ p, cp, pnl }) => (
+              {rows.map(({ p, cp, mark, pnl }) => (
                 <tr key={p.id} className="border-b border-term-line/40 hover:bg-term-panel2/50">
                   <td className="td font-semibold">{p.kind === "STOCK" ? `${p.underlying} (ação)` : p.opTicker}</td>
                   <td className="td text-right">{p.kind === "STOCK" ? "—" : p.type}</td>
@@ -129,7 +158,17 @@ export default function CarteiraPage() {
                   <td className={`td text-right ${p.side === 1 ? "text-term-up" : "text-term-down"}`}>{p.side === 1 ? "C" : "V"}</td>
                   <td className="td text-right">{p.qty}</td>
                   <td className="td text-right">{fmtBRL(p.price)}</td>
-                  <td className="td text-right">{fmtBRL(cp)}</td>
+                  <td className="td text-right">
+                    {fmtBRL(cp)}
+                    {mark.stale && cp != null && (
+                      <span
+                        className="tag bg-term-gold/15 text-term-gold ml-1"
+                        title={`Última marcação conhecida${mark.ageMin != null ? ` há ${mark.ageMin} min` : ""} — clique em Reavaliar tudo`}
+                      >
+                        STALE{mark.ageMin != null ? ` ${mark.ageMin}m` : ""}
+                      </span>
+                    )}
+                  </td>
                   <td className={`td text-right font-semibold ${pnlColor(pnl ?? 0)}`}>{fmtBRL(pnl)}</td>
                   <td className="td text-right text-term-dim">{new Date(p.openedAt).toLocaleDateString("pt-BR")}</td>
                   <td className="td text-right whitespace-nowrap">

@@ -109,6 +109,8 @@ interface MarketState {
   selic: number; // fração a.a.
   spotOverride: number | null;
   chain: ChainData | null;
+  /** WO-4: último chain enriquecido por ticker (memória apenas, não persiste). */
+  chainCache: Record<string, ChainData>;
   loading: boolean;
   error: string | null;
   selectedExpiry: string | null;
@@ -120,7 +122,8 @@ interface MarketState {
   setSelic: (r: number) => void;
   setSpotOverride: (s: number | null) => void;
   setSelectedExpiry: (e: string) => void;
-  refresh: () => Promise<void>;
+  /** Sem argumento: ticker ativo. Com argumento: atualiza só o cache (Reavaliar tudo). */
+  refresh: (ticker?: string) => Promise<void>;
 
   addLeg: (l: Leg) => void;
   updateLeg: (id: string, patch: Partial<Leg>) => void;
@@ -140,6 +143,7 @@ export const useMarket = create<MarketState>()(
       selic: 0.15,
       spotOverride: null,
       chain: null,
+      chainCache: {},
       loading: false,
       error: null,
       selectedExpiry: null,
@@ -158,26 +162,42 @@ export const useMarket = create<MarketState>()(
       },
       setSelectedExpiry: (e) => set({ selectedExpiry: e }),
 
-      refresh: async () => {
+      refresh: async (tickerArg?: string) => {
         const { ticker, selic, spotOverride } = get();
-        set({ loading: true, error: null });
+        const target = (tickerArg ?? ticker).toUpperCase();
+        const isActive = target === ticker;
+        if (isActive) set({ loading: true, error: null });
         try {
-          const res = await fetch(`/api/opcoes?ticker=${encodeURIComponent(ticker)}`);
+          const res = await fetch(`/api/opcoes?ticker=${encodeURIComponent(target)}`);
           const body: ApiBody = await res.json();
           if (!res.ok || body.error) throw new Error(body.error ?? `HTTP ${res.status}`);
-          const spot = spotOverride ?? body.spot;
+          // override de spot só vale para o ticker ativo
+          const spot = (isActive ? spotOverride : null) ?? body.spot;
           if (spot == null) throw new Error("Não foi possível derivar o spot do chain.");
-          const divs = effectiveDividends(useDividends.getState().byTicker, ticker);
+          const divs = effectiveDividends(useDividends.getState().byTicker, target);
           const chain = enrich(body, spot, selic, divs);
           const cur = get().selectedExpiry;
           const validExpiry = chain.expiries.some((e) => e.date === cur)
             ? cur
             : chain.expiries.find((e) => e.isMonthly)?.date ?? chain.expiries[0]?.date ?? null;
-          set({ chain, selectedExpiry: validExpiry, loading: false });
+          set((st) => ({
+            chainCache: { ...st.chainCache, [target]: chain },
+            // WO-4: congela a última marcação conhecida das posições deste ativo
+            positions: st.positions.map((p) => {
+              if (p.underlying !== target) return p;
+              const m = markFromChain(p, chain);
+              return m != null ? { ...p, lastMark: m, lastMarkAt: chain.updatedAt } : p;
+            }),
+            ...(isActive ? { chain, selectedExpiry: validExpiry, loading: false } : {}),
+          }));
           // WO-2: captura do snapshot EOD de IV (upsert por ticker/dia)
           useSnapshots.getState().upsert(snapshotFromChain(chain));
         } catch (e) {
-          set({ error: e instanceof Error ? e.message : String(e), loading: false });
+          if (isActive) {
+            set({ error: e instanceof Error ? e.message : String(e), loading: false });
+          } else {
+            throw e; // "Reavaliar tudo" trata falha por ticker
+          }
         }
       },
 
@@ -220,10 +240,43 @@ export const useMarket = create<MarketState>()(
   )
 );
 
+/** Marcação de uma perna contra um chain específico (null se não achou). */
+function markFromChain(pos: Leg, chain: ChainData): number | null {
+  if (pos.underlying !== chain.ticker) return null;
+  if (pos.kind === "STOCK") return chain.spot;
+  const o = chain.options.find((x) => x.opTicker === pos.opTicker);
+  return o?.last ?? null;
+}
+
 /** Cotação atual de uma posição a partir do chain carregado. */
 export function currentPrice(pos: Leg, chain: ChainData | null): number | null {
   if (!chain) return null;
-  if (pos.kind === "STOCK") return pos.underlying === chain.ticker ? chain.spot : null;
-  const o = chain.options.find((x) => x.opTicker === pos.opTicker);
-  return o?.last ?? null;
+  return markFromChain(pos, chain);
+}
+
+export interface MarkInfo {
+  price: number | null;
+  /** true quando a marcação não vem de um chain em cache (última conhecida). */
+  stale: boolean;
+  /** idade da marcação em minutos (null quando desconhecida). */
+  ageMin: number | null;
+}
+
+/** WO-4: marcação multi-ticker — cache por ativo com fallback à última conhecida. */
+export function markInfo(pos: Position, chainCache: Record<string, ChainData>): MarkInfo {
+  const chain = chainCache[pos.underlying];
+  if (chain) {
+    const live = markFromChain(pos, chain);
+    if (live != null) {
+      return { price: live, stale: false, ageMin: ageMinutes(chain.updatedAt) };
+    }
+  }
+  if (pos.lastMark != null) {
+    return { price: pos.lastMark, stale: true, ageMin: pos.lastMarkAt ? ageMinutes(pos.lastMarkAt) : null };
+  }
+  return { price: null, stale: true, ageMin: null };
+}
+
+function ageMinutes(iso: string): number {
+  return Math.max(0, Math.round((Date.now() - new Date(iso).getTime()) / 60000));
 }
