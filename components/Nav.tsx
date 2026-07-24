@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect } from "react";
-import { Gauge, Table2, GitBranch, Search, Briefcase, Newspaper, History } from "lucide-react";
+import { Gauge, Table2, GitBranch, Search, Briefcase, Newspaper, History, LayoutGrid } from "lucide-react";
 import clsx from "clsx";
 
 const ITEMS = [
@@ -14,13 +14,14 @@ const ITEMS = [
   { href: "/carteira", label: "Carteira", key: "5", icon: Briefcase },
   { href: "/noticias", label: "Notícias", key: "6", icon: Newspaper },
   { href: "/historico", label: "Histórico", key: "7", icon: History },
+  { href: "/watchlist", label: "Watchlist", key: "8", icon: LayoutGrid },
 ];
 
 export function Nav() {
   const pathname = usePathname();
   const router = useRouter();
 
-  // Atalhos: teclas 1–7 navegam entre módulos (fora de inputs)
+  // Atalhos: teclas 1–8 navegam entre módulos (fora de inputs)
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const tag = (e.target as HTMLElement)?.tagName;
@@ -57,7 +58,7 @@ export function Nav() {
         ))}
       </div>
       <div className="px-3 py-2 text-xxs text-term-dim border-t border-term-line">
-        Atalhos: <kbd>1</kbd>–<kbd>7</kbd> módulos · <kbd>R</kbd> atualizar
+        Atalhos: <kbd>1</kbd>–<kbd>8</kbd> módulos · <kbd>R</kbd> atualizar
       </div>
     </nav>
   );
