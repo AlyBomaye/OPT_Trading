@@ -5,6 +5,7 @@ import { RefreshCw } from "lucide-react";
 import { useMarket } from "@/store/market";
 import { fmtBRL, fmtPct } from "@/lib/format";
 import { skewInfo } from "@/lib/scanner";
+import { getIvRank, snapshotCount, useSnapshots } from "@/lib/snapshots";
 import { tickers } from "@/lib/universe";
 
 const SUGGESTED = tickers();
@@ -38,6 +39,11 @@ export function TickerBar() {
 
   const skew = chain && selectedExpiry ? skewInfo(chain, selectedExpiry) : null;
   const atmIv = skew?.ivCallAtm && skew?.ivPutAtm ? (skew.ivCallAtm + skew.ivPutAtm) / 2 : null;
+
+  // WO-2: IV Rank vs. histórico próprio de snapshots
+  const snapshots = useSnapshots((st) => st.snapshots);
+  const ivRank = atmIv != null ? getIvRank(snapshots, ticker, atmIv) : null;
+  const nSnaps = snapshotCount(snapshots, ticker);
 
   return (
     <header className="flex items-center gap-3 px-3 py-2 border-b border-term-line bg-term-panel flex-wrap">
@@ -100,6 +106,21 @@ export function TickerBar() {
               : undefined
         }
       />
+
+      {ivRank != null ? (
+        <span
+          className="tag bg-term-cyan/10 text-term-cyan"
+          title={`IV ATM atual no percentil ${Math.round(ivRank * 100)} do histórico de ${nSnaps} snapshots`}
+        >
+          IV Rank {Math.round(ivRank * 100)}
+        </span>
+      ) : (
+        atmIv != null && (
+          <span className="tag bg-term-panel2 text-term-dim" title="IV Rank precisa de ≥ 20 dias de snapshots">
+            IV Rank n/d — coletando ({nSnaps}/20)
+          </span>
+        )
+      )}
 
       <div className="flex-1" />
       {error && <span className="text-xxs text-term-down max-w-64 truncate" title={error}>{error}</span>}

@@ -3,6 +3,7 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import { bsGreeks, impliedVol } from "@/lib/black-scholes";
+import { snapshotFromChain, useSnapshots } from "@/lib/snapshots";
 import type { ChainData, ExpiryInfo, Leg, OptionQuote, Position } from "@/lib/types";
 
 interface ApiRow {
@@ -157,6 +158,8 @@ export const useMarket = create<MarketState>()(
             ? cur
             : chain.expiries.find((e) => e.isMonthly)?.date ?? chain.expiries[0]?.date ?? null;
           set({ chain, selectedExpiry: validExpiry, loading: false });
+          // WO-2: captura do snapshot EOD de IV (upsert por ticker/dia)
+          useSnapshots.getState().upsert(snapshotFromChain(chain));
         } catch (e) {
           set({ error: e instanceof Error ? e.message : String(e), loading: false });
         }

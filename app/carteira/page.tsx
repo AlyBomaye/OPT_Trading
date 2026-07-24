@@ -1,14 +1,17 @@
 "use client";
 
-import { useMemo } from "react";
-import { FileJson, FileSpreadsheet, Trash2, XCircle } from "lucide-react";
+import { useMemo, useRef } from "react";
+import { Database, FileJson, FileSpreadsheet, Trash2, Upload, XCircle } from "lucide-react";
 import { currentPrice, useMarket } from "@/store/market";
 import { netGreeks, realizedPnl, stressBook, unrealizedPnl, var95 } from "@/lib/portfolio";
 import { skewInfo } from "@/lib/scanner";
+import { useSnapshots, type IvSnapshot } from "@/lib/snapshots";
 import { downloadText, fmtBRL, fmtDateBR, fmtNum, fmtPct, pnlColor } from "@/lib/format";
 
 export default function CarteiraPage() {
   const { chain, selic, positions, closed, closePosition, removePosition, selectedExpiry } = useMarket();
+  const { snapshots, importSnapshots } = useSnapshots();
+  const importRef = useRef<HTMLInputElement | null>(null);
 
   const greeks = useMemo(() => netGreeks(positions, chain, selic), [positions, chain, selic]);
   const skew = chain && selectedExpiry ? skewInfo(chain, selectedExpiry) : null;
@@ -37,6 +40,25 @@ export default function CarteiraPage() {
       JSON.stringify({ exportedAt: new Date().toISOString(), greeks, var95: risk, positions: rows, closed }, null, 2),
       "application/json"
     );
+
+  // WO-2: arquivo de snapshots de IV (export/import do "data moat")
+  const exportIvHistory = () =>
+    downloadText(
+      "iv-snapshots.json",
+      JSON.stringify({ exportedAt: new Date().toISOString(), snapshots }, null, 2),
+      "application/json"
+    );
+
+  const onImportIvHistory = async (file: File) => {
+    try {
+      const parsed = JSON.parse(await file.text()) as { snapshots?: IvSnapshot[] } | IvSnapshot[];
+      const list = Array.isArray(parsed) ? parsed : parsed.snapshots ?? [];
+      const added = importSnapshots(list);
+      alert(`${added} snapshot(s) importado(s).`);
+    } catch {
+      alert("Arquivo inválido — esperado JSON exportado pelo terminal.");
+    }
+  };
 
   return (
     <>
@@ -138,6 +160,33 @@ export default function CarteiraPage() {
           </div>
         </div>
       )}
+
+      {/* WO-2: arquivo de snapshots de IV */}
+      <div className="panel px-3 py-2 flex flex-wrap items-center gap-2 text-xxs text-term-dim">
+        <Database size={12} className="text-term-cyan" />
+        <span>
+          Histórico IV: <span className="text-term-text font-semibold">{snapshots.length}</span> snapshot(s) ·{" "}
+          {new Set(snapshots.map((s) => s.ticker)).size} ticker(s)
+        </span>
+        <div className="flex-1" />
+        <button className="btn flex items-center gap-1" onClick={exportIvHistory}>
+          <FileJson size={12} /> Exportar histórico IV
+        </button>
+        <button className="btn flex items-center gap-1" onClick={() => importRef.current?.click()}>
+          <Upload size={12} /> Importar
+        </button>
+        <input
+          ref={importRef}
+          type="file"
+          accept="application/json"
+          className="hidden"
+          onChange={(e) => {
+            const f = e.target.files?.[0];
+            if (f) void onImportIvHistory(f);
+            e.target.value = "";
+          }}
+        />
+      </div>
 
       {/* Encerradas */}
       {closed.length > 0 && (
