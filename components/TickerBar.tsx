@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { RefreshCw } from "lucide-react";
+import { DividendEditor } from "@/components/DividendEditor";
 import { useMarket } from "@/store/market";
 import { fmtBRL, fmtPct } from "@/lib/format";
 import { skewInfo } from "@/lib/scanner";
@@ -132,6 +133,7 @@ export function TickerBar() {
       <span className="text-xxs text-term-dim">
         {chain ? new Date(chain.updatedAt).toLocaleTimeString("pt-BR") : ""}
       </span>
+      <DividendEditor />
       <button className="btn" onClick={() => void refresh()} disabled={loading} title="Atualizar (R)">
         <RefreshCw size={13} className={loading ? "animate-spin" : ""} />
       </button>

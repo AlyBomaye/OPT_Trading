@@ -5,11 +5,13 @@ import { useRouter } from "next/navigation";
 import clsx from "clsx";
 import { useMarket } from "@/store/market";
 import { legFromOption } from "@/lib/strategies";
+import { divsBeforeExpiry, effectiveDividends, useDividends } from "@/lib/dividends";
 import { fmtCompact, fmtNum, fmtPct } from "@/lib/format";
 import type { OptionQuote } from "@/lib/types";
 
 export function OptionChain() {
   const { chain, selectedExpiry, setSelectedExpiry, addLeg, loading } = useMarket();
+  const byTicker = useDividends((st) => st.byTicker);
   const router = useRouter();
   const [onlyLiquid, setOnlyLiquid] = useState(true);
   const [bandPct, setBandPct] = useState(20);
@@ -64,22 +66,35 @@ export function OptionChain() {
 
       {/* Tabs de vencimento */}
       <div className="flex gap-1 px-3 py-2 flex-wrap">
-        {chain.expiries.map((e) => (
-          <button
-            key={e.date}
-            onClick={() => setSelectedExpiry(e.date)}
-            className={clsx(
-              "tag border",
-              e.date === selectedExpiry
-                ? "bg-term-cyan/15 border-term-cyan/60 text-term-cyan"
-                : "bg-term-panel2 border-term-line text-term-dim hover:text-term-text"
-            )}
-            title={`${e.du} du · ${e.dte} dias corridos`}
-          >
-            {e.label}
-            {e.isMonthly ? "·M" : e.weekCode ? `·${e.weekCode}` : ""} <span className="opacity-60">{e.du}du</span>
-          </button>
-        ))}
+        {chain.expiries.map((e) => {
+          // WO-3: proventos com ex-date antes deste vencimento → chip DIV
+          const divs = divsBeforeExpiry(effectiveDividends(byTicker, chain.ticker), e.date);
+          return (
+            <button
+              key={e.date}
+              onClick={() => setSelectedExpiry(e.date)}
+              className={clsx(
+                "tag border",
+                e.date === selectedExpiry
+                  ? "bg-term-cyan/15 border-term-cyan/60 text-term-cyan"
+                  : "bg-term-panel2 border-term-line text-term-dim hover:text-term-text"
+              )}
+              title={`${e.du} du · ${e.dte} dias corridos`}
+            >
+              {e.label}
+              {e.isMonthly ? "·M" : e.weekCode ? `·${e.weekCode}` : ""} <span className="opacity-60">{e.du}du</span>
+              {divs.map((d) => (
+                <span
+                  key={d.exDate}
+                  className="tag bg-term-gold/15 text-term-gold ml-1"
+                  title={`${d.type} R$ ${d.amount.toFixed(2)} — ex-date ${d.exDate.slice(8, 10)}/${d.exDate.slice(5, 7)}; pricing usa S′ = S − PV`}
+                >
+                  DIV {d.exDate.slice(8, 10)}/{d.exDate.slice(5, 7)}
+                </span>
+              ))}
+            </button>
+          );
+        })}
       </div>
 
       <div className="overflow-x-auto">

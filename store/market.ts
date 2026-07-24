@@ -3,7 +3,9 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import { bsGreeks, impliedVol } from "@/lib/black-scholes";
+import { adjustedSpot, effectiveDividends, useDividends } from "@/lib/dividends";
 import { snapshotFromChain, useSnapshots } from "@/lib/snapshots";
+import type { DividendEvent } from "@/lib/universe";
 import type { ChainData, ExpiryInfo, Leg, OptionQuote, Position } from "@/lib/types";
 
 interface ApiRow {
@@ -35,12 +37,25 @@ interface ApiBody {
 }
 
 /** Enriquece o chain com IV (Newton-Raphson) e gregas calculadas localmente. */
-function enrich(body: ApiBody, spot: number, r: number): ChainData {
+function enrich(body: ApiBody, spot: number, r: number, divs: DividendEvent[] = []): ChainData {
+  // WO-3: spot com dividendo escrow por vencimento (S' = S − Σ PV(div antes de T));
+  // IV e gregas usam S'; o spot bruto permanece para display.
+  const spotByExpiry = new Map<string, number>();
+  const spotFor = (expiry: string): number => {
+    let s = spotByExpiry.get(expiry);
+    if (s == null) {
+      s = divs.length ? adjustedSpot(spot, divs, r, expiry) : spot;
+      spotByExpiry.set(expiry, s);
+    }
+    return s;
+  };
+
   const options: OptionQuote[] = body.options.map((o) => {
     const t = o.du / 252;
+    const sAdj = spotFor(o.expiry);
     let iv: number | null = o.sourceIv != null ? o.sourceIv / 100 : null;
     if (iv == null && o.last != null && o.last > 0 && t > 0) {
-      iv = impliedVol(o.last, spot, o.strike, t, r, o.type);
+      iv = impliedVol(o.last, sAdj, o.strike, t, r, o.type);
     }
     let delta: number | null = null,
       gamma: number | null = null,
@@ -48,7 +63,7 @@ function enrich(body: ApiBody, spot: number, r: number): ChainData {
       vega: number | null = null,
       rho: number | null = null;
     if (iv != null && t > 0) {
-      const g = bsGreeks({ s: spot, k: o.strike, t, r, sigma: iv }, o.type);
+      const g = bsGreeks({ s: sAdj, k: o.strike, t, r, sigma: iv }, o.type);
       delta = g.delta;
       gamma = g.gamma;
       theta = g.theta;
@@ -152,7 +167,8 @@ export const useMarket = create<MarketState>()(
           if (!res.ok || body.error) throw new Error(body.error ?? `HTTP ${res.status}`);
           const spot = spotOverride ?? body.spot;
           if (spot == null) throw new Error("Não foi possível derivar o spot do chain.");
-          const chain = enrich(body, spot, selic);
+          const divs = effectiveDividends(useDividends.getState().byTicker, ticker);
+          const chain = enrich(body, spot, selic, divs);
           const cur = get().selectedExpiry;
           const validExpiry = chain.expiries.some((e) => e.date === cur)
             ? cur

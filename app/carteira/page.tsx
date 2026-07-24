@@ -6,12 +6,29 @@ import { currentPrice, useMarket } from "@/store/market";
 import { netGreeks, realizedPnl, stressBook, unrealizedPnl, var95 } from "@/lib/portfolio";
 import { skewInfo } from "@/lib/scanner";
 import { useSnapshots, type IvSnapshot } from "@/lib/snapshots";
+import { divsBeforeExpiry, effectiveDividends, useDividends } from "@/lib/dividends";
 import { downloadText, fmtBRL, fmtDateBR, fmtNum, fmtPct, pnlColor } from "@/lib/format";
 
 export default function CarteiraPage() {
   const { chain, selic, positions, closed, closePosition, removePosition, selectedExpiry } = useMarket();
   const { snapshots, importSnapshots } = useSnapshots();
+  const divsByTicker = useDividends((st) => st.byTicker);
   const importRef = useRef<HTMLInputElement | null>(null);
+
+  // WO-3: short call ITM em pagador de dividendo com ex-date antes do vencimento
+  // (espelha a coluna R do Trade Log da planilha)
+  const earlyExerciseAlerts = useMemo(
+    () =>
+      positions.flatMap((p) => {
+        if (p.kind !== "OPTION" || p.type !== "CALL" || p.side !== -1 || !p.expiry || p.strike == null) return [];
+        const divs = divsBeforeExpiry(effectiveDividends(divsByTicker, p.underlying), p.expiry);
+        if (!divs.length) return [];
+        const spotRef = chain && chain.ticker === p.underlying ? chain.spot : null;
+        const isItm = spotRef != null && p.strike < spotRef;
+        return isItm ? [{ pos: p, div: divs[0] }] : [];
+      }),
+    [positions, divsByTicker, chain]
+  );
 
   const greeks = useMemo(() => netGreeks(positions, chain, selic), [positions, chain, selic]);
   const skew = chain && selectedExpiry ? skewInfo(chain, selectedExpiry) : null;
@@ -71,6 +88,15 @@ export default function CarteiraPage() {
         <Kpi label="P&L aberto" value={fmtBRL(totalUnreal)} cls={pnlColor(totalUnreal)} />
         <Kpi label="P&L realizado" value={fmtBRL(totalReal)} cls={pnlColor(totalReal)} />
       </div>
+
+      {/* WO-3: alerta de exercício antecipado */}
+      {earlyExerciseAlerts.map(({ pos, div }) => (
+        <div key={pos.id} className="panel px-3 py-2 text-xs text-term-gold flex items-center gap-2 border border-term-gold/40">
+          ⚠ Exercício antecipado — {pos.opTicker}: call vendida ITM em {pos.underlying} com ex-div{" "}
+          {div.exDate.slice(8, 10)}/{div.exDate.slice(5, 7)} ({div.type} R$ {div.amount.toFixed(2)}) antes do vencimento{" "}
+          {pos.expiry ? fmtDateBR(pos.expiry) : ""} — risco de atribuição na véspera do ex-date.
+        </div>
+      ))}
 
       {/* Posições abertas */}
       <div className="panel">
