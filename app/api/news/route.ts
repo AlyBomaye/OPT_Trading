@@ -73,15 +73,17 @@ const TTL_MS = 5 * 60 * 1000;
 function decodeEntities(s: string): string {
   return s
     .replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, "$1")
-    .replace(/&amp;/g, "&")
+    .replace(/&amp;|&#0?38;/g, "&")
     .replace(/&lt;/g, "<")
     .replace(/&gt;/g, ">")
     .replace(/&quot;/g, '"')
     .replace(/&#0?39;/g, "'")
     .replace(/&#8211;|&ndash;/g, "–")
+    .replace(/&#8216;|&lsquo;/g, "'")
     .replace(/&#8217;|&rsquo;/g, "'")
     .replace(/&#8220;|&ldquo;/g, "“")
     .replace(/&#8221;|&rdquo;/g, "”")
+    .replace(/&#(\d+);/g, (_, code: string) => String.fromCharCode(Number(code)))
     .replace(/<[^>]+>/g, "")
     .trim();
 }
