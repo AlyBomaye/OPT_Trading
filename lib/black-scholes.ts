@@ -181,6 +181,54 @@ export function binomialPrice(
   return values[0];
 }
 
+/** IV por bisseção sobre a árvore binomial (exercício americano, WO-12). */
+export function americanImpliedVol(
+  target: number,
+  s: number,
+  k: number,
+  t: number,
+  r: number,
+  type: "CALL" | "PUT",
+  q = 0,
+  steps = 100
+): number | null {
+  if (!(target > 0) || t <= 0 || s <= 0 || k <= 0) return null;
+  const intrinsic = type === "CALL" ? Math.max(s - k, 0) : Math.max(k - s, 0);
+  if (target < intrinsic - 1e-8 || target > s) return null;
+  const pr = (sig: number) => binomialPrice({ s, k, t, r, sigma: sig, q }, type, true, steps);
+  let lo = 0.005;
+  let hi = 6;
+  if (target < pr(lo) - 1e-9 || target > pr(hi) + 1e-9) return null;
+  for (let i = 0; i < 60; i++) {
+    const mid = (lo + hi) / 2;
+    const p = pr(mid);
+    if (Math.abs(p - target) < 1e-5) return clampIv(mid);
+    if (p > target) hi = mid;
+    else lo = mid;
+  }
+  return clampIv((lo + hi) / 2);
+}
+
+/**
+ * Gregas americanas por diferenças finitas sobre o binomial (WO-12):
+ * bump de 1% no spot, +1 ponto de vol, −1 dia corrido (theta ÷365, como bsGreeks).
+ */
+export function americanGreeks(inp: BsInput, type: "CALL" | "PUT", steps = 200): Greeks {
+  const { s, k, t, r, sigma, q = 0 } = inp;
+  const pr = (patch: Partial<BsInput>) =>
+    binomialPrice({ s, k, t, r, sigma, q, ...patch }, type, true, steps);
+  const base = pr({});
+  const ds = s * 0.01;
+  const up = pr({ s: s + ds });
+  const dn = pr({ s: s - ds });
+  const delta = (up - dn) / (2 * ds);
+  const gamma = (up - 2 * base + dn) / (ds * ds);
+  const vega = pr({ sigma: sigma + 0.01 }) - base; // por +1 ponto de vol
+  const theta = t > 1 / 365 ? pr({ t: t - 1 / 365 }) - base : -base; // por dia corrido
+  const rho = pr({ r: r + 0.01 }) - base; // por +1 ponto de juros
+  return { price: base, delta, gamma, vega, theta, rho };
+}
+
 /** Movimento esperado (1σ) até o vencimento: S · σ · √T */
 export function expectedMove(s: number, sigma: number, t: number): number {
   return s * sigma * Math.sqrt(t);

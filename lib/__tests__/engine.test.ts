@@ -2,7 +2,7 @@
  * Testes numéricos do engine — rode com `npm run test:engine`.
  * Valores de referência: Hull, "Options, Futures and Other Derivatives".
  */
-import { bsGreeks, bsPrice, binomialPrice, impliedVol, normCdf } from "../black-scholes";
+import { americanGreeks, americanImpliedVol, bsGreeks, bsPrice, binomialPrice, impliedVol, normCdf } from "../black-scholes";
 import { rollingHV, volCone } from "../historical";
 import { pnlAtExpiry, strategyMetrics } from "../payoff";
 import type { Candle } from "@/app/api/history/route";
@@ -65,6 +65,24 @@ const m = strategyMetrics(legs, 100, 0.1);
 assertClose("trava: máx lucro", m.maxProfit ?? NaN, 3.8, 0.01);
 assertClose("trava: máx perda", m.maxLoss ?? NaN, -1.2, 0.01);
 assertClose("trava: breakeven", m.breakevens[0] ?? NaN, 101.2, 0.05);
+
+// ---- pricing americano (WO-12) ----
+// Call americana sem dividendo = europeia (nunca é ótimo exercer antes)
+assertClose(
+  "call americana = europeia (q=0)",
+  binomialPrice({ s: 42, k: 40, t: 0.5, r: 0.1, sigma: 0.2 }, "CALL", true, 400),
+  binomialPrice({ s: 42, k: 40, t: 0.5, r: 0.1, sigma: 0.2 }, "CALL", false, 400),
+  1e-6
+);
+// Round-trip da IV americana: preço binomial com σ=0.35 → IV recuperada
+const amPx = binomialPrice({ s: 38, k: 42, t: 30 / 252, r: 0.15, sigma: 0.35 }, "PUT", true, 100);
+assertClose("IV americana round-trip", americanImpliedVol(amPx, 38, 42, 30 / 252, 0.15, "PUT", 0, 100), 0.35, 5e-3);
+// Gregas FD coerentes: put ITM tem delta < 0 e gamma > 0
+const ag = americanGreeks({ s: 38, k: 42, t: 30 / 252, r: 0.15, sigma: 0.35 }, "PUT", 200);
+if (!(ag.delta < 0 && ag.gamma > 0 && ag.vega > 0)) {
+  console.log("✘ gregas americanas (FD) fora do esperado");
+  failures++;
+} else console.log("✔ gregas americanas (FD) coerentes");
 
 // ---- lib/historical (WO-8) ----
 const candle = (i: number, close: number, high = close, low = close): Candle => ({

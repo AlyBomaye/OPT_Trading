@@ -2,7 +2,7 @@
 
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
-import { bsGreeks, impliedVol } from "@/lib/black-scholes";
+import { americanGreeks, americanImpliedVol, bsGreeks, impliedVol, type Greeks } from "@/lib/black-scholes";
 import { adjustedSpot, effectiveDividends, useDividends } from "@/lib/dividends";
 import { snapshotFromChain, useSnapshots } from "@/lib/snapshots";
 import type { DividendEvent } from "@/lib/universe";
@@ -36,6 +36,10 @@ interface ApiBody {
   error?: string;
 }
 
+// WO-12: memoização do pricing americano por (opTicker, last, spot, r) — o
+// chain repete inputs entre refreshes de 60 s, então a árvore raramente reroda.
+const amCache = new Map<string, { iv: number | null; greeks: Greeks | null }>();
+
 /** Enriquece o chain com IV (Newton-Raphson) e gregas calculadas localmente. */
 function enrich(body: ApiBody, spot: number, r: number, divs: DividendEvent[] = []): ChainData {
   // WO-3: spot com dividendo escrow por vencimento (S' = S − Σ PV(div antes de T));
@@ -62,21 +66,45 @@ function enrich(body: ApiBody, spot: number, r: number, divs: DividendEvent[] = 
           ? "ok"
           : "fresh";
     let iv: number | null = o.sourceIv != null ? o.sourceIv / 100 : null;
-    if (iv == null && o.last != null && o.last > 0 && t > 0) {
-      iv = impliedVol(o.last, sAdj, o.strike, t, r, o.type);
-    }
     let delta: number | null = null,
       gamma: number | null = null,
       theta: number | null = null,
       vega: number | null = null,
       rho: number | null = null;
-    if (iv != null && t > 0) {
-      const g = bsGreeks({ s: sAdj, k: o.strike, t, r, sigma: iv }, o.type);
-      delta = g.delta;
-      gamma = g.gamma;
-      theta = g.theta;
-      vega = g.vega;
-      rho = g.rho;
+
+    if (o.model === "A" && t > 0 && o.last != null && o.last > 0) {
+      // WO-12: contratos americanos → IV por bisseção no binomial (100 passos)
+      // e gregas por diferenças finitas (200 passos), memoizado.
+      const key = `${o.opTicker}|${o.last}|${sAdj.toFixed(4)}|${r}`;
+      let hit = amCache.get(key);
+      if (!hit) {
+        const aIv = iv ?? americanImpliedVol(o.last, sAdj, o.strike, t, r, o.type, 0, 100);
+        const g =
+          aIv != null ? americanGreeks({ s: sAdj, k: o.strike, t, r, sigma: aIv }, o.type, 200) : null;
+        hit = { iv: aIv, greeks: g };
+        if (amCache.size > 8000) amCache.clear();
+        amCache.set(key, hit);
+      }
+      iv = hit.iv;
+      if (hit.greeks) {
+        delta = hit.greeks.delta;
+        gamma = hit.greeks.gamma;
+        theta = hit.greeks.theta;
+        vega = hit.greeks.vega;
+        rho = hit.greeks.rho;
+      }
+    } else {
+      if (iv == null && o.last != null && o.last > 0 && t > 0) {
+        iv = impliedVol(o.last, sAdj, o.strike, t, r, o.type);
+      }
+      if (iv != null && t > 0) {
+        const g = bsGreeks({ s: sAdj, k: o.strike, t, r, sigma: iv }, o.type);
+        delta = g.delta;
+        gamma = g.gamma;
+        theta = g.theta;
+        vega = g.vega;
+        rho = g.rho;
+      }
     }
     return {
       opTicker: o.opTicker,
