@@ -1,0 +1,56 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --bg: #0b0e14;
+  --panel: #151922;
+  --line: #232a38;
+}
+
+html,
+body {
+  background: var(--bg);
+  color: #d5dbe6;
+  font-size: 13px;
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #2a3242 transparent;
+}
+*::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+*::-webkit-scrollbar-thumb {
+  background: #2a3242;
+  border-radius: 4px;
+}
+
+@layer components {
+  .panel {
+    @apply bg-term-panel border border-term-line rounded-md;
+  }
+  .panel-title {
+    @apply text-xxs uppercase tracking-widest text-term-dim px-3 pt-2 pb-1 font-semibold;
+  }
+  .cell-input {
+    @apply bg-term-panel2 border border-term-line rounded px-1.5 py-0.5 text-right font-mono text-term-text w-20 focus:border-term-cyan focus:outline-none;
+  }
+  .btn {
+    @apply px-2.5 py-1 rounded border border-term-line bg-term-panel2 text-term-text hover:border-term-cyan transition-colors text-xs;
+  }
+  .btn-primary {
+    @apply px-2.5 py-1 rounded bg-term-cyan/15 border border-term-cyan/50 text-term-cyan hover:bg-term-cyan/25 transition-colors text-xs font-semibold;
+  }
+  .tag {
+    @apply text-xxs px-1.5 py-0.5 rounded font-mono font-semibold;
+  }
+  .th {
+    @apply text-xxs uppercase tracking-wider text-term-dim font-semibold px-2 py-1 whitespace-nowrap;
+  }
+  .td {
+    @apply px-2 py-0.5 font-mono whitespace-nowrap;
+  }
+}
