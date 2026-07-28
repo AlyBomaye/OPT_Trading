@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
-import { Gauge, Table2, GitBranch, Search, Briefcase, Newspaper, History, LayoutGrid } from "lucide-react";
+import { Gauge, Table2, GitBranch, Search, Briefcase, Newspaper, History, LayoutGrid, BookOpen } from "lucide-react";
 import clsx from "clsx";
 
 const ITEMS = [
@@ -15,6 +15,7 @@ const ITEMS = [
   { href: "/noticias", label: "Notícias", key: "6", icon: Newspaper },
   { href: "/historico", label: "Histórico", key: "7", icon: History },
   { href: "/watchlist", label: "Watchlist", key: "8", icon: LayoutGrid },
+  { href: "/manual", label: "Manual", key: "9", icon: BookOpen },
 ];
 
 export function Nav() {
@@ -23,7 +24,7 @@ export function Nav() {
   // WO-14: overlay de ajuda de atalhos (tecla ?)
   const [showHelp, setShowHelp] = useState(false);
 
-  // Atalhos: teclas 1–8 navegam entre módulos, ? abre a ajuda (fora de inputs)
+  // Atalhos: teclas 1–9 navegam entre módulos, ? abre a ajuda (fora de inputs)
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const tag = (e.target as HTMLElement)?.tagName;
@@ -68,7 +69,7 @@ export function Nav() {
         ))}
       </div>
       <div className="px-3 py-2 text-xxs text-term-dim border-t border-term-line">
-        Atalhos: <kbd>1</kbd>–<kbd>8</kbd> módulos · <kbd>R</kbd> atualizar · <kbd>?</kbd> ajuda
+        Atalhos: <kbd>1</kbd>–<kbd>9</kbd> módulos · <kbd>R</kbd> atualizar · <kbd>?</kbd> ajuda
       </div>
 
       {showHelp && (

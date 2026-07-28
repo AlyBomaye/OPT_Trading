@@ -48,7 +48,7 @@ Carteira (5) ─────────── book of record: posições multi-
 3. **Degradação graciosa em tudo.** Dado parcial renderiza com strip de aviso; só falha total
    mostra painel de erro. Loading state em todo painel assíncrono. Uma fonte morta nunca
    apaga o módulo.
-4. **Sem regressões.** Hotkeys 1–8, auto-refresh de 60 s, click-to-build e persistência em
+4. **Sem regressões.** Hotkeys 1–9, auto-refresh de 60 s, click-to-build e persistência em
    localStorage têm que continuar funcionando. Mudança de shape persistido = migração com
    `version`/`migrate` no Zustand persist, nunca wipe.
 5. **Diffs pequenos e cirúrgicos.** Não reformatar arquivos não tocados; não renomear
@@ -146,13 +146,14 @@ app/
   noticias/page.tsx       [6] Feed RSS + strip macro + agenda econômica
   historico/page.tsx      [7] OHLCV, HV, cone de vol, IV vs HV, estatísticas
   watchlist/page.tsx      [8] Skew cross-sectional dos 20 nomes (+ store local)
+  manual/page.tsx         [9] Manual (guia de uso, mapa de informações, glossário)
   api/opcoes/route.ts     Proxy chain opcoes.net.br (cache 60 s)
   api/news/route.ts       Agregador RSS + macro BCB/AwesomeAPI (cache 5 min)
   api/calendar/route.ts   Agenda econômica curada 2026 (COPOM/FOMC/IPCA/CPI/NFP)
   api/history/route.ts    OHLCV Yahoo→brapi fallback (cache 10 min)
 
 components/
-  Nav.tsx                 Navegação lateral, hotkeys 1–8, overlay "?" de atalhos
+  Nav.tsx                 Navegação lateral, hotkeys 1–9, overlay "?" de atalhos
   TickerBar.tsx           Ticker, spot/override, Selic (+chip BCB), IV ATM, skew,
                           chip IV Rank, DividendEditor, refresh (R) + auto 60 s
   OptionChain.tsx         Chain completo: tabs vencimento (+chips DIV), banda,
@@ -175,6 +176,7 @@ lib/
   historical.ts           logReturns, rollingHV, Parkinson, returnStats, volCone
   snapshots.ts            Store "iv-snapshots" + atmIvStats + getIvRank (§7.6)
   dividends.ts            Store "dividendos" + PV/spot escrow (§7.7)
+  manual-content.ts       Conteúdo estático do manual (guia, mapa de info, glossário)
   universe.ts             UNIVERSE 20 nomes (setor, divPayer, dividends seed)
   strategies.ts           13 presets B3 + legFromOption/stockLeg (qty padrão 100)
   strategy-detect.ts      Reconhecimento de estrutura pelas pernas (§9.3)
@@ -531,6 +533,14 @@ concorrentes** (respeita o cache de 60 s — nunca martelar a fonte), barra de p
 ⚠ por linha com erro; resultados persistidos com timestamp (abre instantâneo com marcação
 STALE > 15 min).
 
+### 9.9 Manual (`/manual`, hotkey 9)
+
+Página de documentação e suporte com três blocos principais: (A) Guia de uso com a rotina
+pré-market em 5 passos, passo a passo de montagem no Workbench, parágrafo funcional de cada
+tela (1–8), tabela de atalhos (1–9, R, ?, Esc) e limitações/proveniência de dados; (B) Mapa de
+informações ("quero saber X → vou em Y"); (C) Glossário de nomenclaturas e métricas do trader
+ordenado alfabeticamente. Inclui campo de busca client-side em tempo real.
+
 ---
 
 ## 10. Design system e UX
@@ -558,7 +568,7 @@ fontSize 11`, ticks `fontSize 9-11, fill #6b7689|#7a8499`.
 
 ### 10.3 Padrões de interação
 
-- **Hotkeys:** 1–8 módulos, R refresh, ? overlay de ajuda, Esc fecha — sempre ignorados
+- **Hotkeys:** 1–9 módulos, R refresh, ? overlay de ajuda, Esc fecha — sempre ignorados
   quando o foco está em INPUT/SELECT/TEXTAREA.
 - **Proveniência:** `MANUAL — hh:mm` (GEX), `STALE Xm` (marcações), `EST` (estimativas),
   "IV/gregas: engine local", "última varredura hh:mm · STALE". Todo chip tem `title` com
