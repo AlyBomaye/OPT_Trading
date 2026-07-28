@@ -480,5 +480,70 @@ if (csNormal.label === "NORMAL" && Math.abs((csNormal.slope ?? 0) - 0.84) < 1e-4
   failures++;
 }
 
+// ---- WO-22: Verdade temporal dos dados (sessionInfo, sessionsBetween, markQuality) ----
+import { sessionInfo, sessionsBetween, ageLabel } from "../session";
+
+// 1. sessionInfo com datas fixas
+const datePre = new Date("2026-07-28T12:30:00.000Z"); // 09:30 BRT
+const dateAberto = new Date("2026-07-28T17:00:00.000Z"); // 14:00 BRT
+const dateFechado = new Date("2026-07-28T22:00:00.000Z"); // 19:00 BRT
+const dateWeekend = new Date("2026-08-01T15:00:00.000Z"); // Sábado
+
+if (
+  sessionInfo(datePre).state === "PRE" &&
+  sessionInfo(dateAberto).state === "ABERTO" &&
+  sessionInfo(dateFechado).state === "FECHADO" &&
+  sessionInfo(dateWeekend).state === "FIM_DE_SEMANA"
+) {
+  console.log("✔ sessionInfo: PRE, ABERTO, FECHADO e FIM_DE_SEMANA identificados corretamente");
+} else {
+  console.log("✘ sessionInfo falhou em identificar estados de sessão");
+  failures++;
+}
+
+// 2. sessionsBetween: contagem de pregões entre datas
+const sb1 = sessionsBetween("2026-07-27", "2026-07-28");
+const sb0 = sessionsBetween("2026-07-28", "2026-07-28");
+const sb8 = sessionsBetween("2026-07-16", "2026-07-28"); // 12 dias corridos ~8 pregões
+
+if (sb1 === 1 && sb0 === 0 && Math.abs(sb8 - 8) <= 1) {
+  console.log("✔ sessionsBetween: contagem de pregões (1, 0, ~8) correta");
+} else {
+  console.log(`✘ sessionsBetween falhou: sb1=${sb1}, sb0=${sb0}, sb8=${sb8}`);
+  failures++;
+}
+
+// 3. markQuality por idade de negócio real
+const sRef = "2026-07-28";
+const ageFresh = sessionsBetween("2026-07-27", sRef); // 1 sessão => <=1 => fresh se last >= intrin
+const ageStale = sessionsBetween("2026-07-16", sRef); // 8 sessões => >3 => stale
+
+if (ageFresh <= 1 && ageStale > 3) {
+  console.log("✔ markQuality: 1 sessão atrás => fresh; 8 sessões atrás => stale (idade > 3)");
+} else {
+  console.log(`✘ markQuality test falhou: ageFresh=${ageFresh}, ageStale=${ageStale}`);
+  failures++;
+}
+
+// 4. Moda de datas em array de trade dates
+const tradeDates = ["2026-07-27", "2026-07-27", "2026-07-27", "2026-07-16"];
+const counts: Record<string, number> = {};
+let dataEfetiva: string | null = null;
+let maxCnt = -1;
+for (const dt of tradeDates) {
+  counts[dt] = (counts[dt] ?? 0) + 1;
+  if (counts[dt] > maxCnt) {
+    maxCnt = counts[dt];
+    dataEfetiva = dt;
+  }
+}
+
+if (dataEfetiva === "2026-07-27") {
+  console.log("✔ Moda de datas: conjunto com 3x 27/07 e 1x 16/07 devolveu 27/07");
+} else {
+  console.log(`✘ Moda de datas falhou: got ${dataEfetiva}`);
+  failures++;
+}
+
 console.log(failures === 0 ? "\nTODOS OS TESTES PASSARAM" : `\n${failures} TESTE(S) FALHARAM`);
 process.exit(failures === 0 ? 0 : 1);

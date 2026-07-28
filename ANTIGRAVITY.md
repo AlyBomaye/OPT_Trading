@@ -234,13 +234,16 @@ User-Agent `Mozilla/5.0 (Windows NT 10.0; Win64; x64)`; cache TTL em memória
   ticker: string;
   spot: number | null;            // inferido: mediana de Strike/(1+DistStrikePct)
   updatedAt: string;              // ISO
+  fetchedAt?: string;             // ISO
+  dataEfetiva?: string | null;    // moda YYYY-MM-DD das datas de negócio com preço
+  dataMaisRecente?: string | null;// máx YYYY-MM-DD das datas de negócio
   expiries: ExpiryInfo[];         // { date, label "dd/mm", du, dte, isMonthly, weekCode }
   options: ApiRow[];              // linhas cruas (IV/gregas da fonte podem vir null)
   sourceGreeksAvailable: boolean; // false ⇒ engine local recalcula
   error?: string;
 }
 // ApiRow: { opTicker, type "CALL"|"PUT", model "A"|"E", moneyness, strike,
-//           distStrikePct, premioPctCot, last, trades, volumeFin,
+//           distStrikePct, premioPctCot, last, trades, volumeFin, lastTradeAt,
 //           sourceIv, sourceDelta, expiry, du, dte }
 ```
 
@@ -724,6 +727,7 @@ palette (Ctrl+K).
     nos painéis de sugestão.
 12. Em dúvida entre esperteza e clareza numérica auditável, escolha a clareza — o usuário
     é um PM que confere os números contra a planilha TradingOpt.xlsm.
+13. **Nunca zerar a tela em erro:** se o fetch de dados falhar, a plataforma DEVE manter os dados persistidos anteriores com um aviso explícito sobre a proveniência dos dados exibidos.
 
 ---
 

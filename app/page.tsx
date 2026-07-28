@@ -12,6 +12,11 @@ import { fmtBRL, fmtDateBR, fmtNum, fmtPct, pnlColor } from "@/lib/format";
 import { buildGexProfile, type GexProfile } from "@/lib/gex";
 import { GexProfileChart } from "@/components/GexProfile";
 
+import { ChevronDown, ChevronRight } from "lucide-react";
+import clsx from "clsx";
+import { sessionInfo } from "@/lib/session";
+import { getIvRank, useSnapshots } from "@/lib/snapshots";
+
 /** Valores manuais de GEX + carimbo de edição (WO-14), persistidos por ticker. */
 interface GexValues {
   gammaFlip: string;
@@ -50,6 +55,131 @@ interface OiApiResponse {
   series: Record<string, { type: "CALL" | "PUT"; totalPos: number }>;
   updatedAt: string;
   stale: boolean;
+}
+
+function PreMarketPanel() {
+  const { chain, ticker, positions, selic } = useMarket();
+  const sess = sessionInfo();
+  const [open, setOpen] = useState(sess.state !== "ABERTO");
+  const [calEvents, setCalEvents] = useState<any[]>([]);
+
+  const snapshots = useSnapshots((st) => st.snapshots);
+  const skew = chain && chain.expiries[0] ? skewInfo(chain, chain.expiries[0].date) : null;
+  const atmIv = skew?.ivCallAtm && skew?.ivPutAtm ? (skew.ivCallAtm + skew.ivPutAtm) / 2 : null;
+  const ivRank = atmIv != null ? getIvRank(snapshots, ticker, atmIv) : null;
+
+  const greeks = useMemo(() => netGreeks(positions, chain, selic), [positions, chain, selic]);
+
+  useEffect(() => {
+    let alive = true;
+    fetch("/api/calendar?days=1")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (alive && data?.events) setCalEvents(data.events);
+      })
+      .catch(() => undefined);
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  const summaryLine = `Fechamento ${chain?.dataEfetiva ? fmtDateBR(chain.dataEfetiva) : "D-1"} · Spot ${chain ? fmtBRL(chain.spot) : "—"} · IV ATM ${atmIv != null ? fmtPct(atmIv) : "—"} (${ivRank != null ? `IV Rank ${Math.round(ivRank * 100)}` : "IV Rank n/d"}) · ${calEvents.length} evento(s) hoje.`;
+
+  return (
+    <div className="panel border-l-2 !border-l-term-gold mb-3 font-mono">
+      <div
+        className="panel-title flex items-center justify-between cursor-pointer select-none"
+        onClick={() => setOpen((o) => !o)}
+      >
+        <div className="flex items-center gap-2">
+          {open ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+          <span className="font-bold text-term-gold">Leitura de Pré-Abertura — {ticker}</span>
+          <span className="tag bg-term-gold/15 text-term-gold text-xxs">
+            {sess.state === "PRE" ? "PRÉ-ABERTURA" : sess.state === "FECHADO" ? "FECHADO" : sess.state === "FIM_DE_SEMANA" ? "FIM DE SEMANA" : "MODO SESSÃO"}
+          </span>
+        </div>
+        <span className="text-xxs text-term-dim truncate max-w-md">{summaryLine}</span>
+      </div>
+
+      {open && (
+        <div className="p-3 space-y-3 font-mono text-xs border-t border-term-line/40">
+          <div className="grid md:grid-cols-4 gap-3">
+            {/* Fechamento do Papel */}
+            <div className="p-2 rounded bg-term-panel2/60 border border-term-line/40 space-y-1">
+              <div className="text-xxs text-term-dim uppercase font-bold">Fechamento do Papel</div>
+              <div className="text-sm font-bold text-term-cyan">{chain ? fmtBRL(chain.spot) : "—"}</div>
+              <div className="text-xxs text-term-dim">
+                Data do chain: {chain?.dataEfetiva ? fmtDateBR(chain.dataEfetiva) : "D-1"}
+              </div>
+            </div>
+
+            {/* IV & Skew do Fechamento */}
+            <div className="p-2 rounded bg-term-panel2/60 border border-term-line/40 space-y-1">
+              <div className="text-xxs text-term-dim uppercase font-bold">IV & Skew do Fechamento</div>
+              <div className="flex justify-between">
+                <span>IV ATM:</span>
+                <span className="font-bold text-term-gold">{atmIv != null ? fmtPct(atmIv) : "—"}</span>
+              </div>
+              <div className="flex justify-between text-xxs">
+                <span>IV Rank:</span>
+                <span className="text-term-cyan">{ivRank != null ? `${Math.round(ivRank * 100)}` : "n/d (<20 snaps)"}</span>
+              </div>
+            </div>
+
+            {/* GEX D-1 B3 */}
+            <div className="p-2 rounded bg-term-panel2/60 border border-term-line/40 space-y-1">
+              <div className="text-xxs text-term-dim uppercase font-bold">GEX D-1 (Posições B3)</div>
+              <div className="text-xxs text-term-dim">Arquivo oficial B3 é da sessão anterior</div>
+              <div className="text-xxs text-term-cyan">GEX e walls no painel [2] abaixo</div>
+            </div>
+
+            {/* Book em Aberto */}
+            <div className="p-2 rounded bg-term-panel2/60 border border-term-line/40 space-y-1">
+              <div className="text-xxs text-term-dim uppercase font-bold">Book em Aberto</div>
+              <div className="flex justify-between text-xxs">
+                <span>Δ Cash:</span>
+                <span className={pnlColor(greeks.deltaCash)}>{fmtBRL(greeks.deltaCash, 0)}</span>
+              </div>
+              <div className="flex justify-between text-xxs">
+                <span>Θ / dia:</span>
+                <span className={pnlColor(greeks.thetaPerDay)}>{fmtBRL(greeks.thetaPerDay, 0)}</span>
+              </div>
+              <div className="text-xxs text-term-dim pt-0.5">
+                {positions.length} posição(ões) · <Link href="/carteira" className="text-term-cyan underline">ir para carteira →</Link>
+              </div>
+            </div>
+          </div>
+
+          {/* Eventos do dia */}
+          {calEvents.length > 0 && (
+            <div className="p-2 rounded bg-term-panel2/40 border border-term-line/40 space-y-1">
+              <div className="text-xxs font-bold text-term-gold uppercase">Agenda & Eventos de Hoje</div>
+              <div className="flex flex-wrap gap-2">
+                {calEvents.map((ev, i) => (
+                  <span
+                    key={i}
+                    className={clsx(
+                      "tag text-xxs",
+                      ev.impacto === "ALTO" || ev.isSigma
+                        ? "bg-term-down/20 text-term-down font-bold"
+                        : "bg-term-panel2 text-term-dim"
+                    )}
+                  >
+                    {ev.horario ? `${ev.horario} · ` : ""}{ev.evento || ev.titulo}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Linha final factual */}
+          <div className="pt-2 border-t border-term-line/40 text-xxs text-term-dim italic">
+            {summaryLine}
+          </div>
+        </div>
+      )}
+    </div>
+  );
 }
 
 /** Cockpit Pré-Market — réplica web do diagnóstico matinal da planilha. */
@@ -96,7 +226,6 @@ export default function CockpitPage() {
     return buildGexProfile(chain, oiData.series, oiData.fileDate, selectedExpiry ?? undefined);
   }, [chain, oiData, selectedExpiry]);
 
-  // Inputs manuais de GEX — sobram sobre o calculado (WO-18)
   const { byTicker, patchFor } = useGexInputs();
   const gex = byTicker[ticker] ?? EMPTY_GEX;
   const setGexField = (k: keyof Omit<GexValues, "editedAt">, v: string) => patchFor(ticker, { [k]: v });
@@ -111,7 +240,6 @@ export default function CockpitPage() {
   const du = chain?.expiries.find((e) => e.date === selectedExpiry)?.du ?? null;
   const em = chain && atmIv != null && du ? expectedMove(chain.spot, atmIv, du / 252) : null;
 
-  // Hierarquia: valor manual (se digitado) > valor calculado B3 > null
   const manualGf = Number(gex.gammaFlip) || null;
   const manualCw = Number(gex.callWall) || null;
   const manualPw = Number(gex.putWall) || null;
@@ -133,6 +261,7 @@ export default function CockpitPage() {
 
   return (
     <>
+      <PreMarketPanel />
       <div className="grid md:grid-cols-3 gap-3">
         {/* [1] Choque do portfólio */}
         <div className="panel">

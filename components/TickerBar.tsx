@@ -5,20 +5,40 @@ import { ChevronDown, RefreshCw } from "lucide-react";
 import clsx from "clsx";
 import { DividendEditor } from "@/components/DividendEditor";
 import { useMarket } from "@/store/market";
-import { fmtBRL, fmtPct } from "@/lib/format";
+import { fmtBRL, fmtDateBR, fmtPct } from "@/lib/format";
 import { skewInfo } from "@/lib/scanner";
+import { sessionInfo } from "@/lib/session";
 import { getIvRank, snapshotCount, useSnapshots } from "@/lib/snapshots";
 import { UNIVERSE } from "@/lib/universe";
 
 export function TickerBar() {
-  const { ticker, setTicker, selic, setSelic, spotOverride, setSpotOverride, chain, loading, error, refresh, selectedExpiry } =
-    useMarket();
+  const {
+    ticker,
+    setTicker,
+    selic,
+    setSelic,
+    spotOverride,
+    setSpotOverride,
+    officialSpot,
+    useOfficialSpot,
+    setUseOfficialSpot,
+    chain,
+    loading,
+    error,
+    refresh,
+    selectedExpiry,
+    initHydrate,
+  } = useMarket();
+
   const [tickerInput, setTickerInput] = useState(ticker);
   const interval = useRef<ReturnType<typeof setInterval> | null>(null);
-  // Dropdown do universo: o datalist nativo filtrava pelo texto já digitado
-  // ("PETR4" ⇒ só PETR4); este painel sempre lista os 20 nomes
   const [pickerOpen, setPickerOpen] = useState(false);
   const pickerRef = useRef<HTMLDivElement | null>(null);
+
+  // Hidratação inicial a partir do snapshot persistido
+  useEffect(() => {
+    initHydrate();
+  }, [initHydrate]);
 
   useEffect(() => {
     const onClick = (e: MouseEvent) => {
@@ -27,7 +47,7 @@ export function TickerBar() {
     document.addEventListener("mousedown", onClick);
     return () => document.removeEventListener("mousedown", onClick);
   }, [pickerOpen]);
-  // WO-9: Selic meta do BCB (via strip macro do /api/news) para sanity check
+
   const [selicBcb, setSelicBcb] = useState<number | null>(null);
 
   useEffect(() => {
@@ -43,17 +63,29 @@ export function TickerBar() {
     };
   }, []);
 
-  // primeira carga + auto-refresh 60s
+  // WO-22: Cadência do auto-refresh baseada no estado da sessão da B3
+  const sess = sessionInfo();
   useEffect(() => {
     void refresh();
-    interval.current = setInterval(() => void refresh(), 60_000);
+
+    if (interval.current) clearInterval(interval.current);
+
+    let delayMs: number | null = 60_000; // ABERTO (60s)
+    if (sess.state === "PRE") delayMs = 300_000; // PRE (5 min)
+    if (sess.state === "FECHADO") delayMs = 1_800_000; // FECHADO (30 min)
+    if (sess.state === "FIM_DE_SEMANA") delayMs = null; // OFF no fim de semana
+
+    if (delayMs != null) {
+      interval.current = setInterval(() => void refresh(), delayMs);
+    }
+
     return () => {
       if (interval.current) clearInterval(interval.current);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ticker]);
+  }, [ticker, sess.state]);
 
-  // atalho R = refresh
+  // Atalho R = refresh
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const tag = (e.target as HTMLElement)?.tagName;
@@ -67,13 +99,23 @@ export function TickerBar() {
   const skew = chain && selectedExpiry ? skewInfo(chain, selectedExpiry) : null;
   const atmIv = skew?.ivCallAtm && skew?.ivPutAtm ? (skew.ivCallAtm + skew.ivPutAtm) / 2 : null;
 
-  // WO-2: IV Rank vs. histórico próprio de snapshots
   const snapshots = useSnapshots((st) => st.snapshots);
   const ivRank = atmIv != null ? getIvRank(snapshots, ticker, atmIv) : null;
   const nSnaps = snapshotCount(snapshots, ticker);
 
+  // Proveniência do Spot
+  let spotProvenanceLabel = "EST";
+  let spotProvenanceTitle = "Spot inferido do chain (mediana do Strike/(1+distStrikePct)). Clique para alternar.";
+  if (spotOverride != null) {
+    spotProvenanceLabel = "MANUAL";
+    spotProvenanceTitle = "Spot ajustado manualmente pelo usuário. IV e gregas calculadas contra este valor.";
+  } else if (useOfficialSpot && officialSpot != null) {
+    spotProvenanceLabel = `FECH. ${fmtDateBR(officialSpot.date)}`;
+    spotProvenanceTitle = `Fechamento oficial da sessão (${fmtBRL(officialSpot.price)} em ${officialSpot.date}). IV e gregas são resolvidas contra este spot. Clique para alternar para o spot inferido.`;
+  }
+
   return (
-    <header className="flex items-center gap-3 px-3 py-2 border-b border-term-line bg-term-panel flex-wrap">
+    <header className="flex items-center gap-3 px-3 py-2 border-b border-term-line bg-term-panel flex-wrap font-mono">
       <form
         onSubmit={(e) => {
           e.preventDefault();
@@ -125,7 +167,60 @@ export function TickerBar() {
         </button>
       </form>
 
-      <Metric label="Spot" value={chain ? fmtBRL(chain.spot) : "—"} accent />
+      {/* Chip de Estado da Sessão */}
+      {sess.state === "ABERTO" && chain?.dataEfetiva === sess.ultimaSessao ? (
+        <span className="tag bg-term-up/20 text-term-up font-bold animate-pulse" title="Sessão de negociação da B3 ao vivo">
+          ● AO VIVO
+        </span>
+      ) : sess.state === "PRE" ? (
+        <span className="tag bg-term-gold/20 text-term-gold font-bold" title="Mercado em pré-abertura (abertura às 10:00 BRT)">
+          ● PRÉ-ABERTURA
+        </span>
+      ) : sess.state === "FIM_DE_SEMANA" ? (
+        <span className="tag bg-term-line text-term-dim" title="Fim de semana (mercado fechado)">
+          FECHADO (FIM DE SEMANA)
+        </span>
+      ) : (
+        <span className="tag bg-term-line text-term-dim" title="Mercado fechado (abertura amanhã às 10:00 BRT)">
+          FECHADO
+        </span>
+      )}
+
+      {/* Chip de Data Efetiva dos Dados */}
+      {chain?.dataEfetiva && (
+        <span
+          className={clsx(
+            "tag",
+            chain.dataEfetiva === sess.ultimaSessao
+              ? "bg-term-line text-term-dim"
+              : "bg-term-gold/15 text-term-gold border border-term-gold/30"
+          )}
+          title={`Data de último negócio predominante entre as séries do chain (${chain.dataEfetiva})`}
+        >
+          DADOS DE {fmtDateBR(chain.dataEfetiva)}
+        </span>
+      )}
+
+      {/* Spot Metric + Provenance Chip Toggle */}
+      <div className="flex items-center gap-1.5">
+        <Metric label="Spot" value={chain ? fmtBRL(chain.spot) : "—"} accent />
+        <button
+          type="button"
+          onClick={() => setUseOfficialSpot(!useOfficialSpot)}
+          className={clsx(
+            "tag cursor-pointer transition-colors text-xxs font-bold",
+            spotOverride != null
+              ? "bg-term-gold/20 text-term-gold border border-term-gold/40"
+              : useOfficialSpot && officialSpot != null
+              ? "bg-term-cyan/20 text-term-cyan border border-term-cyan/40"
+              : "bg-term-line text-term-dim"
+          )}
+          title={spotProvenanceTitle}
+        >
+          {spotProvenanceLabel}
+        </button>
+      </div>
+
       <label className="flex items-center gap-1 text-xxs text-term-dim">
         Override
         <input
@@ -151,7 +246,7 @@ export function TickerBar() {
       {selicBcb != null && Math.abs(selic * 100 - selicBcb) > 0.25 && (
         <button
           className="tag bg-term-gold/15 text-term-gold border border-term-gold/40 hover:bg-term-gold/25"
-          title="Selic meta divulgada pelo BCB (SGS 432) difere da usada no pricing — clique para aplicar (nunca sobrescrita automaticamente)"
+          title="Selic meta divulgada pelo BCB (SGS 432) difere da usada no pricing — clique para aplicar"
           onClick={() => setSelic(selicBcb / 100)}
         >
           Selic BCB: {selicBcb.toFixed(2).replace(".", ",")}% — aplicar?

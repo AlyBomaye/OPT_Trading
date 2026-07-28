@@ -6,7 +6,7 @@ import clsx from "clsx";
 import { useMarket } from "@/store/market";
 import { legFromOption } from "@/lib/strategies";
 import { divsBeforeExpiry, effectiveDividends, useDividends } from "@/lib/dividends";
-import { fmtCompact, fmtNum, fmtPct } from "@/lib/format";
+import { fmtCompact, fmtDateBR, fmtNum, fmtPct } from "@/lib/format";
 import type { OptionQuote } from "@/lib/types";
 
 export function OptionChain() {
@@ -160,6 +160,12 @@ function CallCells({ o, spot, onAdd }: { o: OptionQuote | null; spot: number; on
   if (!o) return <td className="td text-term-dim text-right" colSpan={7}>—</td>;
   const stale = o.markQuality === "stale";
   const bg = clsx(itm(o, spot) && "bg-term-up/5", stale && "text-term-dim");
+  const ageTitle = stale
+    ? o.lastTradeAt
+      ? `Marcação stale — último negócio há ${o.tradeAgeSessions ?? 0} pregão(ões) (${fmtDateBR(o.lastTradeAt)}) — excluída de smile/skew/scanner`
+      : "Marcação stale (sem negócios ou last < intrínseco) — excluída de smile/skew/scanner"
+    : undefined;
+
   return (
     <>
       <td className={clsx("td text-right", bg)}>
@@ -169,7 +175,7 @@ function CallCells({ o, spot, onAdd }: { o: OptionQuote | null; spot: number; on
       <td className={clsx("td text-right font-semibold", bg)}>{fmtNum(o.last)}</td>
       <td
         className={clsx("td text-right", bg, stale ? "line-through" : "text-term-gold")}
-        title={stale ? "Marcação stale (last < intrínseco ou sem negócios) — excluída de smile/skew/scanner" : undefined}
+        title={ageTitle}
       >
         {fmtPct(o.iv)}
       </td>
@@ -187,6 +193,12 @@ function PutCells({ o, spot, onAdd }: { o: OptionQuote | null; spot: number; onA
   if (!o) return <td className="td text-term-dim" colSpan={7}>—</td>;
   const stale = o.markQuality === "stale";
   const bg = clsx(itm(o, spot) && "bg-term-up/5", stale && "text-term-dim");
+  const ageTitle = stale
+    ? o.lastTradeAt
+      ? `Marcação stale — último negócio há ${o.tradeAgeSessions ?? 0} pregão(ões) (${fmtDateBR(o.lastTradeAt)}) — excluída de smile/skew/scanner`
+      : "Marcação stale (sem negócios ou last < intrínseco) — excluída de smile/skew/scanner"
+    : undefined;
+
   return (
     <>
       <td className={clsx("td text-left text-term-dim", bg)}>
@@ -197,7 +209,7 @@ function PutCells({ o, spot, onAdd }: { o: OptionQuote | null; spot: number; onA
       <td className={clsx("td text-left", bg, !stale && "text-term-cyan")}>{fmtNum(o.delta, 3)}</td>
       <td
         className={clsx("td text-left", bg, stale ? "line-through" : "text-term-gold")}
-        title={stale ? "Marcação stale (last < intrínseco ou sem negócios) — excluída de smile/skew/scanner" : undefined}
+        title={ageTitle}
       >
         {fmtPct(o.iv)}
       </td>

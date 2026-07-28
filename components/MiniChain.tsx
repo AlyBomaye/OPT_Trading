@@ -4,7 +4,7 @@ import { useMemo, useState } from "react";
 import clsx from "clsx";
 import { useMarket } from "@/store/market";
 import { legFromOption } from "@/lib/strategies";
-import { fmtNum, fmtPct } from "@/lib/format";
+import { fmtDateBR, fmtNum, fmtPct } from "@/lib/format";
 import type { Leg, OptionQuote } from "@/lib/types";
 
 /* ============================================================================
@@ -134,6 +134,12 @@ function SideCells({
 }) {
   if (!o) return <td className={`td text-term-dim text-${align}`} colSpan={3}>—</td>;
   const stale = o.markQuality === "stale";
+  const ageTitle = stale
+    ? o.lastTradeAt
+      ? `Marcação stale — último negócio há ${o.tradeAgeSessions ?? 0} pregão(ões) (${fmtDateBR(o.lastTradeAt)})`
+      : "Marcação stale"
+    : undefined;
+
   const btns = (
     <span className="inline-flex gap-0.5">
       <button onClick={() => onAdd(o, 1)} className="tag bg-term-up/15 text-term-up hover:bg-term-up/30" title={`Comprar ${o.opTicker} (Δ ${fmtNum(o.delta, 3)})`}>
@@ -146,7 +152,7 @@ function SideCells({
   );
   const last = <span className={clsx("font-semibold", stale && "text-term-dim")}>{fmtNum(o.last)}</span>;
   const iv = (
-    <span className={clsx(stale ? "text-term-dim line-through" : "text-term-gold")} title={stale ? "Marcação stale" : undefined}>
+    <span className={clsx(stale ? "text-term-dim line-through" : "text-term-gold")} title={ageTitle}>
       {fmtPct(o.iv)}
     </span>
   );

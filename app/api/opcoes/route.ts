@@ -33,6 +33,7 @@ interface CleanRow {
   last: number | null;
   trades: number | null;
   volumeFin: number | null;
+  lastTradeAt: string | null;
   sourceIv: number | null;
   sourceDelta: number | null;
   expiry: string;
@@ -43,13 +44,32 @@ interface CleanRow {
 const cache = new Map<string, { at: number; body: unknown }>();
 
 function num(v: unknown): number | null {
-  if (typeof v === "number" && Number.isFinite(v)) return v;
+  if (v == null) return null;
+  if (typeof v === "number") return Number.isFinite(v) ? v : null;
   if (typeof v === "string") {
-    const s = v.replace(/\./g, "").replace(",", ".");
-    const n = Number(s);
+    const n = parseFloat(v.replace(/\./g, "").replace(",", "."));
     if (Number.isFinite(n) && /^[\d.,\-+]+$/.test(v.trim())) return n;
   }
   return null; // inclui o caso "<img volblur.png>"
+}
+
+function parseTradeDate(val: unknown): string | null {
+  if (!val || typeof val !== "string") return null;
+  const str = val.trim();
+  if (str === "null" || str === "" || str.startsWith("00/00")) return null;
+
+  const dmyMatch = str.match(/^(\d{2})\/(\d{2})\/(\d{4})/);
+  if (dmyMatch) {
+    const [, d, m, y] = dmyMatch;
+    return `${y}-${m}-${d}`;
+  }
+
+  const ymdMatch = str.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (ymdMatch) {
+    return ymdMatch[0];
+  }
+
+  return null;
 }
 
 async function fetchJson(params: Record<string, string>): Promise<any> {
@@ -119,6 +139,7 @@ export async function GET(req: NextRequest) {
               last: num(r[8]),
               trades: num(r[9]),
               volumeFin: num(r[10]),
+              lastTradeAt: parseTradeDate(r[11]),
               sourceIv: num(r[12]),
               sourceDelta: num(r[13]),
               expiry: exp.date,
@@ -141,10 +162,41 @@ export async function GET(req: NextRequest) {
       .sort((a, b) => a - b);
     const spot = spots.length ? spots[Math.floor(spots.length / 2)] : null;
 
+    // Data efetiva (moda) e data mais recente dos negócios no chain
+    const validTradeDates = options
+      .filter((o) => o.last != null && o.last > 0 && o.lastTradeAt != null)
+      .map((o) => o.lastTradeAt as string);
+
+    let dataEfetiva: string | null = null;
+    let dataMaisRecente: string | null = null;
+
+    if (validTradeDates.length > 0) {
+      const counts: Record<string, number> = {};
+      for (const dt of validTradeDates) {
+        counts[dt] = (counts[dt] ?? 0) + 1;
+        if (!dataMaisRecente || dt > dataMaisRecente) {
+          dataMaisRecente = dt;
+        }
+      }
+
+      let maxCount = -1;
+      for (const [dt, cnt] of Object.entries(counts)) {
+        if (cnt > maxCount) {
+          maxCount = cnt;
+          dataEfetiva = dt;
+        }
+      }
+    }
+
+    const nowIso = new Date().toISOString();
+
     const body = {
       ticker,
       spot,
-      updatedAt: new Date().toISOString(),
+      updatedAt: nowIso,
+      fetchedAt: nowIso,
+      dataEfetiva,
+      dataMaisRecente,
       expiries,
       options,
       sourceGreeksAvailable: options.some((o) => o.sourceIv != null),

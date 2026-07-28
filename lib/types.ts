@@ -18,6 +18,10 @@ export interface OptionQuote {
   last: number | null;
   trades: number | null;
   volumeFin: number | null;
+  /** Data YYYY-MM-DD do último negócio registrado na B3 (coluna 11) */
+  lastTradeAt?: string | null;
+  /** Idade em sessões/pregões calculada contra a sessão de referência */
+  tradeAgeSessions?: number | null;
   /** Vencimento ISO yyyy-mm-dd */
   expiry: string;
   /** Dias úteis até o vencimento */
@@ -47,6 +51,9 @@ export interface ChainData {
   ticker: string;
   spot: number;
   updatedAt: string;
+  fetchedAt?: string;
+  dataEfetiva?: string | null;
+  dataMaisRecente?: string | null;
   expiries: ExpiryInfo[];
   options: OptionQuote[];
   /** true quando gregas/IV da fonte vieram borradas e foram recalculadas localmente */

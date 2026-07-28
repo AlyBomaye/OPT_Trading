@@ -5,8 +5,11 @@ import { persist } from "zustand/middleware";
 import { americanGreeks, americanImpliedVol, bsGreeks, impliedVol, type Greeks } from "@/lib/black-scholes";
 import { adjustedSpot, effectiveDividends, useDividends } from "@/lib/dividends";
 import { snapshotFromChain, useSnapshots } from "@/lib/snapshots";
+import { sessionInfo, sessionsBetween } from "@/lib/session";
 import type { DividendEvent } from "@/lib/universe";
 import type { ChainData, ExpiryInfo, Leg, OptionQuote, Position } from "@/lib/types";
+
+export const MAX_SESSOES_OK = 3;
 
 interface ApiRow {
   opTicker: string;
@@ -19,6 +22,7 @@ interface ApiRow {
   last: number | null;
   trades: number | null;
   volumeFin: number | null;
+  lastTradeAt: string | null;
   sourceIv: number | null;
   sourceDelta: number | null;
   expiry: string;
@@ -30,20 +34,58 @@ interface ApiBody {
   ticker: string;
   spot: number | null;
   updatedAt: string;
+  fetchedAt?: string;
+  dataEfetiva?: string | null;
+  dataMaisRecente?: string | null;
   expiries: ExpiryInfo[];
   options: ApiRow[];
   sourceGreeksAvailable: boolean;
   error?: string;
 }
 
-// WO-12: memoização do pricing americano por (opTicker, last, spot, r) — o
-// chain repete inputs entre refreshes de 60 s, então a árvore raramente reroda.
+// WO-22: Store persistido do último chain bom por ticker (máximo 5 tickers)
+interface SnapshotState {
+  byTicker: Record<string, { chain: ChainData; savedAt: string }>;
+  saveSnapshot: (chain: ChainData) => void;
+  getSnapshot: (ticker: string) => ChainData | null;
+}
+
+export const useChainSnapshot = create<SnapshotState>()(
+  persist(
+    (set, get) => ({
+      byTicker: {},
+      saveSnapshot: (chain) => {
+        const ticker = chain.ticker;
+        set((st) => {
+          const next = { ...st.byTicker, [ticker]: { chain, savedAt: new Date().toISOString() } };
+          const keys = Object.keys(next);
+          if (keys.length > 5) {
+            const sorted = keys.sort((a, b) => (next[a].savedAt > next[b].savedAt ? 1 : -1));
+            delete next[sorted[0]];
+          }
+          return { byTicker: next };
+        });
+      },
+      getSnapshot: (ticker) => get().byTicker[ticker]?.chain ?? null,
+    }),
+    { name: "chain-snapshot", version: 1 }
+  )
+);
+
+// WO-12: memoização do pricing americano por (opTicker, last, spot, r)
 const amCache = new Map<string, { iv: number | null; greeks: Greeks | null }>();
 
 /** Enriquece o chain com IV (Newton-Raphson) e gregas calculadas localmente. */
-function enrich(body: ApiBody, spot: number, r: number, divs: DividendEvent[] = []): ChainData {
-  // WO-3: spot com dividendo escrow por vencimento (S' = S − Σ PV(div antes de T));
-  // IV e gregas usam S'; o spot bruto permanece para display.
+function enrich(
+  body: ApiBody,
+  spot: number,
+  r: number,
+  divs: DividendEvent[] = [],
+  refSessionDate?: string
+): ChainData {
+  const sess = sessionInfo();
+  const refSession = refSessionDate ?? sess.ultimaSessao;
+
   const spotByExpiry = new Map<string, number>();
   const spotFor = (expiry: string): number => {
     let s = spotByExpiry.get(expiry);
@@ -57,14 +99,26 @@ function enrich(body: ApiBody, spot: number, r: number, divs: DividendEvent[] = 
   const options: OptionQuote[] = body.options.map((o) => {
     const t = o.du / 252;
     const sAdj = spotFor(o.expiry);
-    // WO-5: qualidade da marcação — intrínseco contra o spot ajustado por dividendo
     const intrinsic = o.type === "CALL" ? Math.max(sAdj - o.strike, 0) : Math.max(o.strike - sAdj, 0);
-    const markQuality: OptionQuote["markQuality"] =
-      o.last == null || (o.trades ?? 0) === 0 || o.last < intrinsic
-        ? "stale"
-        : (o.trades ?? 0) < 5
-          ? "ok"
-          : "fresh";
+
+    // WO-22: Qualidade da marcação por idade real em sessões (lastTradeAt da B3)
+    const tradeAgeSessions = o.lastTradeAt
+      ? sessionsBetween(o.lastTradeAt, refSession)
+      : (o.trades ?? 0) === 0
+      ? 99
+      : 0;
+
+    let markQuality: OptionQuote["markQuality"] = "stale";
+    if (
+      o.last != null &&
+      o.last > 0 &&
+      (o.trades ?? 0) > 0 &&
+      o.last >= intrinsic &&
+      tradeAgeSessions <= MAX_SESSOES_OK
+    ) {
+      markQuality = tradeAgeSessions <= 1 ? "fresh" : "ok";
+    }
+
     let iv: number | null = o.sourceIv != null ? o.sourceIv / 100 : null;
     let delta: number | null = null,
       gamma: number | null = null,
@@ -73,8 +127,6 @@ function enrich(body: ApiBody, spot: number, r: number, divs: DividendEvent[] = 
       rho: number | null = null;
 
     if (o.model === "A" && t > 0 && o.last != null && o.last > 0) {
-      // WO-12: contratos americanos → IV por bisseção no binomial (100 passos)
-      // e gregas por diferenças finitas (200 passos), memoizado.
       const key = `${o.opTicker}|${o.last}|${sAdj.toFixed(4)}|${r}`;
       let hit = amCache.get(key);
       if (!hit) {
@@ -118,6 +170,8 @@ function enrich(body: ApiBody, spot: number, r: number, divs: DividendEvent[] = 
       last: o.last,
       trades: o.trades,
       volumeFin: o.volumeFin,
+      lastTradeAt: o.lastTradeAt,
+      tradeAgeSessions,
       expiry: o.expiry,
       du: o.du,
       dte: o.dte,
@@ -135,18 +189,27 @@ function enrich(body: ApiBody, spot: number, r: number, divs: DividendEvent[] = 
     ticker: body.ticker,
     spot,
     updatedAt: body.updatedAt,
+    fetchedAt: body.fetchedAt ?? body.updatedAt,
+    dataEfetiva: body.dataEfetiva,
+    dataMaisRecente: body.dataMaisRecente,
     expiries: body.expiries,
     options,
     greeksComputedLocally: !body.sourceGreeksAvailable,
   };
 }
 
+export interface OfficialSpotInfo {
+  price: number;
+  date: string;
+}
+
 interface MarketState {
   ticker: string;
   selic: number; // fração a.a.
   spotOverride: number | null;
+  officialSpot: OfficialSpotInfo | null;
+  useOfficialSpot: boolean;
   chain: ChainData | null;
-  /** WO-4: último chain enriquecido por ticker (memória apenas, não persiste). */
   chainCache: Record<string, ChainData>;
   loading: boolean;
   error: string | null;
@@ -154,7 +217,6 @@ interface MarketState {
   legs: Leg[];
   positions: Position[];
   closed: Position[];
-  /** WO-11: capital total do book (denominador do Kelly e do caixa livre). */
   capitalTotal: number;
 
   setTicker: (t: string) => void;
@@ -162,9 +224,9 @@ interface MarketState {
   updatePosition: (id: string, patch: Partial<Position>) => void;
   setSelic: (r: number) => void;
   setSpotOverride: (s: number | null) => void;
+  setUseOfficialSpot: (val: boolean) => void;
   setSelectedExpiry: (e: string) => void;
-  /** Sem argumento: ticker ativo. Com argumento: atualiza só o cache (Reavaliar tudo). */
-  refresh: (ticker?: string) => Promise<void>;
+  refresh: (tickerArg?: string) => Promise<void>;
 
   addLeg: (l: Leg) => void;
   updateLeg: (id: string, patch: Partial<Leg>) => void;
@@ -175,6 +237,7 @@ interface MarketState {
   openPositions: (ls: Leg[]) => void;
   closePosition: (id: string, closePrice: number) => void;
   removePosition: (id: string) => void;
+  initHydrate: () => void;
 }
 
 export const useMarket = create<MarketState>()(
@@ -183,6 +246,8 @@ export const useMarket = create<MarketState>()(
       ticker: "PETR4",
       selic: 0.15,
       spotOverride: null,
+      officialSpot: null,
+      useOfficialSpot: true,
       chain: null,
       chainCache: {},
       loading: false,
@@ -193,7 +258,23 @@ export const useMarket = create<MarketState>()(
       closed: [],
       capitalTotal: 100_000,
 
-      setTicker: (t) => set({ ticker: t.toUpperCase(), chain: null, selectedExpiry: null }),
+      initHydrate: () => {
+        const { chain, ticker } = get();
+        if (chain == null) {
+          const snap = useChainSnapshot.getState().getSnapshot(ticker);
+          if (snap) {
+            const validExpiry = snap.expiries.find((e) => e.isMonthly)?.date ?? snap.expiries[0]?.date ?? null;
+            set({ chain: snap, chainCache: { [ticker]: snap }, selectedExpiry: validExpiry });
+          }
+        }
+      },
+
+      setTicker: (t) => {
+        const nextTicker = t.toUpperCase();
+        set({ ticker: nextTicker, chain: null, spotOverride: null, officialSpot: null, selectedExpiry: null });
+        get().initHydrate();
+        void get().refresh();
+      },
       setCapitalTotal: (v) => set({ capitalTotal: Math.max(0, v) }),
       updatePosition: (id, patch) =>
         set((st) => ({ positions: st.positions.map((p) => (p.id === id ? { ...p, ...patch } : p)) })),
@@ -205,43 +286,92 @@ export const useMarket = create<MarketState>()(
         set({ spotOverride: s });
         void get().refresh();
       },
+      setUseOfficialSpot: (val) => {
+        set({ useOfficialSpot: val });
+        void get().refresh();
+      },
       setSelectedExpiry: (e) => set({ selectedExpiry: e }),
 
       refresh: async (tickerArg?: string) => {
-        const { ticker, selic, spotOverride } = get();
+        const { ticker, selic, spotOverride, useOfficialSpot } = get();
         const target = (tickerArg ?? ticker).toUpperCase();
         const isActive = target === ticker;
         if (isActive) set({ loading: true, error: null });
+
         try {
           const res = await fetch(`/api/opcoes?ticker=${encodeURIComponent(target)}`);
           const body: ApiBody = await res.json();
           if (!res.ok || body.error) throw new Error(body.error ?? `HTTP ${res.status}`);
-          // override de spot só vale para o ticker ativo
-          const spot = (isActive ? spotOverride : null) ?? body.spot;
-          if (spot == null) throw new Error("Não foi possível derivar o spot do chain.");
+
+          // WO-22: Buscar fechamento oficial no /api/history se mercado fechado ou chain atrasado
+          const sess = sessionInfo();
+          let officialSpot: OfficialSpotInfo | null = null;
+
+          if (sess.state !== "ABERTO" || (body.dataEfetiva && body.dataEfetiva < sess.ultimaSessao)) {
+            try {
+              const hRes = await fetch(`/api/history?ticker=${encodeURIComponent(target)}&range=5d`);
+              if (hRes.ok) {
+                const hData = await hRes.json();
+                if (hData.candles?.length) {
+                  const lastCandle = hData.candles[hData.candles.length - 1];
+                  officialSpot = { price: lastCandle.close, date: lastCandle.date };
+                }
+              }
+            } catch {}
+          }
+
+          // Prioridade de spot: spotOverride > (useOfficialSpot ? officialSpot : null) > body.spot
+          let effectiveSpot: number | null = null;
+          if (isActive && spotOverride != null) {
+            effectiveSpot = spotOverride;
+          } else if (useOfficialSpot && officialSpot != null) {
+            effectiveSpot = officialSpot.price;
+          } else {
+            effectiveSpot = body.spot;
+          }
+
+          if (effectiveSpot == null) throw new Error("Não foi possível derivar o spot do chain.");
+
           const divs = effectiveDividends(useDividends.getState().byTicker, target);
-          const chain = enrich(body, spot, selic, divs);
+          const chain = enrich(body, effectiveSpot, selic, divs, sess.ultimaSessao);
           const cur = get().selectedExpiry;
           const validExpiry = chain.expiries.some((e) => e.date === cur)
             ? cur
             : chain.expiries.find((e) => e.isMonthly)?.date ?? chain.expiries[0]?.date ?? null;
+
+          // Grava snapshot persistido no sucesso
+          useChainSnapshot.getState().saveSnapshot(chain);
+
           set((st) => ({
             chainCache: { ...st.chainCache, [target]: chain },
-            // WO-4: congela a última marcação conhecida das posições deste ativo
             positions: st.positions.map((p) => {
               if (p.underlying !== target) return p;
               const m = markFromChain(p, chain);
               return m != null ? { ...p, lastMark: m, lastMarkAt: chain.updatedAt } : p;
             }),
-            ...(isActive ? { chain, selectedExpiry: validExpiry, loading: false } : {}),
+            ...(isActive
+              ? { chain, officialSpot, selectedExpiry: validExpiry, loading: false, error: null }
+              : {}),
           }));
-          // WO-2: captura do snapshot EOD de IV (upsert por ticker/dia)
+
           useSnapshots.getState().upsert(snapshotFromChain(chain));
         } catch (e) {
           if (isActive) {
-            set({ error: e instanceof Error ? e.message : String(e), loading: false });
+            const errStr = e instanceof Error ? e.message : String(e);
+            // WO-22: NUNCA ZERAR A TELA EM ERRO. Mantém o chain atual (ou do snapshot)
+            set((st) => {
+              let existingChain = st.chain;
+              if (existingChain == null) {
+                existingChain = useChainSnapshot.getState().getSnapshot(target);
+              }
+              return {
+                chain: existingChain,
+                error: `Aviso: Falha na atualização do chain (${errStr}). Exibindo dados persistidos.`,
+                loading: false,
+              };
+            });
           } else {
-            throw e; // "Reavaliar tudo" trata falha por ticker
+            throw e;
           }
         }
       },
@@ -258,7 +388,6 @@ export const useMarket = create<MarketState>()(
           positions: [
             ...st.positions,
             ...ls.map((l) => {
-              // WO-11: congela gregas por unidade na abertura (atribuição pós-trade)
               let entryGreeks: Position["entryGreeks"];
               if (l.kind === "STOCK") {
                 entryGreeks = { delta: 1, vega: 0, theta: 0 };
@@ -286,7 +415,6 @@ export const useMarket = create<MarketState>()(
     {
       name: "opcoes-terminal",
       version: 1,
-      // Migração aditiva (WO-11): estados v0 ganham capitalTotal sem perder o book
       migrate: (persisted, version) => {
         const st = persisted as Partial<MarketState>;
         if (version < 1 && st.capitalTotal == null) st.capitalTotal = 100_000;
@@ -299,6 +427,7 @@ export const useMarket = create<MarketState>()(
         closed: st.closed,
         legs: st.legs,
         capitalTotal: st.capitalTotal,
+        useOfficialSpot: st.useOfficialSpot,
       }),
     }
   )
@@ -320,13 +449,10 @@ export function currentPrice(pos: Leg, chain: ChainData | null): number | null {
 
 export interface MarkInfo {
   price: number | null;
-  /** true quando a marcação não vem de um chain em cache (última conhecida). */
   stale: boolean;
-  /** idade da marcação em minutos (null quando desconhecida). */
   ageMin: number | null;
 }
 
-/** WO-4: marcação multi-ticker — cache por ativo com fallback à última conhecida. */
 export function markInfo(pos: Position, chainCache: Record<string, ChainData>): MarkInfo {
   const chain = chainCache[pos.underlying];
   if (chain) {
