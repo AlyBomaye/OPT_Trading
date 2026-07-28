@@ -165,6 +165,7 @@ components/
   PayoffChart.tsx         Payoff expiração/T+0/T+n + export PNG
   SensitivityMatrix.tsx   Matriz what-if Spot×Vol em T+n
   DividendEditor.tsx      Popover de calendário de proventos por ticker
+  EarningsEditor.tsx      Popover de calendário de balanços (resultados) por ticker
   PriceHistoryPanel.tsx   Histórico diário OHLCV + volume + overlays (strikes/BEs/spot)
   ActionFlags.tsx         Painel Ação do Dia (flags de risco, limiares, popover)
   PerformanceCharts.tsx   Suíte de 7 gráficos de risco, drawdown e atribuição
@@ -180,6 +181,9 @@ lib/
   position-flags.ts       Módulo de 11 flags de ação por posição e useFlagSettings
   performance.ts          Grouping de trades, métricas de performance e atribuição de P&L
   gex.ts                  Solver de GEX real (buildGexProfile, gammaFlip zero-crossing, CONTRACT_MULT)
+  sector-dashboard.ts     Agregação setorial (buildSectorRows, WatchRowLike)
+  event-radar.ts          Radar de eventos por vencimento (buildExpiryRisk)
+  earnings.ts             Store "resultados" (useEarnings, EarningsEvent)
   scanner.ts              Pozinhos, skew ratio (vw), atmIvNearest, Kelly (§7.5)
   historical.ts           logReturns, rollingHV, Parkinson, returnStats, volCone
   snapshots.ts            Store "iv-snapshots" + atmIvStats + getIvRank (§7.6)
@@ -210,7 +214,7 @@ store/
 | IPCA 12 m | `…bcdata.sgs.13522/dados/ultimos/1?formato=json` | % acumulado 12 m |
 | USD/BRL | `https://economia.awesomeapi.com.br/json/last/USD-BRL` | `USDBRL.bid`, `.pctChange` |
 | Notícias RSS | InfoMoney `/feed/` · Money Times `/feed/` · G1 `g1.globo.com/rss/g1/economia/` | RSS 2.0, parse por regex server-side (sem lib XML) |
-| Posição em aberto B3 | `https://arquivos.b3.com.br/api/download/requestname?fileName=DerivativesOpenPositionFile&date=YYYY-MM-DD` | download em 2 passos (JSON com token → download CSV latin1 `;`), posição em `TtlPos` |
+| Posição em aberto B3 | `https://arquivos.b3.com.br/api/download/requestname?fileName=DerivativesOpenPositionFile&date=YYYY-MM-DD` | download em 2 passos (JSON com token → download CSV latin1 `;`) |
 
 Regras para toda chamada externa: server-side apenas; `AbortSignal.timeout(8000–10000)`;
 User-Agent `Mozilla/5.0 (Windows NT 10.0; Win64; x64)`; cache TTL em memória
@@ -549,10 +553,12 @@ com VaR95/ES rotulados + export CSV/JSON + export/import do arquivo de snapshots
 
 ### 9.6 Notícias & Macro (`/noticias`, hotkey 6)
 
-Strip macro (Selic, CDI, IPCA, USD/BRL com cor no dia) + feed com filtros
-(TODOS/MACRO/UNIVERSO/por-ticker-com-notícia), timestamps relativos, tags por linha,
-links `target="_blank"` + agenda econômica 45 dias (hoje destacado, relevância 3 em
-claro, marcador σ nos vol events). Auto-refresh 5 min; strip de fontes indisponíveis.
+WO-19 Notícias v2 (Central de Contexto): Reorganização da página na hierarquia de decisão de trading:
+1. **Strip macro** (Selic, CDI, IPCA, USD/BRL).
+2. **[1] Dashboard Setorial** (`lib/sector-dashboard.ts`): Agregação dos 20 nomes por setor econômico, variação média com heatmap, IV ATM média, Skew Ratio, IV−HV21, contagem de manchetes 24h e destaque; consumo do store `watchlist-results` (com chip `STALE` e botão de atualização via fila de 2 requisições concorrentes).
+3. **[2] Radar de Eventos por Vencimento** (`lib/event-radar.ts`): Cruzamento dos vencimentos do chain com a agenda econômica, ex-dividendos e balanços (`lib/earnings.ts` + `<EarningsEditor>`); Expected Move em R$ e % por prazo, destaque do vencimento com maior densidade de eventos de volatilidade ($\sigma$) e narrativa factual no rodapé.
+4. **[3] Cobertura por Ação**: Grid de chips dos 20 nomes com contagem de manchetes 24h e badge de 🔥 `BUZZ SPIKE`; busca sob demanda no Google RSS (`/api/news?ticker=XXXX`), filtro de ruído (removendo cotação/StatusInvest/Investidor10/TradingView), deduplicação por título e painel com notícias dedicadas + contexto de vol.
+5. **[4] Feed Geral & Agenda Econômica**: Feed agregador deduplicado (2/3) + Agenda Econômica 45 dias (1/3). Auto-refresh 5 min; strip de degradação.
 
 ### 9.7 Histórico (`/historico`, hotkey 7)
 

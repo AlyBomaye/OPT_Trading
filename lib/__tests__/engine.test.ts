@@ -353,5 +353,87 @@ if (profMulti.callWall === 40) {
 const profPartial = buildGexProfile(multiChain, { PETRD40: { type: "CALL", totalPos: 100000 }, PETRD42: { type: "CALL", totalPos: 20000 } }, "2026-07-24");
 assertClose("buildGexProfile: coverage com casamento parcial", profPartial.coverage, 0.5, 1e-4);
 
+// ---- WO-19: Notícias v2 (Sector Dashboard, Event Radar, Dedupe, Buzz) ----
+import { buildSectorRows, dedupeNewsItems, computeBuzzSpikes, type WatchRowLike, type NewsItemLike } from "../sector-dashboard";
+import { buildExpiryRisk } from "../event-radar";
+import type { NewsItem } from "../../app/api/news/route";
+
+// 1. buildSectorRows: agrega por setor e ignora ticker sem vol (não vira zero)
+const dummyWatch: Record<string, WatchRowLike> = {
+  PETR4: { ticker: "PETR4", spot: 40, dayChgPct: 0.02, ivAtm: 0.35, skewRatio: 1.1, hv21: 0.25 },
+  PRIO3: { ticker: "PRIO3", spot: 50, dayChgPct: -0.01, ivAtm: null, skewRatio: null, hv21: null },
+  VALE3: { ticker: "VALE3", spot: 60, dayChgPct: 0.005, ivAtm: 0.28, skewRatio: 1.05, hv21: 0.20 },
+};
+const secRows = buildSectorRows(dummyWatch, []);
+const petroSec = secRows.find((s) => s.sector === "Oil&Gas");
+if (petroSec && petroSec.ivAtmMedio === 0.35 && petroSec.chgMedio === 0.005 && petroSec.destaque === "PETR4") {
+  console.log("✔ buildSectorRows: agregação setorial correta ignorando ticker sem vol");
+} else {
+  console.log(`✘ buildSectorRows falhou: ivAtmMedio=${petroSec?.ivAtmMedio}, chgMedio=${petroSec?.chgMedio}, destaque=${petroSec?.destaque}`);
+  failures++;
+}
+
+// 2. buildExpiryRisk: evento antes do vencimento entra, depois não; nEventosVol conta só volEvent=true
+const radarChain: ChainData = {
+  ticker: "PETR4",
+  spot: 40,
+  updatedAt: new Date().toISOString(),
+  expiries: [{ date: "2026-08-20", label: "20/08", du: 20, dte: 30, isMonthly: true, weekCode: "M" }],
+  options: [],
+  greeksComputedLocally: true,
+};
+const macroEvs = [
+  { date: "2026-08-05", time: "18:30", country: "BR" as const, event: "COPOM", relevance: 3 as const, volEvent: true },
+  { date: "2026-09-10", time: "15:00", country: "US" as const, event: "FOMC", relevance: 3 as const, volEvent: true },
+];
+const risks = buildExpiryRisk(radarChain, { "2026-08-20": 0.3 }, macroEvs, [], []);
+if (risks.length === 1 && risks[0].eventos.length === 1 && risks[0].nEventosVol === 1) {
+  console.log("✔ buildExpiryRisk: inclui evento antes do vencimento e conta nEventosVol corretamente");
+} else {
+  console.log(`✘ buildExpiryRisk falhou: eventos.length=${risks[0]?.eventos.length}, nEventosVol=${risks[0]?.nEventosVol}`);
+  failures++;
+}
+
+// 3. Dedupe: títulos iguais variando acento/pontuação colapsam em 1
+const rawItems: NewsItem[] = [
+  { title: "Petrobras (PETR4) anuncia dividendos!", link: "http://a", source: "A", publishedAt: "2026-07-28T10:00:00Z", tickers: ["PETR4"], categories: [] },
+  { title: "petrobras petr4 anuncia dividendos", link: "http://b", source: "B", publishedAt: "2026-07-28T10:05:00Z", tickers: ["PETR4"], categories: [] },
+];
+const deduped = dedupeNewsItems(rawItems);
+if (deduped.length === 1) {
+  console.log("✔ dedupeNewsItems: títulos com variação de acento/pontuação colapsaram em 1");
+} else {
+  console.log(`✘ dedupeNewsItems falhou: got length ${deduped.length}, want 1`);
+  failures++;
+}
+
+// 4. Buzz spike: 6 manchetes em 24h com média 2/dia (14 em 7d) => true; 2 em 24h => false
+const now = new Date();
+const items6 = Array.from({ length: 6 }, (_, i) => ({
+  title: `Notícia ${i}`,
+  link: `http://${i}`,
+  source: "S",
+  publishedAt: new Date(now.getTime() - i * 3600 * 1000).toISOString(),
+  tickers: ["PETR4"],
+  categories: [],
+}));
+const buzzMapHigh = computeBuzzSpikes(items6);
+const items2 = Array.from({ length: 2 }, (_, i) => ({
+  title: `Notícia ${i}`,
+  link: `http://${i}`,
+  source: "S",
+  publishedAt: new Date(now.getTime() - i * 3600 * 1000).toISOString(),
+  tickers: ["VALE3"],
+  categories: [],
+}));
+const buzzMapLow = computeBuzzSpikes(items2);
+
+if (buzzMapHigh.PETR4 === true && buzzMapLow.VALE3 === false) {
+  console.log("✔ computeBuzzSpikes: 6 manchetes 24h => true, 2 manchetes 24h => false");
+} else {
+  console.log(`✘ computeBuzzSpikes falhou: PETR4=${buzzMapHigh.PETR4}, VALE3=${buzzMapLow.VALE3}`);
+  failures++;
+}
+
 console.log(failures === 0 ? "\nTODOS OS TESTES PASSARAM" : `\n${failures} TESTE(S) FALHARAM`);
 process.exit(failures === 0 ? 0 : 1);

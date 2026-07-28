@@ -74,3 +74,9 @@ export function findEntry(ticker: string): UniverseEntry | undefined {
 export function sectorOf(ticker: string): Sector | null {
   return findEntry(ticker)?.sector ?? null;
 }
+
+export function companyNames(): Record<string, string> {
+  const map: Record<string, string> = {};
+  for (const u of UNIVERSE) map[u.ticker] = u.name;
+  return map;
+}

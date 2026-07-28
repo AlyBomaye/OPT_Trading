@@ -2,8 +2,6 @@
 
 import { useCallback, useState } from "react";
 import { useRouter } from "next/navigation";
-import { create } from "zustand";
-import { persist } from "zustand/middleware";
 import { LayoutGrid, Play, AlertTriangle } from "lucide-react";
 import clsx from "clsx";
 import { impliedVol } from "@/lib/black-scholes";
@@ -22,6 +20,8 @@ import type { Candle } from "@/app/api/history/route";
  * Hotkey 8.
  * ==========================================================================*/
 
+import { useWatchlist } from "@/lib/sector-dashboard";
+
 interface WatchRow {
   ticker: string;
   at: string; // ISO da coleta
@@ -33,25 +33,6 @@ interface WatchRow {
   hv21: number | null;
   error?: string;
 }
-
-interface WatchState {
-  rows: Record<string, WatchRow>;
-  lastRunAt: string | null;
-  setRow: (r: WatchRow) => void;
-  markRun: () => void;
-}
-
-const useWatchlist = create<WatchState>()(
-  persist(
-    (set) => ({
-      rows: {},
-      lastRunAt: null,
-      setRow: (r) => set((st) => ({ rows: { ...st.rows, [r.ticker]: r } })),
-      markRun: () => set({ lastRunAt: new Date().toISOString() }),
-    }),
-    { name: "watchlist-results", version: 1 }
-  )
-);
 
 /** Linhas mínimas do /api/opcoes usadas aqui (evita importar o store inteiro). */
 interface OpRow {

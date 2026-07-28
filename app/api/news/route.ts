@@ -1,10 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
+import { companyNames } from "@/lib/universe";
+import { dedupeNewsItems, computeBuzzSpikes, normalizeTitle } from "@/lib/sector-dashboard";
 
 export const dynamic = "force-dynamic";
 
 /* ============================================================================
- * /api/news — agregador de notícias (RSS) + strip macro (BCB/AwesomeAPI)
- * Fontes RSS: InfoMoney, Money Times, G1 Economia. Cache em memória: 5 min.
+ * /api/news — agregador de notícias (RSS), cobertura por ticker (Google RSS)
+ * e strip macro (BCB/AwesomeAPI).
+ * Cache em memória: 5 min para feed geral, 10 min por ticker.
  * ==========================================================================*/
 
 export interface NewsItem {
@@ -23,10 +26,11 @@ export interface MacroStrip {
   usdBrl: { bid: number; pctChange: number; updatedAt: string } | null;
 }
 
-interface NewsBody {
+export interface NewsBody {
   items: NewsItem[];
   macro: MacroStrip;
   sources: { name: string; ok: boolean }[];
+  buzz: Record<string, boolean>; // buzz spike por ticker
   updatedAt: string;
 }
 
@@ -65,9 +69,14 @@ const MACRO_KEYWORDS = [
   "pib", "banco central", "treasur", "payroll", "cpi", "tarifa", "petróleo", "boletim focus",
 ];
 
+const NOISE_REGEX = /cota[çc][ãa]o|indicadores|dividendos?, cota|resultados, dividendos/i;
+const BLOCKLIST_SOURCES = ["Investidor10", "StatusInvest", "TradingView"];
+
 /* ------------------------------- cache ----------------------------------- */
-let cache: { body: NewsBody; at: number } | null = null;
+let generalCache: { body: NewsBody; at: number } | null = null;
+const tickerCache = new Map<string, { items: NewsItem[]; at: number }>();
 const TTL_MS = 5 * 60 * 1000;
+const TICKER_TTL_MS = 10 * 60 * 1000;
 
 /* ----------------------------- RSS parsing ------------------------------- */
 function decodeEntities(s: string): string {
@@ -93,33 +102,49 @@ function tag(block: string, name: string): string | null {
   return m ? decodeEntities(m[1]) : null;
 }
 
-function parseRss(xml: string, source: string): NewsItem[] {
+function parseRss(xml: string, sourceName: string, forTicker?: string): NewsItem[] {
   const items: NewsItem[] = [];
   const blocks = xml.match(/<item[\s>][\s\S]*?<\/item>/gi) ?? [];
+
   for (const b of blocks) {
     const title = tag(b, "title");
     const link = tag(b, "link") ?? tag(b, "guid");
     const pub = tag(b, "pubDate") ?? tag(b, "dc:date");
+    const sourceTag = tag(b, "source");
+    const itemSource = sourceTag || sourceName;
+
     if (!title || !link) continue;
+
+    // Filtro de ruído (páginas de cotação / agregadores de lixo)
+    if (NOISE_REGEX.test(title)) continue;
+    if (BLOCKLIST_SOURCES.some((s) => itemSource.toLowerCase().includes(s.toLowerCase()))) continue;
+
     const cats = (b.match(/<category[^>]*>[\s\S]*?<\/category>/gi) ?? [])
       .map((c) => decodeEntities(c))
       .filter(Boolean)
       .slice(0, 3);
+
     const lower = ` ${title.toLowerCase()} `;
-    const tickers = Object.entries(TICKER_KEYWORDS)
+    let tickersMatched = Object.entries(TICKER_KEYWORDS)
       .filter(([, kws]) => kws.some((k) => lower.includes(k)))
       .map(([t]) => t);
+
+    if (forTicker && !tickersMatched.includes(forTicker)) {
+      tickersMatched = [forTicker, ...tickersMatched];
+    }
+
     const isMacro = MACRO_KEYWORDS.some((k) => lower.includes(k));
+
     items.push({
       title,
       link,
-      source,
+      source: itemSource,
       publishedAt: pub ? new Date(pub).toISOString() : new Date().toISOString(),
-      tickers,
+      tickers: tickersMatched,
       categories: isMacro ? ["MACRO", ...cats] : cats,
     });
   }
-  return items;
+  return dedupeNewsItems(items);
 }
 
 async function fetchFeed(name: string, url: string): Promise<{ items: NewsItem[]; ok: boolean }> {
@@ -134,6 +159,35 @@ async function fetchFeed(name: string, url: string): Promise<{ items: NewsItem[]
     return { items: parseRss(xml, name), ok: true };
   } catch {
     return { items: [], ok: false };
+  }
+}
+
+async function fetchGoogleTickerNews(ticker: string): Promise<NewsItem[]> {
+  const cached = tickerCache.get(ticker);
+  if (cached && Date.now() - cached.at < TICKER_TTL_MS) {
+    return cached.items;
+  }
+
+  try {
+    const nameMap = companyNames();
+    const compName = nameMap[ticker] ?? ticker;
+    const query = `${ticker} OR "${compName}"`;
+    const url = `https://news.google.com/rss/search?q=${encodeURIComponent(query)}+when:7d&hl=pt-BR&gl=BR&ceid=BR:pt-419`;
+
+    const res = await fetch(url, {
+      headers: { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)" },
+      signal: AbortSignal.timeout(8000),
+      cache: "no-store",
+    });
+
+    if (!res.ok) return [];
+    const xml = await res.text();
+    const items = parseRss(xml, "Google News", ticker).slice(0, 20);
+
+    tickerCache.set(ticker, { items, at: Date.now() });
+    return items;
+  } catch {
+    return [];
   }
 }
 
@@ -170,24 +224,39 @@ async function fetchMacro(): Promise<MacroStrip> {
 }
 
 /* --------------------------------- GET ----------------------------------- */
-export async function GET(_req: NextRequest) {
-  if (cache && Date.now() - cache.at < TTL_MS) {
-    return NextResponse.json(cache.body);
+export async function GET(req: NextRequest) {
+  const { searchParams } = new URL(req.url);
+  const tickerParam = searchParams.get("ticker")?.toUpperCase();
+
+  if (tickerParam) {
+    const items = await fetchGoogleTickerNews(tickerParam);
+    return NextResponse.json({ ticker: tickerParam, items, updatedAt: new Date().toISOString() });
   }
+
+  if (generalCache && Date.now() - generalCache.at < TTL_MS) {
+    return NextResponse.json(generalCache.body);
+  }
+
   const [feeds, macro] = await Promise.all([
     Promise.all(FEEDS.map((f) => fetchFeed(f.name, f.url))),
     fetchMacro(),
   ]);
-  const items = feeds
-    .flatMap((f) => f.items)
+
+  const rawItems = feeds.flatMap((f) => f.items);
+  const dedupedItems = dedupeNewsItems(rawItems)
     .sort((a, b) => (a.publishedAt < b.publishedAt ? 1 : -1))
     .slice(0, 80);
+
+  const buzz = computeBuzzSpikes(dedupedItems);
+
   const body: NewsBody = {
-    items,
+    items: dedupedItems,
     macro,
     sources: FEEDS.map((f, i) => ({ name: f.name, ok: feeds[i].ok })),
+    buzz,
     updatedAt: new Date().toISOString(),
   };
-  cache = { body, at: Date.now() };
+
+  generalCache = { body, at: Date.now() };
   return NextResponse.json(body);
 }
