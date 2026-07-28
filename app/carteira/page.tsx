@@ -1,5 +1,3 @@
-"use client";
-
 import { useMemo, useRef, useState } from "react";
 import { Database, FileJson, FileSpreadsheet, RefreshCw, Trash2, Upload, XCircle } from "lucide-react";
 import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
@@ -18,6 +16,10 @@ import { skewInfo } from "@/lib/scanner";
 import { useSnapshots, type IvSnapshot } from "@/lib/snapshots";
 import { divsBeforeExpiry, effectiveDividends, useDividends } from "@/lib/dividends";
 import { downloadText, fmtBRL, fmtDateBR, fmtNum, fmtPct, pnlColor } from "@/lib/format";
+import { evaluateFlags, useFlagSettings } from "@/lib/position-flags";
+import { groupTrades, performanceStats } from "@/lib/performance";
+import { ActionFlags } from "@/components/ActionFlags";
+import { PerformanceCharts } from "@/components/PerformanceCharts";
 
 export default function CarteiraPage() {
   const {
@@ -39,9 +41,19 @@ export default function CarteiraPage() {
   const { snapshots, importSnapshots } = useSnapshots();
   const divsByTicker = useDividends((st) => st.byTicker);
   const importRef = useRef<HTMLInputElement | null>(null);
+  const thresholds = useFlagSettings((st) => st.thresholds);
+
+  // WO-17: Avaliação de flags de ação do book
+  const allFlags = useMemo(
+    () => evaluateFlags(positions, chainCache, divsByTicker, capitalTotal, thresholds),
+    [positions, chainCache, divsByTicker, capitalTotal, thresholds]
+  );
+
+  // WO-17: Agrupamento de trades e estatísticas de performance do journal
+  const groups = useMemo(() => groupTrades(positions, closed), [positions, closed]);
+  const perf = useMemo(() => performanceStats(groups), [groups]);
 
   // WO-3: short call ITM em pagador de dividendo com ex-date antes do vencimento
-  // (espelha a coluna R do Trade Log da planilha)
   const earlyExerciseAlerts = useMemo(
     () =>
       positions.flatMap((p) => {
@@ -63,7 +75,8 @@ export default function CarteiraPage() {
 
   const rows = positions.map((p) => {
     const mark = markInfo(p, chainCache);
-    return { p, cp: mark.price, mark, pnl: unrealizedPnl(p, mark.price) };
+    const posFlags = allFlags.filter((f) => f.positionId === p.id);
+    return { p, cp: mark.price, mark, pnl: unrealizedPnl(p, mark.price), posFlags };
   });
 
   // WO-4: reavalia sequencialmente o chain de cada ativo distinto do book
@@ -128,6 +141,14 @@ export default function CarteiraPage() {
 
   return (
     <>
+      {/* WO-17 Bloco A: Painel de Ação do Dia (Flags de Risco) */}
+      <ActionFlags
+        positions={positions}
+        chainCache={chainCache}
+        divsByTicker={divsByTicker}
+        capitalTotal={capitalTotal}
+      />
+
       {/* WO-11: capital & desempenho (Dashboard da planilha) */}
       <div className="grid grid-cols-2 md:grid-cols-6 gap-2">
         <div className="panel px-2 py-1.5">
@@ -155,6 +176,43 @@ export default function CarteiraPage() {
         <div className="panel px-3 py-2 text-xs font-semibold text-term-down border border-term-down/40">
           NO EDGE — DO NOT TRADE: com {journal?.n} trades encerrados, o Kelly realizado é ≤ 0. O journal não comprova a
           vantagem assumida — reduza tamanho ou pare até rever o processo.
+        </div>
+      )}
+
+      {/* WO-17 Bloco B: Analytics de Desempenho do Journal */}
+      <div className="grid grid-cols-2 md:grid-cols-6 gap-2">
+        <Kpi
+          label="Profit Factor"
+          value={perf.profitFactor != null ? (isFinite(perf.profitFactor) ? fmtNum(perf.profitFactor, 2) : "∞") : "—"}
+          cls={perf.profitFactor != null && perf.profitFactor >= 1.5 ? "text-term-up" : perf.profitFactor != null && perf.profitFactor < 1.0 ? "text-term-down" : ""}
+        />
+        <Kpi
+          label="Expectancy (R$)"
+          value={perf.expectancyCash != null ? fmtBRL(perf.expectancyCash) : "—"}
+          cls={pnlColor(perf.expectancyCash ?? 0)}
+        />
+        <Kpi
+          label="Expectancy (R)"
+          value={perf.expectancyR != null ? `${perf.expectancyR > 0 ? "+" : ""}${perf.expectancyR.toFixed(2)}R` : "—"}
+          cls={perf.expectancyR != null && perf.expectancyR > 0 ? "text-term-up" : "text-term-down"}
+        />
+        <Kpi
+          label="Holding médio (V/P)"
+          value={perf.avgHoldingWins != null ? `${perf.avgHoldingWins.toFixed(0)}d / ${perf.avgHoldingLosses?.toFixed(0) ?? 0}d` : "—"}
+        />
+        <Kpi
+          label="Maior seq. (Gan/Perd)"
+          value={perf.totalClosedGroups > 0 ? `${perf.maxWinStreak} / ${perf.maxLossStreak}` : "—"}
+        />
+        <Kpi
+          label="Melhor / Pior Trade"
+          value={perf.bestTrade != null ? `${fmtBRL(perf.bestTrade, 0)} / ${fmtBRL(perf.worstTrade, 0)}` : "—"}
+        />
+      </div>
+
+      {perf.totalClosedGroups > 0 && perf.totalClosedGroups < 20 && (
+        <div className="text-xxs font-mono text-term-dim px-1">
+          💡 Nota: amostragem pequena ({perf.totalClosedGroups} operações encerradas de 20 recomendadas) — estatísticas de expectancy e profit factor ainda não são conclusivas.
         </div>
       )}
 
@@ -222,14 +280,14 @@ export default function CarteiraPage() {
           <table className="w-full text-xs">
             <thead>
               <tr className="border-b border-term-line">
-                {["Ativo", "Tipo", "K", "Venc", "Lado", "Qtd", "Entrada", "Atual", "P&L", "Taxas", "Notas", "Aberta em", ""].map((h) => (
+                {["Ativo", "Tipo", "K", "Venc", "Lado", "Qtd", "Entrada", "Atual", "P&L", "Flags", "Taxas", "Notas", "Aberta em", ""].map((h) => (
                   <th key={h} className="th text-right first:text-left">{h}</th>
                 ))}
               </tr>
             </thead>
             <tbody>
-              {rows.map(({ p, cp, mark, pnl }) => (
-                <tr key={p.id} className="border-b border-term-line/40 hover:bg-term-panel2/50">
+              {rows.map(({ p, cp, mark, pnl, posFlags }) => (
+                <tr key={p.id} id={`pos-row-${p.id}`} className="border-b border-term-line/40 hover:bg-term-panel2/50 transition-colors">
                   <td
                     className="td font-semibold"
                     title={
@@ -258,6 +316,39 @@ export default function CarteiraPage() {
                     )}
                   </td>
                   <td className={`td text-right font-semibold ${pnlColor(pnl ?? 0)}`}>{fmtBRL(pnl)}</td>
+                  <td className="td text-right whitespace-nowrap">
+                    {posFlags.length > 0 ? (
+                      <div className="flex items-center justify-end gap-1 flex-wrap">
+                        {posFlags.map((f, fIdx) => {
+                          const tagCls =
+                            f.severity === "urgente"
+                              ? "bg-term-down/20 text-term-down border-term-down/40"
+                              : f.severity === "atencao"
+                              ? "bg-term-gold/20 text-term-gold border-term-gold/40"
+                              : "bg-term-panel2 text-term-dim border-term-line";
+                          const shortKind =
+                            f.kind === "TAKE_PROFIT"
+                              ? "TP"
+                              : f.kind === "ITM_RISCO"
+                              ? "ITM"
+                              : f.kind === "EX_DIV"
+                              ? "DIV"
+                              : f.kind === "DELTA_DRIFT"
+                              ? "DRIFT"
+                              : f.kind === "VOL_CRUSH"
+                              ? "CRUSH"
+                              : f.kind;
+                          return (
+                            <span key={fIdx} className={`tag border text-xxs font-mono ${tagCls}`} title={`${f.detalhe} → ${f.acao}`}>
+                              {shortKind}
+                            </span>
+                          );
+                        })}
+                      </div>
+                    ) : (
+                      <span className="text-term-dim text-xxs">—</span>
+                    )}
+                  </td>
                   <td className="td text-right">
                     <input
                       type="number"
@@ -296,7 +387,7 @@ export default function CarteiraPage() {
               ))}
               {!rows.length && (
                 <tr>
-                  <td colSpan={13} className="td text-term-dim py-3">
+                  <td colSpan={14} className="td text-term-dim py-3">
                     Sem posições — monte uma estrutura na Estratégia (3) e clique em “Abrir posição na carteira”.
                   </td>
                 </tr>
@@ -308,37 +399,35 @@ export default function CarteiraPage() {
 
       {/* Stress + VaR */}
       {stress.length > 0 && (
-        <div className="panel">
-          <div
-            className="panel-title"
-            title="VaR por reavaliação em grade 3×3: spot {−1,645σ, 0, +1,645σ} × vol {−20%, 0, +30%}, com theta carry (T+1). ES = média dos 2 piores cenários."
-          >
-            Stress do book (choque de spot, T+0) · VaR 95% 1d (spot×vol):{" "}
-            <span className="text-term-down">{risk != null ? fmtBRL(risk.var95, 0) : "—"}</span> · ES proxy:{" "}
-            <span className="text-term-down">{risk != null ? fmtBRL(risk.es, 0) : "—"}</span>
+        <div className="panel p-3">
+          <div className="panel-title flex items-center justify-between">
+            <span>Stress ladder — choque de spot no book (±15%)</span>
+            {risk != null && (
+              <span className="text-xxs text-term-dim">
+                VaR95 (1d, grade 3×3): <span className="text-term-down font-semibold">{fmtBRL(risk.var95)}</span> · ES:{" "}
+                <span className="text-term-down font-semibold">{fmtBRL(risk.es)}</span>
+              </span>
+            )}
           </div>
-          <div className="overflow-x-auto px-2 pb-2">
-            <table className="text-xs font-mono">
-              <thead>
-                <tr>
-                  {stress.map((c) => (
-                    <th key={c.spotPct} className="th text-right">{fmtPct(c.spotPct, 0)}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                <tr>
-                  {stress.map((c) => (
-                    <td key={c.spotPct} className={`td text-right font-semibold ${pnlColor(c.pnl)}`}>
-                      {fmtBRL(c.pnl, 0)}
-                    </td>
-                  ))}
-                </tr>
-              </tbody>
-            </table>
+          <div className="grid grid-cols-7 gap-1 text-center text-xs font-mono pt-2">
+            {stress.map(({ spotPct, pnl }) => (
+              <div key={spotPct} className="panel p-1.5 border border-term-line/60">
+                <div className="text-xxs text-term-dim">{spotPct > 0 ? `+${spotPct}%` : `${spotPct}%`}</div>
+                <div className={`font-semibold text-xs ${pnlColor(pnl)}`}>{fmtBRL(pnl, 0)}</div>
+              </div>
+            ))}
           </div>
         </div>
       )}
+
+      {/* WO-17 Bloco C: Suíte de Gráficos e Riscos da Carteira */}
+      <PerformanceCharts
+        positions={positions}
+        closed={closed}
+        capitalTotal={capitalTotal}
+        chainCache={chainCache}
+        selic={selic}
+      />
 
       {/* WO-2: arquivo de snapshots de IV */}
       <div className="panel px-3 py-2 flex flex-wrap items-center gap-2 text-xxs text-term-dim">

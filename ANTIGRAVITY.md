@@ -166,6 +166,8 @@ components/
   SensitivityMatrix.tsx   Matriz what-if Spot×Vol em T+n
   DividendEditor.tsx      Popover de calendário de proventos por ticker
   PriceHistoryPanel.tsx   Histórico diário OHLCV + volume + overlays (strikes/BEs/spot)
+  ActionFlags.tsx         Painel Ação do Dia (flags de risco, limiares, popover)
+  PerformanceCharts.tsx   Suíte de 7 gráficos de risco, drawdown e atribuição
 
 lib/
   black-scholes.ts        Engine BSM/CRR completo (§7.2)
@@ -174,6 +176,8 @@ lib/
   suggest.ts              Sugestões top-3 por EV ajustado a risco (expectedValue + suggestStructures)
   portfolio.ts            Gregas do book, stress ladder, VaR grade 3×3 + ES,
                           capital alocado, journal stats, equity curve (§7.4)
+  position-flags.ts       Módulo de 11 flags de ação por posição e useFlagSettings
+  performance.ts          Grouping de trades, métricas de performance e atribuição de P&L
   scanner.ts              Pozinhos, skew ratio (vw), atmIvNearest, Kelly (§7.5)
   historical.ts           logReturns, rollingHV, Parkinson, returnStats, volCone
   snapshots.ts            Store "iv-snapshots" + atmIvStats + getIvRank (§7.6)
@@ -431,6 +435,7 @@ incrementar `version` e estender `migrate` — nunca resetar estado do usuário.
 |---|---|---|---|
 | `useSnapshots` | `iv-snapshots` v1 | lib/snapshots.ts | `IvSnapshot[]`, upsert/import/clear |
 | `useDividends` | `dividendos` v1 | lib/dividends.ts | proventos por ticker |
+| `useFlagSettings` | `carteira-flags` v1 | lib/position-flags.ts | limiares configuráveis das flags de ação |
 | `useGexInputs` | `gex-manual` v1 | app/page.tsx | níveis GEX manuais + `editedAt` por ticker |
 | `useWatchlist` | `watchlist-results` v1 | app/watchlist/page.tsx | última varredura + timestamp |
 
@@ -522,6 +527,11 @@ semente = capital) + gregas líquidas + **posições multi-ticker** (marcação 
 progresso e falhas por ticker) + colunas de journal (taxas e notas editáveis inline;
 gregas de entrada no tooltip do ativo) + alertas de exercício antecipado + stress ladder
 com VaR95/ES rotulados + export CSV/JSON + export/import do arquivo de snapshots IV.
+
+**WO-17 Carteira v2 (Gestão de Risco & Journal Analytics)**:
+- **Bloco A (Flags de ação por posição)**: Painel "Ação do dia" (`ActionFlags`) com 11 regras (`TAKE_PROFIT`, `STOP`, `VENCIMENTO`, `ROLAR`, `ITM_RISCO`, `EX_DIV`, `DELTA_DRIFT`, `VOL_CRUSH`, `LIQUIDEZ`, `STALE`, `CONCENTRACAO`), severidade (`urgente`/`atencao`/`info`), popover de limiares configuráveis (`useFlagSettings`), destaque interativo de linha na tabela e chips compactos inline.
+- **Bloco B (Analytics de performance)**: Agrupamento de pernas abertas no mesmo instante em estruturas (`groupTrades`), KPIs avançados de journal (`performanceStats`: Profit Factor, Expectancy R$ e R, Holding médio V/P, streaks, melhor/pior trade) e atribuição de P&L de 1ª ordem ($\Delta$, $\text{Vega}$, $\Theta$, resíduo).
+- **Bloco C (Gráficos e riscos)**: Suíte Recharts (`PerformanceCharts`) com Curva de patrimônio + Underwater (Drawdown), P&L mensal, Histograma de distribuição de P&L, P&L por estratégia, Alocação por setor vs limite de concentração, Perfil de risco acumulado por ativo objeto (payoffs do book) e Calendário de vencimentos.
 
 ### 9.6 Notícias & Macro (`/noticias`, hotkey 6)
 

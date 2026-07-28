@@ -7,7 +7,7 @@ import { rollingHV, volCone } from "../historical";
 import { pnlAtExpiry, strategyMetrics } from "../payoff";
 import { expectedValue, suggestStructures } from "../suggest";
 import type { Candle } from "@/app/api/history/route";
-import type { ChainData, Leg, MarkQuality, OptionQuote, OptionType } from "../types";
+import type { ChainData, Leg, MarkQuality, OptionQuote, OptionType, Position } from "../types";
 
 let failures = 0;
 function assertClose(name: string, got: number | null, want: number, tol: number) {
@@ -200,6 +200,78 @@ if (cands.length > 0) {
   const top1 = cands[0];
   const expectedScore = top1.ev / Math.abs(top1.metrics.maxLoss!);
   assertClose("score da candidata #1 confere com ev / |maxLoss|", top1.score, expectedScore, 1e-6);
+}
+
+// ---- WO-17: Carteira v2 (position-flags & performance) ----
+import { evaluateFlags, DEFAULT_THRESHOLDS } from "../position-flags";
+import { groupTrades, performanceStats, drawdownSeries, type TradeGroup } from "../performance";
+
+// 1. groupTrades: duas pernas do mesmo (underlying, openedAt) viram 1 grupo; tickers diferentes viram grupos distintos
+const nowIso = "2026-07-28T10:00:00Z";
+const pLeg1: Position = { id: "p1", kind: "OPTION", underlying: "PETR4", opTicker: "PETRD40", side: 1, qty: 100, price: 1.5, openedAt: nowIso };
+const pLeg2: Position = { id: "p2", kind: "OPTION", underlying: "PETR4", opTicker: "PETRD42", side: -1, qty: 100, price: 0.5, openedAt: nowIso };
+const pLeg3: Position = { id: "p3", kind: "OPTION", underlying: "VALE3", opTicker: "VALED60", side: 1, qty: 100, price: 2.0, openedAt: nowIso };
+
+const testGroups = groupTrades([pLeg1, pLeg2, pLeg3], []);
+if (testGroups.length === 2) {
+  const petrGroup = testGroups.find((g) => g.underlying === "PETR4");
+  const valeGroup = testGroups.find((g) => g.underlying === "VALE3");
+  if (petrGroup?.legs.length === 2 && valeGroup?.legs.length === 1) {
+    console.log("✔ groupTrades: pernas do mesmo ticker/instante agrupadas (2 PETR4, 1 VALE3)");
+  } else {
+    console.log("✘ groupTrades falhou na contagem das pernas do grupo");
+    failures++;
+  }
+} else {
+  console.log(`✘ groupTrades falhou: esperados 2 grupos, obtidos ${testGroups.length}`);
+  failures++;
+}
+
+// 2. performanceStats: PF e expectancy conferem à mão (+100, +200, -50, +50, -100)
+const handGroups: TradeGroup[] = [
+  { id: "g1", underlying: "PETR4", openedAt: "2026-01-01", closedAt: "2026-01-05", legs: [], estrategia: "Trava", pnl: 100, holdingDays: 4 },
+  { id: "g2", underlying: "PETR4", openedAt: "2026-01-06", closedAt: "2026-01-10", legs: [], estrategia: "Trava", pnl: 200, holdingDays: 4 },
+  { id: "g3", underlying: "PETR4", openedAt: "2026-01-11", closedAt: "2026-01-15", legs: [], estrategia: "Trava", pnl: -50, holdingDays: 4 },
+  { id: "g4", underlying: "PETR4", openedAt: "2026-01-16", closedAt: "2026-01-20", legs: [], estrategia: "Trava", pnl: 50, holdingDays: 4 },
+  { id: "g5", underlying: "PETR4", openedAt: "2026-01-21", closedAt: "2026-01-25", legs: [], estrategia: "Trava", pnl: -100, holdingDays: 4 },
+];
+const handStats = performanceStats(handGroups);
+assertClose("performanceStats: Profit Factor", handStats.profitFactor, 350 / 150, 1e-4);
+assertClose("performanceStats: Expectancy Cash", handStats.expectancyCash, 40, 1e-4);
+
+// 3. evaluateFlags: compra com +75% lucro -> TAKE_PROFIT; compra com -60% -> STOP; sem entryGreeks -> sem DELTA_DRIFT
+const pProf: Position = { id: "f1", kind: "OPTION", underlying: "PETR4", opTicker: "PETRD40", side: 1, qty: 100, price: 2.0, openedAt: nowIso, lastMark: 3.5 };
+const pLoss: Position = { id: "f2", kind: "OPTION", underlying: "PETR4", opTicker: "PETRD42", side: 1, qty: 100, price: 2.0, openedAt: nowIso, lastMark: 0.8 };
+const pNoGreeks: Position = { id: "f3", kind: "OPTION", underlying: "VALE3", opTicker: "VALED60", side: 1, qty: 100, price: 2.0, openedAt: nowIso };
+
+const flagListProf = evaluateFlags([pProf], {}, {}, 100000, DEFAULT_THRESHOLDS);
+const hasTp = flagListProf.some((f) => f.kind === "TAKE_PROFIT" && f.positionId === "f1");
+
+const flagListLoss = evaluateFlags([pLoss], {}, {}, 100000, DEFAULT_THRESHOLDS);
+const hasStop = flagListLoss.some((f) => f.kind === "STOP" && f.positionId === "f2");
+
+const flagListNoGreeks = evaluateFlags([pNoGreeks], {}, {}, 100000, DEFAULT_THRESHOLDS);
+const hasDrift = flagListNoGreeks.some((f) => f.kind === "DELTA_DRIFT");
+
+if (hasTp && hasStop && !hasDrift) {
+  console.log("✔ evaluateFlags: TAKE_PROFIT, STOP e ausência de DELTA_DRIFT sem entryGreeks verificados");
+} else {
+  console.log(`✘ evaluateFlags falhou: hasTp=${hasTp}, hasStop=${hasStop}, hasDrift=${hasDrift}`);
+  failures++;
+}
+
+// 4. drawdownSeries: série monotônica crescente tem drawdown 0 em todos os pontos
+const monoClosed: Position[] = [
+  { id: "c1", kind: "OPTION", underlying: "PETR4", side: 1, qty: 100, price: 1.0, openedAt: "2026-01-01", closedAt: "2026-01-02", closePrice: 2.0 },
+  { id: "c2", kind: "OPTION", underlying: "PETR4", side: 1, qty: 100, price: 1.0, openedAt: "2026-01-03", closedAt: "2026-01-04", closePrice: 3.0 },
+];
+const ddRes = drawdownSeries(monoClosed, 100000);
+const allZeroDd = ddRes.every((d) => d.drawdown === 0);
+if (allZeroDd && ddRes.length === 3) {
+  console.log("✔ drawdownSeries: série monotônica crescente tem drawdown 0 em todos os pontos");
+} else {
+  console.log(`✘ drawdownSeries falhou: allZeroDd=${allZeroDd}, length=${ddRes.length}`);
+  failures++;
 }
 
 console.log(failures === 0 ? "\nTODOS OS TESTES PASSARAM" : `\n${failures} TESTE(S) FALHARAM`);
