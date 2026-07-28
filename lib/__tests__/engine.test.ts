@@ -435,5 +435,50 @@ if (buzzMapHigh.PETR4 === true && buzzMapLow.VALE3 === false) {
   failures++;
 }
 
+// ---- WO-20: Macro Global & Rates (lib/macro.ts) ----
+import { windowReturns, bpsDelta, classifyTrend, downsample, curveSlope } from "../macro";
+
+// 1. windowReturns: série sintética de 260 closes com valores conhecidos
+const synthCloses = Array.from({ length: 260 }, (_, i) => 100 + i * 0.1);
+const winRes = windowReturns(synthCloses);
+assertClose("windowReturns: chg1d", winRes.chg1d, 125.9 / 125.8 - 1, 1e-4);
+assertClose("windowReturns: chg5d", winRes.chg5d, 125.9 / 125.4 - 1, 1e-4);
+
+// 2. bpsDelta(4.60, 4.45) => 15 bps
+const bpsVal = bpsDelta(4.60, 4.45);
+assertClose("bpsDelta: 4.60% vs 4.45%", bpsVal, 15, 1e-4);
+
+// 3. classifyTrend: ALTA, BAIXA, LATERAL
+if (
+  classifyTrend(120, 110, 100) === "ALTA" &&
+  classifyTrend(80, 90, 100) === "BAIXA" &&
+  classifyTrend(105, 95, 100) === "LATERAL"
+) {
+  console.log("✔ classifyTrend: ALTA, BAIXA e LATERAL classificados corretamente");
+} else {
+  console.log("✘ classifyTrend falhou");
+  failures++;
+}
+
+// 4. downsample(252, 60) devolve 60 pontos preservando primeiro (100) e último (351)
+const series252 = Array.from({ length: 252 }, (_, i) => 100 + i);
+const ds60 = downsample(series252, 60);
+if (ds60.length === 60 && ds60[0] === 100 && ds60[59] === 351) {
+  console.log("✔ downsample(252, 60): devolveu 60 pontos preservando o primeiro e último elemento");
+} else {
+  console.log(`✘ downsample falhou: length=${ds60.length}, first=${ds60[0]}, last=${ds60[59]}`);
+  failures++;
+}
+
+// 5. curveSlope(4.60, 3.76) => 0.84 (NORMAL) e curva invertida quando < 0
+const csNormal = curveSlope(4.60, 3.76);
+const csInverted = curveSlope(3.50, 4.00);
+if (csNormal.label === "NORMAL" && Math.abs((csNormal.slope ?? 0) - 0.84) < 1e-4 && csInverted.label === "INVERTIDA") {
+  console.log("✔ curveSlope: inclinação 10Y-3M e classificações NORMAL/INVERTIDA corretas");
+} else {
+  console.log(`✘ curveSlope falhou: csNormal.label=${csNormal.label}, csInverted.label=${csInverted.label}`);
+  failures++;
+}
+
 console.log(failures === 0 ? "\nTODOS OS TESTES PASSARAM" : `\n${failures} TESTE(S) FALHARAM`);
 process.exit(failures === 0 ? 0 : 1);

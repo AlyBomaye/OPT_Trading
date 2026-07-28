@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
-import { Gauge, Table2, GitBranch, Search, Briefcase, Newspaper, History, LayoutGrid, BookOpen } from "lucide-react";
+import { Gauge, Table2, GitBranch, Search, Briefcase, Newspaper, History, LayoutGrid, BookOpen, Globe } from "lucide-react";
 import clsx from "clsx";
 
 const ITEMS = [
@@ -16,6 +16,7 @@ const ITEMS = [
   { href: "/historico", label: "Histórico", key: "7", icon: History },
   { href: "/watchlist", label: "Watchlist", key: "8", icon: LayoutGrid },
   { href: "/manual", label: "Manual", key: "9", icon: BookOpen },
+  { href: "/macro", label: "Macro", key: "0", icon: Globe },
 ];
 
 export function Nav() {

@@ -170,6 +170,7 @@ components/
   ActionFlags.tsx         Painel Ação do Dia (flags de risco, limiares, popover)
   PerformanceCharts.tsx   Suíte de 7 gráficos de risco, drawdown e atribuição
   GexProfile.tsx          Gráfico de GEX por strike Recharts (spot, flip, walls, filtro vencimento)
+  Sparkline.tsx           Componente SVG puro de linha de tendência para tabelas densas
 
 lib/
   black-scholes.ts        Engine BSM/CRR completo (§7.2)
@@ -184,6 +185,7 @@ lib/
   sector-dashboard.ts     Agregação setorial (buildSectorRows, WatchRowLike)
   event-radar.ts          Radar de eventos por vencimento (buildExpiryRisk)
   earnings.ts             Store "resultados" (useEarnings, EarningsEvent)
+  macro.ts                Math helper para macro global, bps deltas, tendências e sessões
   scanner.ts              Pozinhos, skew ratio (vw), atmIvNearest, Kelly (§7.5)
   historical.ts           logReturns, rollingHV, Parkinson, returnStats, volCone
   snapshots.ts            Store "iv-snapshots" + atmIvStats + getIvRank (§7.6)
@@ -295,6 +297,18 @@ calendários oficiais (BCB, Fed, IBGE, BLS) no mesmo formato.
   stale: boolean;                 // true se fileDate < último dia útil esperado
 }
 // Fallback de até 5 dias corridos (D0...D-4). Cache em memória de 6h do arquivo cru.
+```
+
+### 6.6 `GET /api/macro`
+
+```ts
+{
+  series: MacroSeries[];           // Índices, Futuros, VIX, Moedas, Commodities, Rates (pool 5 concorrência, 10 min cache)
+  brasil: BrasilMacro;             // Selic meta, CDI, Selic efetiva, IPCA 12m, IPCA mensal, IPCA-15, IGP-M, INPC (BCB SGS)
+  updatedAt: string;
+  falhas: string[];               // lista de símbolos Yahoo que falharam (nunca derruba a rota)
+}
+// Variações calculadas a partir de closes; grupos de juros (Rates) em bps ((taxa_hoje - taxa_passada) * 100).
 ```
 
 ---
@@ -586,6 +600,14 @@ tela (1–8), tabela de atalhos (1–9, R, ?, Esc) e limitações/proveniência 
 informações ("quero saber X → vou em Y"); (C) Glossário de nomenclaturas e métricas do trader
 ordenado alfabeticamente. Inclui campo de busca client-side em tempo real.
 
+### 9.10 Macro Global & Rates (`/macro`, hotkey 0)
+
+WO-20 Aba Macro Global & Rates (a tela das 9h):
+1. **[1] Estado das Sessões Globais**: Ásia, Europa, EUA, Brasil com status ABERTO/FECHADO/PRÉ/PÓS e horários BRT.
+2. **[2] Painéis de Mercado**: Índices, Futuros, VIX, Moedas e Commodities com seletor de janela global (1d/5d/1m/3m/6m/12m/YTD) que reordena todas as tabelas, heatmap proporcional na janela ativa, classificação de tendência (ALTA/BAIXA/LATERAL) e sparklines em SVG puro.
+3. **[3] Curva de Juros US + Rates & Inflação Brasil**: Tabela de Treasuries com variação em **bps** + inclinação 10Y-3M com gráfico de 3 séries Recharts (Hoje vs 1M vs 3M atrás); Bloco Brasil com Selic, CDI, IPCA, IGP-M, INPC e mini-gráficos históricos.
+4. **[4] Impacto no Meu Universo**: Tabela de transmissão `driver -> movimento -> tickers afetados` com chips de tickers interativos para carregamento direto do chain.
+
 ---
 
 ## 10. Design system e UX
@@ -613,7 +635,7 @@ fontSize 11`, ticks `fontSize 9-11, fill #6b7689|#7a8499`.
 
 ### 10.3 Padrões de interação
 
-- **Hotkeys:** 1–9 módulos, R refresh, ? overlay de ajuda, Esc fecha — sempre ignorados
+- **Hotkeys:** 1–9, 0 módulos, R refresh, ? overlay de ajuda, Esc fecha — sempre ignorados
   quando o foco está em INPUT/SELECT/TEXTAREA.
 - **Proveniência:** `MANUAL — hh:mm` (GEX), `STALE Xm` (marcações), `EST` (estimativas),
   "IV/gregas: engine local", "última varredura hh:mm · STALE". Todo chip tem `title` com
