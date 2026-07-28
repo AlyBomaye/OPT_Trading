@@ -15,8 +15,8 @@ const ITEMS = [
   { href: "/estrategia", label: "Estratégia", key: "6", icon: GitBranch },
   { href: "/", label: "Cockpit", key: "7", icon: Gauge },
   { href: "/chain", label: "Chain", key: "8", icon: Table2 },
-  { href: "/historico", label: "Histórico", key: "9", icon: History },
-  { href: "/manual", label: "Manual", key: "0", icon: BookOpen },
+  { href: "/manual", label: "Manual", key: "9", icon: BookOpen },
+  { href: "/historico", label: "Histórico", key: "0", icon: History },
 ];
 
 export function Nav() {
