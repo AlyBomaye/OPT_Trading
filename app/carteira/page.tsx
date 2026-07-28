@@ -1,3 +1,5 @@
+"use client";
+
 import { useMemo, useRef, useState } from "react";
 import { Database, FileJson, FileSpreadsheet, RefreshCw, Trash2, Upload, XCircle } from "lucide-react";
 import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
