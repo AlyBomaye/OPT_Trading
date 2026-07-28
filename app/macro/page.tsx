@@ -360,11 +360,47 @@ export default function MacroPage() {
         </div>
 
         {mercadosOpen && (
-          <div className="p-3 space-y-4">
-            <MarketTable title="Índices Acionários Globais" list={getSortedSeries("INDICE")} activeField={activeField} />
-            <MarketTable title="Futuros EUA & Volatilidade (VIX)" list={[...getSortedSeries("FUTURO"), ...getSortedSeries("VOL")]} activeField={activeField} />
-            <MarketTable title="Moedas & Dólar" list={getSortedSeries("MOEDA")} activeField={activeField} />
-            <MarketTable title="Commodities" list={getSortedSeries("COMMODITY")} activeField={activeField} />
+          <div className="p-3">
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs font-mono border-collapse table-fixed min-w-[850px]">
+                <thead>
+                  <tr className="border-b border-term-line text-xxs text-term-dim uppercase bg-term-panel2/40">
+                    <th className="py-2 px-2 w-[26%]">Ativo</th>
+                    <th className="py-2 px-1 w-[10%]">Último</th>
+                    <th className="py-2 px-1 w-[10%]">Var Ativa</th>
+                    <th className="py-2 px-1 w-[7%]">1D</th>
+                    <th className="py-2 px-1 w-[7%]">5D</th>
+                    <th className="py-2 px-1 w-[7%]">1M</th>
+                    <th className="py-2 px-1 w-[7%]">YTD</th>
+                    <th className="py-2 px-1 w-[7%]">HV21</th>
+                    <th className="py-2 px-1 w-[9%]">Tendência</th>
+                    <th className="py-2 px-1 w-[10%]">Sparkline (1A)</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <MarketSectionGroup
+                    title="Índices Acionários Globais"
+                    list={getSortedSeries("INDICE")}
+                    activeField={activeField}
+                  />
+                  <MarketSectionGroup
+                    title="Futuros EUA & Volatilidade (VIX)"
+                    list={[...getSortedSeries("FUTURO"), ...getSortedSeries("VOL")]}
+                    activeField={activeField}
+                  />
+                  <MarketSectionGroup
+                    title="Moedas & Dólar"
+                    list={getSortedSeries("MOEDA")}
+                    activeField={activeField}
+                  />
+                  <MarketSectionGroup
+                    title="Commodities"
+                    list={getSortedSeries("COMMODITY")}
+                    activeField={activeField}
+                  />
+                </tbody>
+              </table>
+            </div>
           </div>
         )}
       </div>
@@ -571,7 +607,7 @@ function BpsCell({ val }: { val: number | null }) {
   );
 }
 
-function MarketTable({
+function MarketSectionGroup({
   title,
   list,
   activeField,
@@ -583,77 +619,61 @@ function MarketTable({
   if (!list.length) return null;
 
   return (
-    <div className="space-y-1">
-      <div className="text-xs font-bold text-term-cyan border-b border-term-line/40 pb-1">{title}</div>
-      <div className="overflow-x-auto">
-        <table className="w-full text-left text-xs font-mono">
-          <thead>
-            <tr className="border-b border-term-line/40 text-xxs text-term-dim uppercase">
-              <th className="py-1 px-1">Ativo</th>
-              <th className="py-1 px-1">Último</th>
-              <th className="py-1 px-1">Var Ativa</th>
-              <th className="py-1 px-1">1D</th>
-              <th className="py-1 px-1">5D</th>
-              <th className="py-1 px-1">1M</th>
-              <th className="py-1 px-1">YTD</th>
-              <th className="py-1 px-1">HV21</th>
-              <th className="py-1 px-1">Tendência</th>
-              <th className="py-1 px-1">Sparkline (1A)</th>
-            </tr>
-          </thead>
-          <tbody>
-            {list.map((s) => {
-              const valActive = (s[activeField] as number) ?? null;
-              const isBps = s.grupo === "JURO";
+    <>
+      <tr className="bg-term-panel2/80 border-y border-term-line/60">
+        <td colSpan={10} className="py-2 px-2 font-bold text-term-cyan text-xs">
+          {title} <span className="text-xxs font-normal text-term-dim">({list.length} ativos)</span>
+        </td>
+      </tr>
+      {list.map((s) => {
+        const valActive = (s[activeField] as number) ?? null;
+        const isBps = s.grupo === "JURO";
 
-              let bgHeat = "";
-              if (valActive != null) {
-                const alpha = Math.min(Math.abs(valActive) * (isBps ? 0.05 : 10), 0.25).toFixed(2);
-                bgHeat = valActive >= 0 ? `rgba(0, 200, 5, ${alpha})` : `rgba(255, 59, 48, ${alpha})`;
-              }
+        let bgHeat = "";
+        if (valActive != null) {
+          const alpha = Math.min(Math.abs(valActive) * (isBps ? 0.05 : 10), 0.25).toFixed(2);
+          bgHeat = valActive >= 0 ? `rgba(0, 200, 5, ${alpha})` : `rgba(255, 59, 48, ${alpha})`;
+        }
 
-              return (
-                <tr key={s.symbol} className="border-b border-term-line/20 hover:bg-term-line/10">
-                  <td className="py-1.5 px-1 font-bold text-term-text">
-                    {s.nome} <span className="text-xxs text-term-dim">({s.symbol})</span>
-                  </td>
-                  <td className="py-1.5 px-1 text-term-cyan font-semibold">
-                    {s.last != null ? (isBps ? `${s.last.toFixed(2)}%` : fmtNum(s.last, 2)) : "—"}
-                  </td>
-                  <td className="py-1.5 px-1" style={{ backgroundColor: bgHeat }}>
-                    {valActive != null ? (
-                      <span className={clsx("font-bold", valActive >= 0 ? "text-term-up" : "text-term-down")}>
-                        {valActive >= 0 ? "+" : ""}
-                        {isBps ? `${valActive.toFixed(1)} bps` : fmtPct(valActive)}
-                      </span>
-                    ) : (
-                      "—"
-                    )}
-                  </td>
-                  <td className="py-1.5 px-1"><ValCell val={s.chg1d} isBps={isBps} /></td>
-                  <td className="py-1.5 px-1"><ValCell val={s.chg5d} isBps={isBps} /></td>
-                  <td className="py-1.5 px-1"><ValCell val={s.chg1m} isBps={isBps} /></td>
-                  <td className="py-1.5 px-1"><ValCell val={s.ytd} isBps={isBps} /></td>
-                  <td className="py-1.5 px-1">{s.hv21 != null ? fmtPct(s.hv21) : "—"}</td>
-                  <td className="py-1.5 px-1">
-                    {s.tendencia === "ALTA" ? (
-                      <span className="tag bg-term-up/20 text-term-up font-bold">ALTA</span>
-                    ) : s.tendencia === "BAIXA" ? (
-                      <span className="tag bg-term-down/20 text-term-down font-bold">BAIXA</span>
-                    ) : (
-                      <span className="tag bg-term-line text-term-dim">LATERAL</span>
-                    )}
-                  </td>
-                  <td className="py-1.5 px-1">
-                    <Sparkline data={s.sparkline} color={valActive != null && valActive >= 0 ? "#00c805" : "#ff3b30"} />
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
-    </div>
+        return (
+          <tr key={s.symbol} className="border-b border-term-line/20 hover:bg-term-line/10">
+            <td className="py-1.5 px-2 font-bold text-term-text truncate" title={`${s.nome} (${s.symbol})`}>
+              {s.nome} <span className="text-xxs text-term-dim">({s.symbol})</span>
+            </td>
+            <td className="py-1.5 px-1 text-term-cyan font-semibold truncate">
+              {s.last != null ? (isBps ? `${s.last.toFixed(2)}%` : fmtNum(s.last, 2)) : "—"}
+            </td>
+            <td className="py-1.5 px-1 truncate" style={{ backgroundColor: bgHeat }}>
+              {valActive != null ? (
+                <span className={clsx("font-bold", valActive >= 0 ? "text-term-up" : "text-term-down")}>
+                  {valActive >= 0 ? "+" : ""}
+                  {isBps ? `${valActive.toFixed(1)} bps` : fmtPct(valActive)}
+                </span>
+              ) : (
+                "—"
+              )}
+            </td>
+            <td className="py-1.5 px-1 truncate"><ValCell val={s.chg1d} isBps={isBps} /></td>
+            <td className="py-1.5 px-1 truncate"><ValCell val={s.chg5d} isBps={isBps} /></td>
+            <td className="py-1.5 px-1 truncate"><ValCell val={s.chg1m} isBps={isBps} /></td>
+            <td className="py-1.5 px-1 truncate"><ValCell val={s.ytd} isBps={isBps} /></td>
+            <td className="py-1.5 px-1 truncate">{s.hv21 != null ? fmtPct(s.hv21) : "—"}</td>
+            <td className="py-1.5 px-1">
+              {s.tendencia === "ALTA" ? (
+                <span className="tag bg-term-up/20 text-term-up font-bold">ALTA</span>
+              ) : s.tendencia === "BAIXA" ? (
+                <span className="tag bg-term-down/20 text-term-down font-bold">BAIXA</span>
+              ) : (
+                <span className="tag bg-term-line text-term-dim">LATERAL</span>
+              )}
+            </td>
+            <td className="py-1.5 px-1">
+              <Sparkline data={s.sparkline} color={valActive != null && valActive >= 0 ? "#00c805" : "#ff3b30"} />
+            </td>
+          </tr>
+        );
+      })}
+    </>
   );
 }
 
