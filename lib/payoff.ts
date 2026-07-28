@@ -1,4 +1,4 @@
-import { bsPrice, lognormalPdf } from "./black-scholes";
+import { bsGreeks, bsPrice, lognormalPdf } from "./black-scholes";
 import type { Leg, PayoffPoint, StrategyMetrics } from "./types";
 
 /** Valor intrínseco de uma perna no vencimento, por unidade. */
@@ -130,6 +130,35 @@ export function strategyMetrics(legs: Leg[], spot: number, r: number, atmIv?: nu
   }
 
   return { netDebit, maxProfit, maxLoss, breakevens: findBreakevens(legs, spot), pop };
+}
+
+export interface StructureGreeks {
+  delta: number; // ações equivalentes
+  gamma: number;
+  vegaPer1pct: number; // R$ por +1 ponto de vol
+  thetaPerDay: number; // R$ por dia corrido
+}
+
+/** Gregas líquidas da estrutura em edição (Workbench) — soma perna a perna
+ * com a IV da própria perna (+volOffset), antes de virar posição. */
+export function structureGreeks(legs: Leg[], spot: number, r: number): StructureGreeks {
+  const out: StructureGreeks = { delta: 0, gamma: 0, vegaPer1pct: 0, thetaPerDay: 0 };
+  for (const l of legs) {
+    if (l.qty <= 0) continue;
+    if (l.kind === "STOCK") {
+      out.delta += l.side * l.qty;
+      continue;
+    }
+    const t = (l.du ?? 0) / 252;
+    const iv = Math.max((l.iv ?? 0.3) + (l.volOffset ?? 0) / 100, 0.01);
+    if (t <= 0 || l.strike == null || !l.type) continue;
+    const g = bsGreeks({ s: spot, k: l.strike, t, r, sigma: iv }, l.type);
+    out.delta += l.side * l.qty * g.delta;
+    out.gamma += l.side * l.qty * g.gamma;
+    out.vegaPer1pct += l.side * l.qty * g.vega;
+    out.thetaPerDay += l.side * l.qty * g.theta;
+  }
+  return out;
 }
 
 /** Matriz de sensibilidade: spot ±rangePct × vol shift (pontos) em um dia futuro. */
