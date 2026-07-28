@@ -1,21 +1,32 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { RefreshCw } from "lucide-react";
+import { ChevronDown, RefreshCw } from "lucide-react";
+import clsx from "clsx";
 import { DividendEditor } from "@/components/DividendEditor";
 import { useMarket } from "@/store/market";
 import { fmtBRL, fmtPct } from "@/lib/format";
 import { skewInfo } from "@/lib/scanner";
 import { getIvRank, snapshotCount, useSnapshots } from "@/lib/snapshots";
-import { tickers } from "@/lib/universe";
-
-const SUGGESTED = tickers();
+import { UNIVERSE } from "@/lib/universe";
 
 export function TickerBar() {
   const { ticker, setTicker, selic, setSelic, spotOverride, setSpotOverride, chain, loading, error, refresh, selectedExpiry } =
     useMarket();
   const [tickerInput, setTickerInput] = useState(ticker);
   const interval = useRef<ReturnType<typeof setInterval> | null>(null);
+  // Dropdown do universo: o datalist nativo filtrava pelo texto já digitado
+  // ("PETR4" ⇒ só PETR4); este painel sempre lista os 20 nomes
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const pickerRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    const onClick = (e: MouseEvent) => {
+      if (pickerOpen && pickerRef.current && !pickerRef.current.contains(e.target as Node)) setPickerOpen(false);
+    };
+    document.addEventListener("mousedown", onClick);
+    return () => document.removeEventListener("mousedown", onClick);
+  }, [pickerOpen]);
   // WO-9: Selic meta do BCB (via strip macro do /api/news) para sanity check
   const [selicBcb, setSelicBcb] = useState<number | null>(null);
 
@@ -70,18 +81,45 @@ export function TickerBar() {
         }}
         className="flex items-center gap-1"
       >
-        <input
-          list="tickers"
-          value={tickerInput}
-          onChange={(e) => setTickerInput(e.target.value.toUpperCase())}
-          className="cell-input !w-24 !text-left font-bold text-term-cyan"
-          aria-label="Ticker"
-        />
-        <datalist id="tickers">
-          {SUGGESTED.map((t) => (
-            <option key={t} value={t} />
-          ))}
-        </datalist>
+        <div className="relative flex items-center" ref={pickerRef}>
+          <input
+            value={tickerInput}
+            onChange={(e) => setTickerInput(e.target.value.toUpperCase())}
+            className="cell-input !w-24 !text-left font-bold text-term-cyan !pr-6"
+            aria-label="Ticker"
+          />
+          <button
+            type="button"
+            className="absolute right-1 text-term-dim hover:text-term-cyan"
+            title="Universo monitorado (20 nomes)"
+            onClick={() => setPickerOpen((o) => !o)}
+          >
+            <ChevronDown size={13} className={clsx("transition-transform", pickerOpen && "rotate-180")} />
+          </button>
+          {pickerOpen && (
+            <div className="absolute left-0 top-full mt-1 z-50 panel border border-term-line shadow-xl w-64 max-h-80 overflow-y-auto">
+              {UNIVERSE.map((u) => (
+                <button
+                  key={u.ticker}
+                  type="button"
+                  className={clsx(
+                    "w-full flex items-center gap-2 px-2.5 py-1.5 text-xs hover:bg-term-panel2 transition-colors",
+                    u.ticker === ticker && "bg-term-cyan/10"
+                  )}
+                  onClick={() => {
+                    setTickerInput(u.ticker);
+                    setTicker(u.ticker);
+                    setPickerOpen(false);
+                  }}
+                >
+                  <span className="font-mono font-bold text-term-cyan w-16 text-left">{u.ticker}</span>
+                  <span className="flex-1 text-left text-term-text truncate">{u.name}</span>
+                  <span className="text-xxs text-term-dim">{u.sector}</span>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
         <button type="submit" className="btn">
           Ir
         </button>
