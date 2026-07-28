@@ -274,5 +274,84 @@ if (allZeroDd && ddRes.length === 3) {
   failures++;
 }
 
+// ---- WO-18: GEX real via B3 Open Interest (lib/gex.ts) ----
+import { buildGexProfile } from "../gex";
+
+// 1. buildGexProfile com só calls => netGex > 0 e putWall === null
+const callsOnlyChain: ChainData = {
+  ticker: "PETR4",
+  spot: 40,
+  updatedAt: new Date().toISOString(),
+  expiries: [{ date: "2026-04-17", label: "17/04", du: 20, dte: 30, isMonthly: true, weekCode: "M" }],
+  options: [
+    makeOpt("PETRD40", "CALL", "ATM", 40, 1.8, 200, 100000, 0.5),
+    makeOpt("PETRD42", "CALL", "OTM", 42, 0.9, 150, 80000, 0.3),
+  ],
+  greeksComputedLocally: true,
+};
+const callsOiMap = {
+  PETRD40: { type: "CALL" as const, totalPos: 100000 },
+  PETRD42: { type: "CALL" as const, totalPos: 50000 },
+};
+const profCalls = buildGexProfile(callsOnlyChain, callsOiMap, "2026-07-24");
+const allNetPos = profCalls.byStrike.every((s) => s.netGex > 0);
+if (allNetPos && profCalls.putWall === null && profCalls.callWall === 40) {
+  console.log("✔ buildGexProfile com só calls: netGex > 0 em todos os strikes e putWall === null");
+} else {
+  console.log(`✘ buildGexProfile só calls falhou: allNetPos=${allNetPos}, putWall=${profCalls.putWall}, callWall=${profCalls.callWall}`);
+  failures++;
+}
+
+// 2. Perfil simétrico (Call em K38, Put em K42 com mesmo OI) => gammaFlip no ponto médio (spot = 40)
+const symmChain: ChainData = {
+  ticker: "PETR4",
+  spot: 40,
+  updatedAt: new Date().toISOString(),
+  expiries: [{ date: "2026-04-17", label: "17/04", du: 20, dte: 30, isMonthly: true, weekCode: "M" }],
+  options: [
+    makeOpt("PETRD38", "CALL", "ITM", 38, 3.2, 100, 50000, 0.7),
+    makeOpt("PETRP42", "PUT", "ITM", 42, 2.4, 110, 60000, -0.7),
+  ],
+  greeksComputedLocally: true,
+};
+const symmOiMap = {
+  PETRD38: { type: "CALL" as const, totalPos: 100000 },
+  PETRP42: { type: "PUT" as const, totalPos: 100000 },
+};
+const profSymm = buildGexProfile(symmChain, symmOiMap, "2026-07-24");
+assertClose("buildGexProfile simétrico: gammaFlip próximo do spot", profSymm.gammaFlip, 40, 0.8);
+
+// 3. callWall é o strike de maior callGex numa série de 4 strikes
+const multiChain: ChainData = {
+  ticker: "PETR4",
+  spot: 40,
+  updatedAt: new Date().toISOString(),
+  expiries: [{ date: "2026-04-17", label: "17/04", du: 20, dte: 30, isMonthly: true, weekCode: "M" }],
+  options: [
+    makeOpt("PETRD38", "CALL", "ITM", 38, 3.2, 100, 50000, 0.7),
+    makeOpt("PETRD40", "CALL", "ATM", 40, 1.8, 200, 100000, 0.5),
+    makeOpt("PETRD42", "CALL", "OTM", 42, 0.9, 150, 80000, 0.3),
+    makeOpt("PETRD44", "CALL", "OTM", 44, 0.4, 80, 30000, 0.15),
+  ],
+  greeksComputedLocally: true,
+};
+const multiOiMap = {
+  PETRD38: { type: "CALL" as const, totalPos: 10000 },
+  PETRD40: { type: "CALL" as const, totalPos: 500000 },
+  PETRD42: { type: "CALL" as const, totalPos: 30000 },
+  PETRD44: { type: "CALL" as const, totalPos: 5000 },
+};
+const profMulti = buildGexProfile(multiChain, multiOiMap, "2026-07-24");
+if (profMulti.callWall === 40) {
+  console.log("✔ buildGexProfile: callWall identifica corretamente o strike de maior callGex (K40)");
+} else {
+  console.log(`✘ buildGexProfile callWall falhou: got ${profMulti.callWall}, want 40`);
+  failures++;
+}
+
+// 4. Série do chain sem correspondência no mapa entra com OI = 0 e coverage reflete fração casada (2/4 = 50%)
+const profPartial = buildGexProfile(multiChain, { PETRD40: { type: "CALL", totalPos: 100000 }, PETRD42: { type: "CALL", totalPos: 20000 } }, "2026-07-24");
+assertClose("buildGexProfile: coverage com casamento parcial", profPartial.coverage, 0.5, 1e-4);
+
 console.log(failures === 0 ? "\nTODOS OS TESTES PASSARAM" : `\n${failures} TESTE(S) FALHARAM`);
 process.exit(failures === 0 ? 0 : 1);

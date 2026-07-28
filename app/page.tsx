@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
@@ -8,7 +8,9 @@ import { useMarket } from "@/store/market";
 import { netGreeks, var95 } from "@/lib/portfolio";
 import { DEFAULT_POZINHO_FILTERS, scanPozinhos, skewInfo, suggestFromSkew } from "@/lib/scanner";
 import { expectedMove } from "@/lib/black-scholes";
-import { fmtBRL, fmtNum, fmtPct, pnlColor } from "@/lib/format";
+import { fmtBRL, fmtDateBR, fmtNum, fmtPct, pnlColor } from "@/lib/format";
+import { buildGexProfile, type GexProfile } from "@/lib/gex";
+import { GexProfileChart } from "@/components/GexProfile";
 
 /** Valores manuais de GEX + carimbo de edição (WO-14), persistidos por ticker. */
 interface GexValues {
@@ -41,12 +43,60 @@ const useGexInputs = create<GexState>()(
   )
 );
 
+interface OiApiResponse {
+  ticker: string;
+  asset: string;
+  fileDate: string;
+  series: Record<string, { type: "CALL" | "PUT"; totalPos: number }>;
+  updatedAt: string;
+  stale: boolean;
+}
+
 /** Cockpit Pré-Market — réplica web do diagnóstico matinal da planilha. */
 export default function CockpitPage() {
   const { chain, selic, positions, selectedExpiry, ticker } = useMarket();
 
-  // Inputs manuais de GEX (fonte externa, ex.: OpLab) — como na aba Vol Map;
-  // persistidos por ticker com proveniência MANUAL (WO-14)
+  // WO-18: Estado da busca de Posições em Aberto da B3
+  const [oiData, setOiData] = useState<OiApiResponse | null>(null);
+  const [loadingOi, setLoadingOi] = useState(false);
+  const [errorOi, setErrorOi] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!ticker) return;
+    let active = true;
+    setLoadingOi(true);
+    setErrorOi(null);
+
+    fetch(`/api/oi?ticker=${ticker}`)
+      .then((res) => {
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        return res.json();
+      })
+      .then((data: OiApiResponse) => {
+        if (active) {
+          setOiData(data);
+          setLoadingOi(false);
+        }
+      })
+      .catch((err) => {
+        if (active) {
+          setErrorOi(err.message || "Erro ao carregar Posição em Aberto B3");
+          setLoadingOi(false);
+        }
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [ticker]);
+
+  // WO-18: Perfil de GEX calculado via dados da B3
+  const calcProfile = useMemo(() => {
+    if (!chain || !oiData) return null;
+    return buildGexProfile(chain, oiData.series, oiData.fileDate, selectedExpiry ?? undefined);
+  }, [chain, oiData, selectedExpiry]);
+
+  // Inputs manuais de GEX — sobram sobre o calculado (WO-18)
   const { byTicker, patchFor } = useGexInputs();
   const gex = byTicker[ticker] ?? EMPTY_GEX;
   const setGexField = (k: keyof Omit<GexValues, "editedAt">, v: string) => patchFor(ticker, { [k]: v });
@@ -61,10 +111,21 @@ export default function CockpitPage() {
   const du = chain?.expiries.find((e) => e.date === selectedExpiry)?.du ?? null;
   const em = chain && atmIv != null && du ? expectedMove(chain.spot, atmIv, du / 252) : null;
 
-  const gf = Number(gex.gammaFlip) || null;
-  const cw = Number(gex.callWall) || null;
-  const pw = Number(gex.putWall) || null;
+  // Hierarquia: valor manual (se digitado) > valor calculado B3 > null
+  const manualGf = Number(gex.gammaFlip) || null;
+  const manualCw = Number(gex.callWall) || null;
+  const manualPw = Number(gex.putWall) || null;
   const vt = Number(gex.volTrigger) || null;
+
+  const gf = manualGf ?? calcProfile?.gammaFlip ?? null;
+  const cw = manualCw ?? calcProfile?.callWall ?? null;
+  const pw = manualPw ?? calcProfile?.putWall ?? null;
+
+  const isGfManual = manualGf != null;
+  const isCwManual = manualCw != null;
+  const isPwManual = manualPw != null;
+  const hasManual = isGfManual || isCwManual || isPwManual || vt != null;
+
   const regime =
     chain && gf ? (chain.spot > gf ? "SUPRESSÃO (GEX+)" : "EXPLOSÃO (GEX−)") : null;
 
@@ -96,16 +157,23 @@ export default function CockpitPage() {
 
         {/* [2] Skew / GEX */}
         <div className="panel">
-          <div className="panel-title">
-            [2] Skew / GEX — {chain?.ticker ?? "—"}
-            {gex.editedAt && (gex.gammaFlip || gex.callWall || gex.putWall || gex.volTrigger) && (
+          <div className="panel-title flex items-center justify-between">
+            <span>[2] Skew / GEX — {chain?.ticker ?? "—"}</span>
+            {hasManual ? (
               <span
-                className="tag bg-term-gold/15 text-term-gold ml-2"
-                title="Níveis de GEX digitados manualmente (ex.: OpLab) — não são analytics computados. Carimbo da última edição."
+                className="tag bg-term-gold/15 text-term-gold"
+                title="Valores manuais digitados sobrepõem os calculados. Limpe o campo para voltar ao valor automático da B3."
               >
-                MANUAL — {new Date(gex.editedAt).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}
+                MANUAL — {gex.editedAt ? new Date(gex.editedAt).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" }) : "editado"}
               </span>
-            )}
+            ) : oiData?.fileDate ? (
+              <span
+                className="tag bg-term-cyan/15 text-term-cyan font-mono"
+                title="Níveis de GEX calculados em tempo real a partir do arquivo de Posição em Aberto oficial da B3."
+              >
+                B3 D-1 · {fmtDateBR(oiData.fileDate)}
+              </span>
+            ) : null}
           </div>
           <div className="px-3 pb-3 space-y-1 text-xs font-mono">
             <Row k="IV Call ATM" v={fmtPct(skew?.ivCallAtm ?? null)} />
@@ -117,32 +185,67 @@ export default function CockpitPage() {
             />
             <Row k="Sinal" v={skew?.signal?.replace("_", " ") ?? "—"} />
             <Row k="Expected move (1σ)" v={em != null && chain ? `±${fmtBRL(em)} (${fmtPct(em / chain.spot)})` : "—"} cls="text-term-cyan" />
-            {regime && <Row k="Regime GEX" v={regime} cls={regime.startsWith("SUP") ? "text-term-up" : "text-term-down"} />}
-            {chain && cw != null && <WallRow label="Call Wall" wall={cw} spot={chain.spot} />}
-            {chain && pw != null && <WallRow label="Put Wall" wall={pw} spot={chain.spot} />}
-            {chain && vt != null && (
-              <Row k="Vol Trigger" v={`${fmtNum(vt)} — IV tende a ${chain.spot > vt ? "comprimir" : "expandir"}`} />
+            {regime && (
+              <Row
+                k="Regime GEX"
+                v={regime}
+                cls={regime.startsWith("SUP") ? "text-term-up font-semibold" : "text-term-down font-semibold"}
+              />
             )}
-            <div className="grid grid-cols-2 gap-1 pt-1">
-              {(
-                [
-                  ["gammaFlip", "Gamma Flip"],
-                  ["callWall", "Call Wall"],
-                  ["putWall", "Put Wall"],
-                  ["volTrigger", "Vol Trigger"],
-                ] as const
-              ).map(([k, label]) => (
-                <label key={k} className="text-xxs text-term-dim flex flex-col">
-                  {label} (manual)
-                  <input
-                    type="number"
-                    step="0.01"
-                    value={gex[k]}
-                    onChange={(e) => setGexField(k, e.target.value)}
-                    className="cell-input !w-full"
-                  />
-                </label>
-              ))}
+            {chain && cw != null && <WallRow label={`Call Wall ${isCwManual ? "(manual)" : "(B3)"}`} wall={cw} spot={chain.spot} />}
+            {chain && pw != null && <WallRow label={`Put Wall ${isPwManual ? "(manual)" : "(B3)"}`} wall={pw} spot={chain.spot} />}
+            {chain && vt != null && (
+              <Row k="Vol Trigger (manual)" v={`${fmtNum(vt)} — IV tende a ${chain.spot > vt ? "comprimir" : "expandir"}`} />
+            )}
+
+            <div className="grid grid-cols-2 gap-1 pt-1.5 border-t border-term-line/40">
+              <label className="text-xxs text-term-dim flex flex-col">
+                <span>Gamma Flip {isGfManual ? "(manual)" : calcProfile?.gammaFlip != null ? "(B3)" : "(manual)"}</span>
+                <input
+                  type="number"
+                  step="0.01"
+                  value={gex.gammaFlip}
+                  placeholder={calcProfile?.gammaFlip != null ? calcProfile.gammaFlip.toFixed(2) : "auto B3…"}
+                  onChange={(e) => setGexField("gammaFlip", e.target.value)}
+                  className="cell-input !w-full"
+                />
+              </label>
+
+              <label className="text-xxs text-term-dim flex flex-col">
+                <span>Call Wall {isCwManual ? "(manual)" : calcProfile?.callWall != null ? "(B3)" : "(manual)"}</span>
+                <input
+                  type="number"
+                  step="0.01"
+                  value={gex.callWall}
+                  placeholder={calcProfile?.callWall != null ? String(calcProfile.callWall) : "auto B3…"}
+                  onChange={(e) => setGexField("callWall", e.target.value)}
+                  className="cell-input !w-full"
+                />
+              </label>
+
+              <label className="text-xxs text-term-dim flex flex-col">
+                <span>Put Wall {isPwManual ? "(manual)" : calcProfile?.putWall != null ? "(B3)" : "(manual)"}</span>
+                <input
+                  type="number"
+                  step="0.01"
+                  value={gex.putWall}
+                  placeholder={calcProfile?.putWall != null ? String(calcProfile.putWall) : "auto B3…"}
+                  onChange={(e) => setGexField("putWall", e.target.value)}
+                  className="cell-input !w-full"
+                />
+              </label>
+
+              <label className="text-xxs text-term-dim flex flex-col">
+                <span>Vol Trigger (só manual)</span>
+                <input
+                  type="number"
+                  step="0.01"
+                  value={gex.volTrigger}
+                  placeholder="manual…"
+                  onChange={(e) => setGexField("volTrigger", e.target.value)}
+                  className="cell-input !w-full"
+                />
+              </label>
             </div>
           </div>
         </div>
@@ -168,6 +271,15 @@ export default function CockpitPage() {
           </div>
         </div>
       </div>
+
+      {/* WO-18: Gráfico do Perfil de GEX por Strike */}
+      <GexProfileChart
+        chain={chain}
+        series={oiData?.series ?? {}}
+        fileDate={oiData?.fileDate ?? null}
+        stale={oiData?.stale}
+        selectedExpiry={selectedExpiry}
+      />
 
       {/* Foco do dia */}
       <div className="panel border-l-2 !border-l-term-cyan">

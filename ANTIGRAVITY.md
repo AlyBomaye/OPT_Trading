@@ -168,6 +168,7 @@ components/
   PriceHistoryPanel.tsx   Histórico diário OHLCV + volume + overlays (strikes/BEs/spot)
   ActionFlags.tsx         Painel Ação do Dia (flags de risco, limiares, popover)
   PerformanceCharts.tsx   Suíte de 7 gráficos de risco, drawdown e atribuição
+  GexProfile.tsx          Gráfico de GEX por strike Recharts (spot, flip, walls, filtro vencimento)
 
 lib/
   black-scholes.ts        Engine BSM/CRR completo (§7.2)
@@ -178,6 +179,7 @@ lib/
                           capital alocado, journal stats, equity curve (§7.4)
   position-flags.ts       Módulo de 11 flags de ação por posição e useFlagSettings
   performance.ts          Grouping de trades, métricas de performance e atribuição de P&L
+  gex.ts                  Solver de GEX real (buildGexProfile, gammaFlip zero-crossing, CONTRACT_MULT)
   scanner.ts              Pozinhos, skew ratio (vw), atmIvNearest, Kelly (§7.5)
   historical.ts           logReturns, rollingHV, Parkinson, returnStats, volCone
   snapshots.ts            Store "iv-snapshots" + atmIvStats + getIvRank (§7.6)
@@ -208,6 +210,7 @@ store/
 | IPCA 12 m | `…bcdata.sgs.13522/dados/ultimos/1?formato=json` | % acumulado 12 m |
 | USD/BRL | `https://economia.awesomeapi.com.br/json/last/USD-BRL` | `USDBRL.bid`, `.pctChange` |
 | Notícias RSS | InfoMoney `/feed/` · Money Times `/feed/` · G1 `g1.globo.com/rss/g1/economia/` | RSS 2.0, parse por regex server-side (sem lib XML) |
+| Posição em aberto B3 | `https://arquivos.b3.com.br/api/download/requestname?fileName=DerivativesOpenPositionFile&date=YYYY-MM-DD` | download em 2 passos (JSON com token → download CSV latin1 `;`), posição em `TtlPos` |
 
 Regras para toda chamada externa: server-side apenas; `AbortSignal.timeout(8000–10000)`;
 User-Agent `Mozilla/5.0 (Windows NT 10.0; Win64; x64)`; cache TTL em memória
@@ -274,6 +277,20 @@ calendários oficiais (BCB, Fed, IBGE, BLS) no mesmo formato.
 { ticker, range, candles: Candle[], source: "yahoo"|"brapi", updatedAt, error? }
 // Candle: { date "YYYY-MM-DD", open, high, low, close, volume }  (closes null dropados)
 // 502 somente quando AMBAS as fontes falham.
+```
+
+### 6.5 `GET /api/oi?ticker=PETR4`
+
+```ts
+{
+  ticker: string;
+  asset: string;                  // raiz sem dígito: PETR4 -> PETR, BOVA11 -> BOVA
+  fileDate: string;               // YYYY-MM-DD do arquivo B3 carregado
+  series: Record<string, { type: "CALL"|"PUT", totalPos: number, covered: number, uncovered: number }>;
+  updatedAt: string;
+  stale: boolean;                 // true se fileDate < último dia útil esperado
+}
+// Fallback de até 5 dias corridos (D0...D-4). Cache em memória de 6h do arquivo cru.
 ```
 
 ---
@@ -447,10 +464,7 @@ incrementar `version` e estender `migrate` — nunca resetar estado do usuário.
 
 Réplica do diagnóstico matinal da planilha TradingOpt: **[1] Choque do Portfólio**
 (Δ ações eq., Δ R$, Γ, vega/+1%, Θ/dia, VaR95 spot×vol com tooltip do método),
-**[2] Skew/GEX** (IVs ATM vw, ratio com limiares, sinal, expected move 1σ, inputs manuais
-de GEX com chip `MANUAL — hh:mm` persistido por ticker; regime SUPRESSÃO/EXPLOSÃO quando
-Gamma Flip preenchido), **[3] Pozinhos do dia** (top-6 por convexidade) e **Foco do dia**
-(leitura combinada regime × skew × book, com disclaimer educacional).
+**[2] Skew/GEX** (IVs ATM vw, ratio com limiares, sinal, expected move 1σ; **WO-18 Níveis calculados de GEX da B3 D-1** via `/api/oi` com hierarquia: manual digitado vence com chip `MANUAL — hh:mm`, senão calculado B3 D-1 com chip `B3 D-1 · dd/mm`), **[3] Pozinhos do dia** (top-6 por convexidade), **Gráfico de Perfil de GEX por Strike** (`GexProfileChart` com spot, flip, call wall, put wall e filtro de vencimento) e **Foco do dia** (leitura combinada regime × skew × book citando o regime calculado).
 
 ### 9.2 Chain (`/chain`, hotkey 2)
 
@@ -642,9 +656,7 @@ calculado à mão ou de literatura (Hull).
 ## 13. Roadmap (ordem de prioridade — validado pelo dossiê de auditoria)
 
 **P2 (próximos):**
-1. **OI ingestion → GEX real** — B3 publica posições em aberto por série (arquivos
-   públicos diários); `GEX = Σ OI × Γ × S² × 0.01 × mult × sign`; substitui os níveis
-   manuais por computados (máx pain, walls). Manter o bloco manual como fallback rotulado.
+1. **OI ingestion → GEX real [CONCLUÍDO WO-18]** — B3 publica posições em aberto por série (`DerivativesOpenPositionFile`); `GEX = Σ Γ × OI × S² × 0.01`; substitui os níveis manuais por computados (Gamma Flip, Call Wall, Put Wall) mantendo manual como override soberano. Vol Trigger permanece manual (sem definição pública consensual).
 2. **PoP integrada ao smile** (hoje: lognormal com IV ATM) e cenário de rotação de skew
    na matriz de sensibilidade.
 3. **Alertas** (spot cruza wall, skew cruza limiar, stop de posição) — engine client-side
