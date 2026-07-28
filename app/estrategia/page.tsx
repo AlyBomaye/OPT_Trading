@@ -1,7 +1,7 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import { Trash2, Plus, Save, Copy } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { Trash2, Plus, Save, Copy, Sparkles, X, Check } from "lucide-react";
 import clsx from "clsx";
 import { useMarket } from "@/store/market";
 import { PRESETS } from "@/lib/strategies";
@@ -9,11 +9,13 @@ import { strategyMetrics, structureGreeks } from "@/lib/payoff";
 import { allocatedCapital, journalStats } from "@/lib/portfolio";
 import { atmIvNearest, skewInfo, suggestFromSkew, kellyFraction } from "@/lib/scanner";
 import { detectStrategy } from "@/lib/strategy-detect";
+import { suggestStructures, type SuggestionCandidate } from "@/lib/suggest";
 import { fmtBRL, fmtNum, fmtPct, pnlColor } from "@/lib/format";
 import { MiniChain } from "@/components/MiniChain";
 import { LegDiagram } from "@/components/LegDiagram";
 import { PayoffChart } from "@/components/PayoffChart";
 import { SensitivityMatrix } from "@/components/SensitivityMatrix";
+import { PriceHistoryPanel } from "@/components/PriceHistoryPanel";
 
 /* ============================================================================
  * Workbench de Estratégia — one-stop shop do trader de opções: chain à
@@ -47,6 +49,18 @@ export default function EstrategiaPage() {
   } = useMarket();
   const [tnDay, setTnDay] = useState(5);
   const [showPresets, setShowPresets] = useState(true);
+
+  // WO-16: Estado das 3 sugestões por EV ajustado a risco
+  const [suggestPreset, setSuggestPreset] = useState<string | null>(null);
+  const [suggestions, setSuggestions] = useState<SuggestionCandidate[]>([]);
+  const [selectedSuggestion, setSelectedSuggestion] = useState<string | null>(null);
+
+  // Invalidação obrigatória: trocar de ticker ou de vencimento limpa sugestões
+  useEffect(() => {
+    setSuggestPreset(null);
+    setSuggestions([]);
+    setSelectedSuggestion(null);
+  }, [chain?.ticker, selectedExpiry]);
 
   // WO-13: sigma da PoP = IV ATM do vencimento da estrutura (perna mais curta)
   const structExpiry = useMemo(() => {
@@ -99,10 +113,37 @@ export default function EstrategiaPage() {
     if (built) setLegs(built);
   };
 
+  // WO-16: Clique no preset abre as sugestões ranqueadas e carrega a #1
+  const handlePresetClick = (key: string) => {
+    if (!chain || !selectedExpiry) return;
+    const candidates = suggestStructures(chain, selectedExpiry, key, selic, 3);
+    setSuggestPreset(key);
+    setSuggestions(candidates);
+    if (candidates.length > 0) {
+      setLegs(candidates[0].legs);
+      setSelectedSuggestion(candidates[0].id);
+    } else {
+      applyPreset(key);
+      setSelectedSuggestion(null);
+    }
+  };
+
+  const handleSelectCandidate = (cand: SuggestionCandidate) => {
+    setLegs(cand.legs);
+    setSelectedSuggestion(cand.id);
+  };
+
+  const handleBuildStandard = (key: string) => {
+    applyPreset(key);
+    setSelectedSuggestion(null);
+  };
+
   const duplicateLeg = (id: string) => {
     const l = legs.find((x) => x.id === id);
     if (l) setLegs([...legs, { ...l, id: `leg-${Date.now()}-dup` }]);
   };
+
+  const currentPresetDef = suggestPreset ? PRESETS.find((p) => p.key === suggestPreset) : null;
 
   return (
     <>
@@ -113,7 +154,7 @@ export default function EstrategiaPage() {
           <span className="text-xs">
             <b>{suggestion.title}</b> — {suggestion.reason}
           </span>
-          <button className="btn-primary" onClick={() => applyPreset(suggestion.preset)}>
+          <button className="btn-primary" onClick={() => handlePresetClick(suggestion.preset)}>
             Montar agora
           </button>
           <span className="text-xxs text-term-dim">Não é recomendação de investimento — valide a tese antes de operar.</span>
@@ -153,7 +194,12 @@ export default function EstrategiaPage() {
         {showPresets && (
           <div className="flex flex-wrap gap-1.5 pt-2">
             {PRESETS.map((p) => (
-              <button key={p.key} className="btn" onClick={() => applyPreset(p.key)} title={`${p.bias} — ${p.desc}`}>
+              <button
+                key={p.key}
+                className={clsx("btn transition-colors", suggestPreset === p.key && "border-term-cyan text-term-cyan font-bold bg-term-cyan/10")}
+                onClick={() => handlePresetClick(p.key)}
+                title={`${p.bias} — ${p.desc}`}
+              >
                 {p.name}
                 {p.advanced ? " ⚠" : ""}
               </button>
@@ -161,6 +207,117 @@ export default function EstrategiaPage() {
           </div>
         )}
       </div>
+
+      {/* WO-16 Feature 2: Painel de 3 Cards de Sugestão com Preview Interativo */}
+      {suggestPreset && currentPresetDef && (
+        <div className="panel p-3 border-l-2 !border-l-term-cyan space-y-3">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Sparkles size={16} className="text-term-cyan" />
+              <span className="font-mono font-bold text-xs text-term-cyan">
+                Sugestões — {currentPresetDef.name} · {chain?.ticker} · venc. {selectedExpiry}
+              </span>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                className="btn text-xxs py-0.5 px-2"
+                onClick={() => handleBuildStandard(suggestPreset)}
+                title="Montar estrutura padrão com strikes fixos"
+              >
+                Montar padrão
+              </button>
+              <button
+                className="text-term-dim hover:text-term-text p-1"
+                onClick={() => setSuggestPreset(null)}
+                title="Fechar sugestões"
+              >
+                <X size={14} />
+              </button>
+            </div>
+          </div>
+
+          {suggestions.length > 0 ? (
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+              {suggestions.map((cand, idx) => {
+                const isSelected = selectedSuggestion === cand.id;
+                const netDeb = cand.metrics.netDebit;
+                return (
+                  <div
+                    key={cand.id}
+                    onClick={() => handleSelectCandidate(cand)}
+                    className={clsx(
+                      "panel p-3 cursor-pointer transition-all border relative flex flex-col justify-between space-y-2",
+                      isSelected
+                        ? "!border-term-cyan bg-term-cyan/10 shadow-sm"
+                        : "hover:border-term-cyan/60 hover:bg-term-panel2/40"
+                    )}
+                  >
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-1.5">
+                        <span className="font-mono font-bold text-xs text-term-cyan">#{idx + 1}</span>
+                        <span className="tag bg-term-cyan/20 text-term-cyan font-mono text-xxs">
+                          EV/risco: {cand.score.toFixed(2)}×
+                        </span>
+                      </div>
+                      {isSelected && (
+                        <span className="tag bg-term-cyan text-term-bg font-bold font-mono text-xxs flex items-center gap-1">
+                          <Check size={10} /> SELECIONADA
+                        </span>
+                      )}
+                    </div>
+
+                    <div className="font-mono text-xs font-semibold text-term-text truncate" title={cand.label}>
+                      {cand.label}
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-x-2 gap-y-1 text-xxs font-mono border-t border-term-line/40 pt-2">
+                      <div>
+                        <span className="text-term-dim">EV: </span>
+                        <b className={cand.ev > 0 ? "text-term-up" : "text-term-down"}>{fmtBRL(cand.ev)}</b>
+                      </div>
+                      <div>
+                        <span className="text-term-dim">{netDeb >= 0 ? "Débito: " : "Crédito: "}</span>
+                        <b className={netDeb >= 0 ? "text-term-down" : "text-term-up"}>{fmtBRL(Math.abs(netDeb))}</b>
+                      </div>
+                      <div>
+                        <span className="text-term-dim">Máx Lucro: </span>
+                        <b className="text-term-up">{cand.metrics.maxProfit == null ? "Ilimitado" : fmtBRL(cand.metrics.maxProfit)}</b>
+                      </div>
+                      <div>
+                        <span className="text-term-dim">Máx Perda: </span>
+                        <b className="text-term-down">{cand.metrics.maxLoss == null ? "Ilimitada" : fmtBRL(cand.metrics.maxLoss)}</b>
+                      </div>
+                      <div>
+                        <span className="text-term-dim">PoP: </span>
+                        <b className="text-term-cyan">{cand.metrics.pop != null ? fmtPct(cand.metrics.pop) : "—"}</b>
+                      </div>
+                      <div>
+                        <span className="text-term-dim">BE: </span>
+                        <b className="text-term-text">
+                          {cand.metrics.breakevens.length ? cand.metrics.breakevens.map((b) => fmtNum(b)).join(" · ") : "—"}
+                        </b>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            <div className="p-3 text-xs text-term-dim font-mono bg-term-panel2/40 rounded flex items-center justify-between">
+              <span>
+                Sem candidatas líquidas para {currentPresetDef.name} em {chain?.ticker} · {selectedExpiry} (requer prêmio &gt; 0 e negócios na sessão).
+              </span>
+              <button className="btn-primary text-xxs" onClick={() => handleBuildStandard(suggestPreset)}>
+                Montar padrão
+              </button>
+            </div>
+          )}
+
+          <div className="text-xxs text-term-dim font-mono">
+            Ranking por EV ajustado a risco = valor esperado (lognormal, IV ATM) ÷ perda máxima. Estruturas de perda ilimitada não entram no ranking.
+          </div>
+        </div>
+      )}
 
       {/* Grid principal: chain à esquerda, operação à direita */}
       <div className="grid grid-cols-1 xl:grid-cols-12 gap-3 items-start">
@@ -311,6 +468,17 @@ export default function EstrategiaPage() {
               {journal ? fmtPct(journal.winRate) : "—"} e payoff {journal?.payoffRatio != null ? fmtNum(journal.payoffRatio, 2) : "—"}{" "}
               não sustentam o p/b assumido pela PoP.
             </div>
+          )}
+
+          {/* WO-16 Feature 1: Painel de histórico de preços colapsável com overlays */}
+          {chain && (
+            <PriceHistoryPanel
+              ticker={chain.ticker}
+              chain={chain}
+              selectedExpiry={selectedExpiry}
+              legs={legs}
+              breakevens={metrics?.breakevens ?? []}
+            />
           )}
 
           {/* Payoff + sensibilidade */}

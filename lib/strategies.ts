@@ -27,19 +27,19 @@ export function stockLeg(chain: ChainData, side: Side, qty = 100): Leg {
 }
 
 /** Opções líquidas de um vencimento, ordenadas por strike. */
-function liquid(chain: ChainData, expiry: string, type: OptionType): OptionQuote[] {
+export function liquid(chain: ChainData, expiry: string, type: OptionType): OptionQuote[] {
   return chain.options
     .filter((o) => o.expiry === expiry && o.type === type && o.last != null && o.last > 0 && (o.trades ?? 0) > 0)
     .sort((a, b) => a.strike - b.strike);
 }
 
-function nearest(opts: OptionQuote[], target: number): OptionQuote | null {
+export function nearest(opts: OptionQuote[], target: number): OptionQuote | null {
   if (!opts.length) return null;
   return opts.reduce((best, o) => (Math.abs(o.strike - target) < Math.abs(best.strike - target) ? o : best));
 }
 
 /** Strike OTM aproximadamente `pct` distante do spot. */
-function otmAt(opts: OptionQuote[], spot: number, type: OptionType, pct: number): OptionQuote | null {
+export function otmAt(opts: OptionQuote[], spot: number, type: OptionType, pct: number): OptionQuote | null {
   const target = type === "CALL" ? spot * (1 + pct) : spot * (1 - pct);
   return nearest(opts, target);
 }

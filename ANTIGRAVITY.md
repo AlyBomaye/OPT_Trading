@@ -165,11 +165,13 @@ components/
   PayoffChart.tsx         Payoff expiração/T+0/T+n + export PNG
   SensitivityMatrix.tsx   Matriz what-if Spot×Vol em T+n
   DividendEditor.tsx      Popover de calendário de proventos por ticker
+  PriceHistoryPanel.tsx   Histórico diário OHLCV + volume + overlays (strikes/BEs/spot)
 
 lib/
   black-scholes.ts        Engine BSM/CRR completo (§7.2)
   payoff.ts               P&L multi-perna, breakevens, métricas, PoP, gregas da
                           estrutura, matriz de sensibilidade (§7.3)
+  suggest.ts              Sugestões top-3 por EV ajustado a risco (expectedValue + suggestStructures)
   portfolio.ts            Gregas do book, stress ladder, VaR grade 3×3 + ES,
                           capital alocado, journal stats, equity curve (§7.4)
   scanner.ts              Pozinhos, skew ratio (vw), atmIvNearest, Kelly (§7.5)
@@ -323,6 +325,10 @@ NR + gregas analíticas.
 - `structureGreeks(legs, spot, r)` — gregas líquidas da estrutura em edição (Δ ações eq.,
   Γ, vega R$/+1pt, Θ R$/dia).
 - `sensitivityMatrix(legs, spot, r, dayOffset)` — grade spot {−10…+10%} × vol {−5…+5 pts}.
+- `expectedValue(legs, spot, r, sigma, du)` (`lib/suggest.ts`) — valor esperado do P&L no
+  vencimento por integração da densidade lognormal risco-neutra contra o payoff no vencimento.
+- `suggestStructures(chain, expiry, presetKey, r, top)` (`lib/suggest.ts`) — gera até 3 candidatas
+  ranqueadas por EV ajustado a risco (`score = ev / |maxLoss|`), excluindo perda ilimitada.
 
 ### 7.4 `lib/portfolio.ts`
 
@@ -491,6 +497,15 @@ Comportamentos-chave:
   estrutura)`; custo = débito, ou |máx perda| em crédito. Banner vermelho quando excede;
   gate "NO EDGE — DO NOT TRADE" quando journal ≥ 20 trades tem Kelly realizado ≤ 0.
 - "Abrir posição" grava as pernas na Carteira congelando `entryGreeks`.
+- **WO-16 Painel de Histórico (`PriceHistoryPanel`)**: colapsável com `ComposedChart` Recharts
+  (linha de fechamento ciana + barras de volume), botões de range (3M | 6M | 1A), estado
+  persistido em `localStorage` (`wb-history-open`), HV21, IV ATM live e spread IV−HV21, e **linhas
+  de referência horizontais** para os strikes das pernas ativas (verde/vermelho), breakevens
+  (dourado) e spot (ciano).
+- **WO-16 Cards de Sugestão com Preview Interativo**: ao clicar em um preset, gera 3 candidatas
+  ranqueadas por EV ajustado a risco (`score = ev / |maxLoss|`). Clicar em um card seleciona a
+  candidata e atualiza ao vivo todos os gráficos (header, LegDiagram, KPIs, gregas, PayoffChart,
+  SensitivityMatrix e PriceHistoryPanel). Invalidação automática ao trocar ticker ou vencimento.
 
 ### 9.4 Scanner (`/scanner`, hotkey 4)
 

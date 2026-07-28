@@ -5,8 +5,9 @@
 import { americanGreeks, americanImpliedVol, bsGreeks, bsPrice, binomialPrice, impliedVol, normCdf } from "../black-scholes";
 import { rollingHV, volCone } from "../historical";
 import { pnlAtExpiry, strategyMetrics } from "../payoff";
+import { expectedValue, suggestStructures } from "../suggest";
 import type { Candle } from "@/app/api/history/route";
-import type { Leg } from "../types";
+import type { ChainData, Leg, MarkQuality, OptionQuote, OptionType } from "../types";
 
 let failures = 0;
 function assertClose(name: string, got: number | null, want: number, tol: number) {
@@ -114,6 +115,91 @@ for (const row of cone) {
 if (cone.length === 0) {
   console.log("✘ cone vazio para série sintética");
   failures++;
+}
+
+// ---- WO-16: lib/suggest & expectedValue ----
+const singleCallLeg: Leg[] = [
+  { id: "c1", kind: "OPTION", underlying: "PETR4", opTicker: "PETRD40", type: "CALL", strike: 40, du: 20, side: 1, qty: 1, price: 1.8, iv: 0.3 },
+];
+const evCall = expectedValue(singleCallLeg, 40, 0.15, 0.3, 20);
+const theoreticalBsPv = bsPrice({ s: 40, k: 40, t: 20 / 252, r: 0.15, sigma: 0.3 }, "CALL");
+const expectedFv = theoreticalBsPv * Math.exp(0.15 * (20 / 252)) - 1.8;
+assertClose("expectedValue call vs BS FV", evCall, expectedFv, Math.abs(expectedFv) * 0.05);
+
+const makeOpt = (
+  opTicker: string,
+  type: OptionType,
+  moneyness: "ITM" | "ATM" | "OTM",
+  strike: number,
+  last: number,
+  trades: number,
+  volumeFin: number,
+  delta: number,
+  markQuality: MarkQuality = "ok"
+): OptionQuote => ({
+  opTicker,
+  underlying: "PETR4",
+  type,
+  model: "E",
+  moneyness,
+  strike,
+  distStrikePct: strike / 40 - 1,
+  premioPctCot: last / 40,
+  last,
+  trades,
+  volumeFin,
+  expiry: "2026-04-17",
+  du: 20,
+  dte: 30,
+  markQuality,
+  iv: 0.3,
+  delta,
+  gamma: 0.05,
+  theta: -0.02,
+  vega: 0.1,
+  rho: 0.01,
+});
+
+const synthChain: ChainData = {
+  ticker: "PETR4",
+  spot: 40,
+  updatedAt: new Date().toISOString(),
+  expiries: [{ date: "2026-04-17", label: "17/04", du: 20, dte: 30, isMonthly: true, weekCode: "M" }],
+  options: [
+    makeOpt("PETRD38", "CALL", "ITM", 38, 3.2, 100, 50000, 0.7),
+    makeOpt("PETRD40", "CALL", "ATM", 40, 1.8, 200, 100000, 0.5),
+    makeOpt("PETRD42", "CALL", "OTM", 42, 0.9, 150, 80000, 0.3),
+    makeOpt("PETRD44", "CALL", "OTM", 44, 0.4, 80, 30000, 0.15),
+    makeOpt("PETRD46", "CALL", "OTM", 46, 0.1, 10, 1000, 0.05, "stale"),
+    makeOpt("PETRP38", "PUT", "OTM", 38, 0.5, 90, 40000, -0.2),
+    makeOpt("PETRP40", "PUT", "ATM", 40, 1.2, 180, 90000, -0.5),
+    makeOpt("PETRP42", "PUT", "ITM", 42, 2.4, 110, 60000, -0.7),
+  ],
+  greeksComputedLocally: true,
+};
+
+const cands = suggestStructures(synthChain, "2026-04-17", "bullCallSpread", 0.15, 3);
+if (cands.length > 0 && cands.length <= 3) {
+  console.log(`✔ suggestStructures retornou ${cands.length} candidata(s) ranqueada(s)`);
+} else {
+  console.log(`✘ suggestStructures falhou: cands.length=${cands.length}`);
+  failures++;
+}
+
+// Nenhum leg pode ser stale
+const hasStale = cands.some((c) => c.legs.some((l) => l.opTicker === "PETRD46"));
+if (!hasStale) {
+  console.log("✔ nenhuma candidata contém perna stale (PETRD46)");
+} else {
+  console.log("✘ candidata contém perna stale");
+  failures++;
+}
+
+// Para a candidata #1, score confere com ev / |maxLoss|
+if (cands.length > 0) {
+  const top1 = cands[0];
+  const expectedScore = top1.ev / Math.abs(top1.metrics.maxLoss!);
+  assertClose("score da candidata #1 confere com ev / |maxLoss|", top1.score, expectedScore, 1e-6);
 }
 
 console.log(failures === 0 ? "\nTODOS OS TESTES PASSARAM" : `\n${failures} TESTE(S) FALHARAM`);
