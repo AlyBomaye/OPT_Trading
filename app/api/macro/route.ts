@@ -17,7 +17,7 @@ export interface MacroSymbolConfig {
   grupo: "INDICE" | "FUTURO" | "MOEDA" | "COMMODITY" | "VOL" | "JURO";
 }
 
-export const MACRO_SYMBOLS: MacroSymbolConfig[] = [
+const MACRO_SYMBOLS: MacroSymbolConfig[] = [
   // ÍNDICES GLOBAIS
   { symbol: "^BVSP", nome: "Ibovespa", grupo: "INDICE" },
   { symbol: "^GSPC", nome: "S&P 500", grupo: "INDICE" },

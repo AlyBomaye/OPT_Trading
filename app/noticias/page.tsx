@@ -5,9 +5,12 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
   AlertTriangle,
+  Building2,
+  Calendar,
   CalendarDays,
   ChevronDown,
   ChevronRight,
+  DollarSign,
   ExternalLink,
   Flame,
   Globe,
@@ -16,6 +19,9 @@ import {
   RefreshCw,
   Search,
   Settings,
+  Sparkles,
+  TrendingUp,
+  Zap,
 } from "lucide-react";
 import clsx from "clsx";
 import type { MacroStrip, NewsBody, NewsItem } from "@/app/api/news/route";
@@ -471,7 +477,7 @@ export default function NoticiasPage() {
         </div>
 
         {radarOpen && (
-          <div className="p-3 space-y-3">
+          <div className="p-3 space-y-3 font-mono">
             {/* Popover Editor de Balanços */}
             {showEarningsEditor && (
               <div className="mb-3">
@@ -481,11 +487,34 @@ export default function NoticiasPage() {
 
             {!chain ? (
               <div className="p-4 text-center text-xs text-term-dim border border-dashed border-term-line rounded">
-                Nenhum chain de opções carregado no terminal. Pressione a tecla <b>2 (Chain)</b> e selecione um ticker para ver o radar por vencimento.
+                Nenhum chain de opções carregado no terminal. Navegue até o <b>Chain (atalho 8)</b> e selecione um ativo para visualizar o radar de volatilidade por vencimento.
               </div>
             ) : (
               <>
-                <div className="grid gap-2">
+                {/* Header de Resumo do Ticker Ativo */}
+                <div className="flex flex-wrap items-center justify-between gap-2 p-2.5 rounded bg-term-panel border border-term-line/80 text-xs">
+                  <div className="flex items-center gap-2">
+                    <span className="text-term-dim">Chain Ativo:</span>
+                    <span className="font-bold text-term-cyan text-sm">{chain.ticker}</span>
+                    <span className="tag bg-term-cyan/15 text-term-cyan font-bold">
+                      Spot {fmtBRL(chain.spot)}
+                    </span>
+                  </div>
+
+                  <div className="flex flex-wrap items-center gap-2 text-xxs">
+                    <span className="tag bg-term-line text-term-text">
+                      {expiryRisks.length} Vencimentos Mapeados
+                    </span>
+                    {maxRiskExpiry && maxRiskExpiry.nEventosVol > 0 && (
+                      <span className="tag bg-term-gold/20 text-term-gold font-bold flex items-center gap-1 border border-term-gold/40">
+                        <Flame size={12} /> Maior Vol: {maxRiskExpiry.label} ({maxRiskExpiry.nEventosVol} ev σ)
+                      </span>
+                    )}
+                  </div>
+                </div>
+
+                {/* Grid de Cards de Vencimento (2 colunas em desktop) */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                   {expiryRisks.map((risk) => {
                     const isMax = maxRiskExpiry?.expiry === risk.expiry && risk.nEventosVol > 0;
 
@@ -493,52 +522,103 @@ export default function NoticiasPage() {
                       <div
                         key={risk.expiry}
                         className={clsx(
-                          "p-2 rounded border font-mono text-xs space-y-1.5 transition-colors",
-                          isMax ? "bg-term-gold/10 border-term-gold/60" : "bg-term-panel border-term-line/60"
+                          "p-3 rounded-lg border font-mono text-xs space-y-2.5 transition-all duration-200",
+                          isMax
+                            ? "bg-gradient-to-br from-term-gold/10 via-term-panel to-term-panel border-term-gold/70 shadow-[0_0_15px_rgba(251,191,36,0.1)]"
+                            : "bg-term-panel border-term-line/80 hover:border-term-cyan/40"
                         )}
                       >
-                        <div className="flex flex-wrap items-center justify-between gap-2">
+                        {/* Header do Card */}
+                        <div className="flex items-center justify-between border-b border-term-line/40 pb-2">
                           <div className="flex items-center gap-2">
-                            <span className="font-bold text-term-cyan">{risk.label} ({risk.expiry})</span>
-                            <span className="tag bg-term-line text-term-dim">{risk.du} DU</span>
+                            <Calendar size={14} className={isMax ? "text-term-gold" : "text-term-cyan"} />
+                            <span className="font-bold text-sm text-term-text">{risk.label}</span>
+                            <span className="text-xxs text-term-dim">({risk.expiry})</span>
+                          </div>
+
+                          <div className="flex items-center gap-1.5">
+                            <span className="tag bg-term-line text-term-cyan font-semibold text-xxs">
+                              {risk.du} DU
+                            </span>
                             {isMax && (
-                              <span className="tag bg-term-gold text-term-bg font-bold flex items-center gap-1">
-                                <Flame size={10} /> Maior densidade σ ({risk.nEventosVol})
+                              <span className="tag bg-term-gold text-term-bg font-bold text-xxs flex items-center gap-1">
+                                <Flame size={10} /> MAIOR VOL
                               </span>
                             )}
                           </div>
+                        </div>
 
-                          <div className="flex items-center gap-3 text-xxs">
-                            <span>
-                              <span className="text-term-dim">Expected Move (1σ): </span>
-                              <span className="text-term-cyan font-semibold">
-                                {risk.expectedMove != null ? `±${fmtBRL(risk.expectedMove)} (${fmtPct(risk.emPct)})` : "—"}
+                        {/* Expected Move Metric Card */}
+                        <div className="p-2 rounded bg-term-panel2 border border-term-line/50 flex items-center justify-between">
+                          <div className="flex items-center gap-1.5 text-xxs text-term-dim">
+                            <TrendingUp size={12} className="text-term-cyan" />
+                            <span>Expected Move (1σ)</span>
+                          </div>
+
+                          <div className="font-bold text-term-cyan text-xs">
+                            {risk.expectedMove != null ? (
+                              <span>
+                                ±{fmtBRL(risk.expectedMove)}{" "}
+                                <span className="text-xxs text-term-gold font-normal">
+                                  ({fmtPct(risk.emPct)})
+                                </span>
                               </span>
-                            </span>
+                            ) : (
+                              "—"
+                            )}
                           </div>
                         </div>
 
-                        {/* Chips de Eventos */}
-                        <div className="flex flex-wrap items-center gap-1.5 pt-1">
-                          {risk.eventos.map((ev, idx) => (
-                            <span
-                              key={idx}
-                              className={clsx(
-                                "tag text-xxs flex items-center gap-1",
-                                ev.volEvent
-                                  ? "bg-term-gold/20 text-term-gold border border-term-gold/40"
-                                  : "bg-term-line/60 text-term-dim"
-                              )}
-                              title={`${ev.tipo} — ${ev.data}`}
-                            >
-                              <span>{fmtDateBR(ev.data)}</span>
-                              <span className="font-bold">{ev.nome}</span>
-                            </span>
-                          ))}
-                          {!risk.eventos.length && (
-                            <span className="text-xxs text-term-dim italic">
-                              Nenhum evento mapeado para este vencimento.
-                            </span>
+                        {/* Eventos Associados */}
+                        <div className="space-y-1.5 pt-0.5">
+                          <div className="text-xxs text-term-dim uppercase tracking-wider font-semibold">
+                            Eventos até o Vencimento ({risk.eventos.length})
+                          </div>
+
+                          {risk.eventos.length > 0 ? (
+                            <div className="space-y-1">
+                              {risk.eventos.map((ev, idx) => {
+                                const isMacro = ev.tipo === "MACRO";
+                                const isResultado = ev.tipo === "RESULTADO";
+                                const isExDiv = ev.tipo === "EX-DIV";
+
+                                return (
+                                  <div
+                                    key={idx}
+                                    className={clsx(
+                                      "p-1.5 rounded flex items-center justify-between text-xxs border transition-colors",
+                                      ev.volEvent
+                                        ? "bg-term-gold/10 border-term-gold/40 text-term-text"
+                                        : "bg-term-panel2/60 border-term-line/40 text-term-dim"
+                                    )}
+                                  >
+                                    <div className="flex items-center gap-2 truncate pr-1">
+                                      {/* Ícone por categoria */}
+                                      {isMacro && <Globe size={12} className="text-term-gold shrink-0" />}
+                                      {isResultado && <Building2 size={12} className="text-term-cyan shrink-0" />}
+                                      {isExDiv && <DollarSign size={12} className="text-term-up shrink-0" />}
+
+                                      <span className="font-semibold truncate text-term-text">
+                                        {ev.nome}
+                                      </span>
+                                    </div>
+
+                                    <div className="flex items-center gap-1.5 shrink-0">
+                                      <span className="text-term-dim">{fmtDateBR(ev.data)}</span>
+                                      {ev.volEvent && (
+                                        <span className="tag bg-term-gold/20 text-term-gold font-bold px-1 py-0 text-[9px] border border-term-gold/40">
+                                          VOL σ
+                                        </span>
+                                      )}
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          ) : (
+                            <div className="p-2 rounded bg-term-panel2/40 border border-dashed border-term-line/40 text-xxs text-term-dim italic text-center">
+                              Nenhum evento macro, balanço ou provento mapeado neste intervalo.
+                            </div>
                           )}
                         </div>
                       </div>
@@ -548,8 +628,11 @@ export default function NoticiasPage() {
 
                 {/* Frase Factual de Rodapé */}
                 {maxRiskExpiry && maxRiskExpiry.nEventosVol > 0 && (
-                  <div className="p-2 rounded bg-term-cyan/10 border border-term-cyan/30 text-xs text-term-cyan">
-                    💡 <b>Fato observado:</b> O vencimento de <b>{maxRiskExpiry.label} ({maxRiskExpiry.expiry})</b> concentra a maior densidade de risco ({maxRiskExpiry.nEventosVol} evento(s) de volatilidade).
+                  <div className="p-2.5 rounded-lg bg-gradient-to-r from-term-cyan/15 via-term-panel to-term-panel border border-term-cyan/40 text-xs text-term-cyan flex items-start gap-2">
+                    <Sparkles size={16} className="shrink-0 text-term-gold mt-0.5" />
+                    <div>
+                      <b>Fato observado:</b> O vencimento de <b>{maxRiskExpiry.label} ({maxRiskExpiry.expiry})</b> em <b>{maxRiskExpiry.du} DU</b> concentra a maior densidade de volatilidade prospectiva, acumulando <b>{maxRiskExpiry.nEventosVol} evento(s) de alto impacto (σ)</b> com Expected Move de <b>±{maxRiskExpiry.expectedMove != null ? fmtBRL(maxRiskExpiry.expectedMove) : "—"} ({fmtPct(maxRiskExpiry.emPct)})</b>.
+                    </div>
                   </div>
                 )}
               </>

@@ -7,16 +7,16 @@ import { Gauge, Table2, GitBranch, Search, Briefcase, Newspaper, History, Layout
 import clsx from "clsx";
 
 const ITEMS = [
-  { href: "/", label: "Cockpit", key: "1", icon: Gauge },
-  { href: "/chain", label: "Chain", key: "2", icon: Table2 },
-  { href: "/estrategia", label: "Estratégia", key: "3", icon: GitBranch },
+  { href: "/carteira", label: "Carteira", key: "1", icon: Briefcase },
+  { href: "/macro", label: "Macro", key: "2", icon: Globe },
+  { href: "/noticias", label: "Notícias", key: "3", icon: Newspaper },
   { href: "/scanner", label: "Scanner", key: "4", icon: Search },
-  { href: "/carteira", label: "Carteira", key: "5", icon: Briefcase },
-  { href: "/noticias", label: "Notícias", key: "6", icon: Newspaper },
-  { href: "/historico", label: "Histórico", key: "7", icon: History },
-  { href: "/watchlist", label: "Watchlist", key: "8", icon: LayoutGrid },
+  { href: "/watchlist", label: "Watchlist", key: "5", icon: LayoutGrid },
+  { href: "/estrategia", label: "Estratégia", key: "6", icon: GitBranch },
+  { href: "/", label: "Cockpit", key: "7", icon: Gauge },
+  { href: "/chain", label: "Chain", key: "8", icon: Table2 },
   { href: "/manual", label: "Manual", key: "9", icon: BookOpen },
-  { href: "/macro", label: "Macro", key: "0", icon: Globe },
+  { href: "/historico", label: "Histórico", key: "0", icon: History },
 ];
 
 export function Nav() {
