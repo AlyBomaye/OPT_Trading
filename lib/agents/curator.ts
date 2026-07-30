@@ -1,6 +1,7 @@
 import fs from "fs";
 import path from "path";
-import type { AgentReport, Afirmacao } from "./types";
+import type { AgentReport, Achado, Afirmacao } from "./types";
+import { link } from "./deeplinks";
 import type { Position } from "../types";
 import { alocacaoPorBalde } from "./risk";
 
@@ -270,7 +271,7 @@ export function reportCurador(): AgentReport {
             asOf: new Date().toISOString().slice(0, 10),
           },
         ],
-        deepLink: "/carteira",
+        deepLink: link("carteira.flags"),
       },
     ],
     metricas: {
@@ -280,8 +281,8 @@ export function reportCurador(): AgentReport {
     },
     recomendacoes: [],
     melhorias: [],
-    confianca: "alta",
-    limitacoes: [],
+    confianca: ultimoPerf ? "alta" : "baixa",
+    limitacoes: ultimoPerf ? [] : ["Nenhum snapshot de performance gravado ainda."],
     dependencias: [],
   };
 }

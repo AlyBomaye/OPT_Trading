@@ -671,21 +671,33 @@ Ao alterar o universo: atualizar também `TICKER_KEYWORDS` em `app/api/news/rout
 
 ---
 
-## 11. Framework Multiagente (WO-23)
+## 11. Framework Multiagente (WO-23 & WO-24)
 
-O ecossistema multiagente combina execução **determinística de alta performance** para agentes de aba/infraestrutura e **síntese executiva didática via LLM (`claude-opus-5`)** para o Gestor Global.
+O ecossistema multiagente combina execução **determinística de alta performance** para agentes de aba/infraestrutura e **síntese executiva didática via LLM (`claude-opus-5`)** para os agentes sêniores (`gestor-global` e `melhoria-continua`).
 
-### 11.1 Contrato de Report e Regras Invioláveis
+### 11.1 Time Completo de 13 Agentes e Camadas
+- **Camada Infra (2):** `prompt-gateway` (FinOps & Engenharia de Prompt) e `curador-memoria` (Curador de Memória & Performance).
+- **Camada Aba (9):** `carteira`, `chain`, `noticias`, `macro`, `cockpit`, `watchlist`, `scanner`, `estrategia`, `historico` (todos 100% determinísticos).
+- **Camada Sênior (2):** `gestor-global` (Relatório Executivo Diário) e `melhoria-continua` (Pipeline Priorizado de Engenharia Roda 1×/dia às 23h).
+
+### 11.2 Orquestração DAG e Paralelismo por Níveis
+Execução por `runCycle()` em `lib/agents/orchestrator.ts` com paralelismo `Promise.all` nos nós independentes:
+- **Nível 0 (Paralelo):** `noticias`, `carteira`, `chain`, `historico` (sem dependências).
+- **Nível 1:** `macro` (depende de noticias, carteira).
+- **Nível 2 (Paralelo):** `cockpit`, `watchlist` (dependem de macro, noticias, carteira).
+- **Nível 3:** `scanner` (depende de noticias, macro, carteira, cockpit).
+- **Nível 4:** `estrategia` (depende de todos os nós de aba anteriores + chain).
+- **Nível 5:** `gestor-global` e `melhoria-continua` (consomem todos os reports anteriores).
+
+### 11.3 Registro de Deep Links (`lib/agents/deeplinks.ts`)
+- Mapeamento tipado `DEEP_LINKS` com o helper `link(key)` conectando todos os achados e recomendações dos agentes diretamente a seções ancoradas com `id` nas 10 páginas da plataforma.
+
+### 11.4 Contrato de Report e Regras Invioláveis
 - **Interface canônica:** Todo agente emite a estrutura `AgentReport` (`lib/agents/types.ts`).
-- **Validação de evidência:** Todo `Achado` **DEVE** conter ao menos 1 `Evidencia` com `fonte` e `asOf` válidos. Achado sem número é rejeitado.
-- **Links diretos (`deepLink`):** Apontam para rotas e âncoras reais da plataforma (ex: `[1,27](/chain#skew)`).
+- **Validação de evidência:** Todo `Achado` **DEVE** conter ao menos 1 `Evidencia` com `fonte` e `asOf` válidos (proveniência real de data/hora do dado fonte).
+- **Resiliência:** Nenhuma exceção não tratada é lançada. Em contextos vazios, os agentes retornam report válido com `confianca: "baixa"` e indicação em `limitacoes`.
 
-### 11.2 Orquestração DAG e 13 Agentes
-- Execução encadeada via `runCycle()` (`lib/agents/orchestrator.ts`).
-- Nenhuma falha em agente derruba o ciclo: exceções são convertidas em reports de `confianca: "baixa"`.
-- Estabilidade de runtime: sem `ANTHROPIC_API_KEY` ou com teto estourado, o Gestor Global degrada graciosamente para **consolidação determinística**, mantendo 100% da plataforma funcional e sem custos.
-
-### 11.3 Regra Inviolável do Prompt Gateway (`prompt-gateway`)
+### 11.5 Regra Inviolável do Prompt Gateway (`prompt-gateway`)
 - **NENHUMA requisição ao modelo LLM é feita diretamente por agentes sêniores.**
 - Toda chamada passa obrigatoriamente por `prepararRequest()` em `lib/agents/gateway.ts`.
 - **Hot path determinístico:** sanitiza personas, ordena chaves JSON, invalida variáveis voláteis no prefixo estável, aplica `cache_control: { type: "ephemeral" }` e aplica tetos de orçamento (`data/agents/budget.json`).

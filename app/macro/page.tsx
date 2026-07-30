@@ -34,6 +34,7 @@ import { useMarket } from "@/store/market";
 import { fmtBRL, fmtDateBR, fmtNum, fmtPct, pnlColor } from "@/lib/format";
 import { curveSlope, sessionStatus } from "@/lib/macro";
 import { Sparkline } from "@/components/Sparkline";
+import { AgentPanel } from "@/components/AgentPanel";
 
 type WindowKey = "1d" | "5d" | "1m" | "3m" | "6m" | "12m" | "YTD";
 
@@ -215,7 +216,8 @@ export default function MacroPage() {
   );
 
   return (
-    <div className="space-y-3 font-mono">
+    <div className="p-4 space-y-4 max-w-7xl mx-auto font-mono">
+      <AgentPanel agentId="macro" title="Agente Especialista Macro & Rates" />
       {/* Header com Seletor de Janela & Status */}
       <div className="panel p-3 flex flex-wrap items-center justify-between gap-3 text-xs">
         <div className="flex items-center gap-2">
@@ -228,18 +230,18 @@ export default function MacroPage() {
           )}
         </div>
 
-        <div className="flex flex-wrap items-center gap-2">
-          <span className="text-xxs text-term-dim">Reordenar janelas:</span>
-          <div className="flex items-center gap-1 text-xxs">
+        <div className="flex items-center gap-3">
+          {/* Seletor de Janela Global */}
+          <div className="flex items-center gap-1 bg-term-panel border border-term-line rounded p-0.5">
             {WINDOW_LABELS.map((w) => (
               <button
                 key={w.key}
-                onClick={() => setSelectedWindow(w.key as WindowKey)}
+                onClick={() => setSelectedWindow(w.key)}
                 className={clsx(
-                  "tag py-0.5 px-2 cursor-pointer transition-colors",
-                  selectedWindow.startsWith(w.key)
-                    ? "bg-term-cyan text-term-bg font-bold"
-                    : "bg-term-line text-term-dim hover:text-term-text"
+                  "px-2 py-1 text-xxs font-mono rounded transition-colors",
+                  selectedWindow === w.key
+                    ? "bg-term-cyan/20 text-term-cyan font-bold border border-term-cyan/40"
+                    : "text-term-dim hover:text-term-text"
                 )}
               >
                 {w.label}
@@ -250,9 +252,9 @@ export default function MacroPage() {
           <button
             onClick={() => void loadData()}
             disabled={loading}
-            className="btn text-xxs py-0.5 px-2 flex items-center gap-1 ml-2"
+            className="btn text-xxs py-1.5 px-3 flex items-center gap-1"
           >
-            <RefreshCw size={11} className={loading ? "animate-spin text-term-cyan" : ""} />
+            <RefreshCw size={12} className={loading ? "animate-spin text-term-cyan" : ""} />
             Atualizar
           </button>
         </div>
@@ -269,7 +271,7 @@ export default function MacroPage() {
       )}
 
       {/* 1. ESTADO DAS SESSÕES */}
-      <div className="panel">
+      <div id="sessoes-globais" className="panel">
         <div
           onClick={() => {
             const next = !sessoesOpen;
@@ -406,7 +408,7 @@ export default function MacroPage() {
       </div>
 
       {/* 3. CURVA DE JUROS EUA + RATES & INFLAÇÃO BRASIL */}
-      <div className="panel">
+      <div id="curva-juros" className="panel">
         <div
           onClick={() => {
             const next = !ratesOpen;
@@ -506,7 +508,7 @@ export default function MacroPage() {
       </div>
 
       {/* 4. IMPACTO NO MEU UNIVERSO */}
-      <div className="panel">
+      <div id="impacto-universo" className="panel">
         <div
           onClick={() => {
             const next = !impactoOpen;

@@ -8,6 +8,7 @@ import { allocatedCapital, journalStats } from "@/lib/portfolio";
 import { legFromOption } from "@/lib/strategies";
 import { sectorOf } from "@/lib/universe";
 import { fmtBRL, fmtCompact, fmtDateBR, fmtNum, fmtPct } from "@/lib/format";
+import { AgentPanel } from "@/components/AgentPanel";
 
 export default function ScannerPage() {
   const { chain, addLeg, positions, closed, capitalTotal } = useMarket();
@@ -39,6 +40,7 @@ export default function ScannerPage() {
 
   return (
     <>
+      <AgentPanel agentId="scanner" title="Agente Especialista de Convexidade & Scanner" />
       <div className="panel">
         <div className="panel-title">Scanner de Pozinhos — OTM barato com máxima convexidade (Δ/R$)</div>
         <div className="flex flex-wrap gap-3 px-3 pb-2 text-xxs text-term-dim items-end">
@@ -55,7 +57,7 @@ export default function ScannerPage() {
         </div>
       </div>
 
-      <div className="panel overflow-x-auto">
+      <div id="pozinhos-tabela" className="panel overflow-x-auto">
         <table className="w-full text-xs">
           <thead>
             <tr className="border-b border-term-line">
@@ -109,7 +111,7 @@ export default function ScannerPage() {
       {/* WO-11: alocação por setor vs. orçamento ¼-Kelly — evita concentração
           em vol barata correlacionada (ex.: três siderúrgicas de uma vez) */}
       {porSetor.length > 0 && (
-        <div className="panel">
+        <div id="alocacao-setor" className="panel">
           <div className="panel-title">
             Alocação por setor (1 un. por candidato exibido) · orçamento ¼-Kelly por setor: {fmtBRL(orcamentoSetor, 0)}
             {journal == null || journal.n < 20 ? " (sem journal ≥ 20 trades: fração Kelly conservadora de 10%)" : " (Kelly realizado do journal)"}

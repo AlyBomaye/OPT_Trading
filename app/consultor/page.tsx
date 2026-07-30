@@ -323,6 +323,119 @@ export default function ConsultorPage() {
           </div>
         </div>
       </div>
+
+      {/* Seção 2: Mapa de Cobertura do Ciclo (13 Agentes) & Pipeline de Melhorias */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 pt-2">
+        {/* Mapa de Cobertura */}
+        <div className="panel border border-term-line bg-term-panel rounded p-3 space-y-3">
+          <div className="font-mono font-bold text-term-cyan border-b border-term-line pb-2 flex items-center justify-between text-xs">
+            <div className="flex items-center gap-2">
+              <Cpu size={16} />
+              <span>Mapa de Cobertura do Ciclo (13 Agentes)</span>
+            </div>
+            <span className="tag bg-term-cyan/15 text-term-cyan font-mono text-xxs">
+              {cycleResult?.executados ? `${cycleResult.executados.length}/13 Rodaram` : "Aguardando execução"}
+            </span>
+          </div>
+
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-xs font-mono">
+              <thead>
+                <tr className="border-b border-term-line text-xxs text-term-dim uppercase">
+                  <th className="py-1 px-2">Agente</th>
+                  <th className="py-1 px-2">Status</th>
+                  <th className="py-1 px-2">Confiança</th>
+                  <th className="py-1 px-2">Data Dado (asOf)</th>
+                </tr>
+              </thead>
+              <tbody>
+                {[
+                  "noticias",
+                  "macro",
+                  "cockpit",
+                  "watchlist",
+                  "scanner",
+                  "estrategia",
+                  "historico",
+                  "carteira",
+                  "chain",
+                  "gestor-global",
+                  "melhoria-continua",
+                  "curador-memoria",
+                  "prompt-gateway",
+                ].map((id) => {
+                  const rep = cycleResult?.reports?.[id];
+                  const ran = Boolean(rep);
+                  const conf = rep?.confianca ?? "baixa";
+                  const oldestAsOf = rep?.achados?.[0]?.evidencias?.[0]?.asOf ?? rep?.generatedAt ?? "—";
+                  const asOfDisplay = oldestAsOf !== "—" ? new Date(oldestAsOf).toLocaleTimeString("pt-BR") : "—";
+
+                  return (
+                    <tr key={id} className="border-b border-term-line/30">
+                      <td className="py-1.5 px-2 font-bold text-term-text">{id}</td>
+                      <td className="py-1.5 px-2">
+                        {ran ? (
+                          <span className="tag bg-emerald-500/20 text-emerald-400 font-bold text-xxs">rodou</span>
+                        ) : (
+                          <span className="tag bg-term-panel2 text-term-dim text-xxs">pulado</span>
+                        )}
+                      </td>
+                      <td className="py-1.5 px-2">
+                        <span
+                          className={clsx(
+                            "tag text-xxs font-bold",
+                            conf === "alta"
+                              ? "bg-term-up/20 text-term-up"
+                              : conf === "media"
+                              ? "bg-term-gold/20 text-term-gold"
+                              : "bg-term-down/20 text-term-down"
+                          )}
+                        >
+                          {conf}
+                        </span>
+                      </td>
+                      <td className="py-1.5 px-2 text-term-dim">{asOfDisplay}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        {/* Pipeline de Melhorias */}
+        <div id="pipeline" className="panel border border-term-line bg-term-panel rounded p-3 space-y-3">
+          <div className="font-mono font-bold text-term-gold border-b border-term-line pb-2 flex items-center justify-between text-xs">
+            <div className="flex items-center gap-2">
+              <Zap size={16} />
+              <span>Pipeline de Melhorias Continua (Score Priorizado)</span>
+            </div>
+            <span className="tag bg-term-gold/15 text-term-gold font-mono text-xxs">
+              Score = Impacto ÷ Esforço
+            </span>
+          </div>
+
+          <div className="space-y-2 max-h-80 overflow-y-auto pr-1">
+            {cycleResult?.reports?.["melhoria-continua"]?.achados?.length > 0 ? (
+              cycleResult.reports["melhoria-continua"].achados.map((ach: any) => (
+                <div key={ach.id} className="p-2.5 rounded bg-term-panel2/50 border border-term-line/60 space-y-1 font-mono text-xs">
+                  <div className="flex items-center justify-between">
+                    <span className="font-bold text-term-gold text-xs">{ach.titulo}</span>
+                    <span className="tag bg-term-gold/20 text-term-gold font-bold text-xxs">
+                      Score {ach.evidencias?.[0]?.valor?.toFixed(2) ?? "—"}
+                    </span>
+                  </div>
+                  <p className="text-xxs text-term-text">{ach.detalhe}</p>
+                </div>
+              ))
+            ) : (
+              <div className="p-4 rounded bg-term-panel2/30 border border-dashed border-term-line text-xxs text-term-dim italic text-center">
+                Execute o ciclo completo para gerar o pipeline de melhorias priorizado.
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
     </div>
   );
 }

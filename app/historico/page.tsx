@@ -21,6 +21,7 @@ import { volSeries, returnStats, volCone } from "@/lib/historical";
 import { getIvRank, snapshotCount, useSnapshots } from "@/lib/snapshots";
 import { tickers } from "@/lib/universe";
 import { fmtBRL, fmtNum, fmtPct, fmtCompact, fmtDateBR } from "@/lib/format";
+import { AgentPanel } from "@/components/AgentPanel";
 
 /* ============================================================================
  * Histórico — dados históricos e vol realizada do universo monitorado
@@ -124,6 +125,7 @@ export default function HistoricoPage() {
 
   return (
     <div className="space-y-3">
+      <AgentPanel agentId="historico" title="Agente Especialista de Histórico & Vol" ticker={ticker} />
       {/* Controles */}
       <div className="panel px-3 py-2 flex flex-wrap items-center gap-2">
         <History size={14} className="text-term-cyan" />
@@ -224,7 +226,7 @@ export default function HistoricoPage() {
         </div>
 
         {/* Vol realizada + IV live */}
-        <div className="panel">
+        <div id="iv-vs-hv" className="panel">
           <div className="panel-title">Vol Realizada (anualizada) — HV10 / HV21 / HV63</div>
           <div className="h-64 px-2 pb-2">
             <ResponsiveContainer width="100%" height="100%">
@@ -260,7 +262,7 @@ export default function HistoricoPage() {
 
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-3">
         {/* Cone de vol */}
-        <div className="panel">
+        <div id="cone" className="panel">
           <div className="panel-title">Cone de Vol — distribuição das HVs no período</div>
           <div className="px-3 pb-3 overflow-x-auto">
             <table className="w-full text-left">

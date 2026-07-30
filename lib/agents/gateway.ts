@@ -1,6 +1,7 @@
 import fs from "fs";
 import path from "path";
 import type { AgentReport } from "./types";
+import { link } from "./deeplinks";
 
 export type ClasseTarefa = "consolidacao" | "redacao" | "chat" | "trivial";
 
@@ -328,7 +329,7 @@ export function analisarTelemetria(): AgentReport {
             asOf: new Date().toISOString().slice(0, 10),
           },
         ],
-        deepLink: "/consultor#gateway",
+        deepLink: link("consultor.gateway"),
       },
     ],
     metricas: {
@@ -344,12 +345,12 @@ export function analisarTelemetria(): AgentReport {
         justificativa: "Reaproveitamento de cache reduz custo de tokens de entrada em até 90%.",
         risco: "BAIXO",
         horizonte: "estrutural",
-        deepLink: "/consultor#gateway",
+        deepLink: link("consultor.gateway"),
       },
     ],
     melhorias: [],
-    confianca: "alta",
-    limitacoes: [],
+    confianca: totalCalls > 0 ? "alta" : "baixa",
+    limitacoes: totalCalls === 0 ? ["Nenhuma requisição registrada no log de uso hoje."] : [],
     dependencias: [],
   };
 }

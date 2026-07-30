@@ -158,15 +158,17 @@ export default function CarteiraPage() {
       />
 
       {/* WO-17 Bloco A: Painel de Ação do Dia (Flags de Risco) */}
-      <ActionFlags
-        positions={positions}
-        chainCache={chainCache}
-        divsByTicker={divsByTicker}
-        capitalTotal={capitalTotal}
-      />
+      <div id="acao-do-dia">
+        <ActionFlags
+          positions={positions}
+          chainCache={chainCache}
+          divsByTicker={divsByTicker}
+          capitalTotal={capitalTotal}
+        />
+      </div>
 
       {/* WO-11: capital & desempenho (Dashboard da planilha) */}
-      <div className="grid grid-cols-2 md:grid-cols-6 gap-2">
+      <div id="capital" className="grid grid-cols-2 md:grid-cols-6 gap-2">
         <div className="panel px-2 py-1.5">
           <div className="text-xxs text-term-dim uppercase tracking-wider">Capital total (R$)</div>
           <input
@@ -196,7 +198,7 @@ export default function CarteiraPage() {
       )}
 
       {/* WO-17 Bloco B: Analytics de Desempenho do Journal */}
-      <div className="grid grid-cols-2 md:grid-cols-6 gap-2">
+      <div id="journal" className="grid grid-cols-2 md:grid-cols-6 gap-2">
         <Kpi
           label="Profit Factor"
           value={perf.profitFactor != null ? (isFinite(perf.profitFactor) ? fmtNum(perf.profitFactor, 2) : "∞") : "—"}

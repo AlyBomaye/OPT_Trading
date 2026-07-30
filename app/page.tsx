@@ -16,6 +16,7 @@ import { ChevronDown, ChevronRight } from "lucide-react";
 import clsx from "clsx";
 import { sessionInfo } from "@/lib/session";
 import { getIvRank, useSnapshots } from "@/lib/snapshots";
+import { AgentPanel } from "@/components/AgentPanel";
 
 /** Valores manuais de GEX + carimbo de edição (WO-14), persistidos por ticker. */
 interface GexValues {
@@ -261,10 +262,11 @@ export default function CockpitPage() {
 
   return (
     <>
+      <AgentPanel agentId="cockpit" title="Agente Especialista do Cockpit" ticker={ticker} />
       <PreMarketPanel />
       <div className="grid md:grid-cols-3 gap-3">
         {/* [1] Choque do portfólio */}
-        <div className="panel">
+        <div id="choque-portfolio" className="panel">
           <div className="panel-title">[1] Choque do Portfólio</div>
           <div className="px-3 pb-3 space-y-1 text-xs font-mono">
             <Row k="Δ líquido (ações eq.)" v={fmtNum(greeks.deltaShares, 0)} />
@@ -285,7 +287,7 @@ export default function CockpitPage() {
         </div>
 
         {/* [2] Skew / GEX */}
-        <div className="panel">
+        <div id="gex" className="panel">
           <div className="panel-title flex items-center justify-between">
             <span>[2] Skew / GEX — {chain?.ticker ?? "—"}</span>
             {hasManual ? (

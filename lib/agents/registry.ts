@@ -127,7 +127,7 @@ export const AGENTS: AgentDef[] = [
     camada: "senior",
     aba: null,
     role: "Engenheiro de produto sênior + PhD: consolida as melhorias funcionais de todos os agentes num pipeline priorizado por impacto na performance do trader × custo-benefício. Roda 1×/dia às 23h.",
-    motor: "regras",
+    motor: "regras+llm",
     dependeDe: ["noticias", "carteira", "chain", "historico", "macro", "cockpit", "watchlist", "scanner", "estrategia"],
   },
 ];

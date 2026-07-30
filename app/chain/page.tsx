@@ -27,9 +27,17 @@ export default function ChainPage() {
           atmIv,
         }}
       />
-      <OptionChain />
-      <TermStructure />
-      <VolSmile />
+      <div id="skew">
+        <div id="mark-quality">
+          <OptionChain />
+        </div>
+      </div>
+      <div id="estrutura-a-termo">
+        <TermStructure />
+      </div>
+      <div id="smile">
+        <VolSmile />
+      </div>
     </>
   );
 }

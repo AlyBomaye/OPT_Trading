@@ -16,6 +16,7 @@ import { LegDiagram } from "@/components/LegDiagram";
 import { PayoffChart } from "@/components/PayoffChart";
 import { SensitivityMatrix } from "@/components/SensitivityMatrix";
 import { PriceHistoryPanel } from "@/components/PriceHistoryPanel";
+import { AgentPanel } from "@/components/AgentPanel";
 
 /* ============================================================================
  * Workbench de Estratégia — one-stop shop do trader de opções: chain à
@@ -147,6 +148,7 @@ export default function EstrategiaPage() {
 
   return (
     <>
+      <AgentPanel agentId="estrategia" title="Agente Especialista de Estratégias & Workbench" />
       {/* Sugestão orientada a decisão */}
       {suggestion && !legs.length && (
         <div className="panel px-3 py-2 flex items-center gap-3 flex-wrap border-l-2 !border-l-term-gold">
@@ -497,7 +499,9 @@ export default function EstrategiaPage() {
                   du
                 </label>
               </div>
-              <PayoffChart legs={legs} spot={chain.spot} r={selic} tnDay={tnDay} breakevens={metrics?.breakevens ?? []} />
+              <div id="payoff">
+                <PayoffChart legs={legs} spot={chain.spot} r={selic} tnDay={tnDay} breakevens={metrics?.breakevens ?? []} />
+              </div>
               <SensitivityMatrix legs={legs} spot={chain.spot} r={selic} dayOffset={tnDay} />
             </>
           )}

@@ -174,8 +174,8 @@ export function buildCarteiraReport(ctx: CarteiraInputContext): AgentReport {
     },
     recomendacoes,
     melhorias: [],
-    confianca: "alta",
-    limitacoes: [],
+    confianca: ctx.positions.length > 0 ? "alta" : "baixa",
+    limitacoes: ctx.positions.length === 0 ? ["Nenhuma posição aberta no book de carteira."] : [],
     dependencias: [],
   };
 }

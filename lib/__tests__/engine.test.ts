@@ -546,12 +546,15 @@ if (dataEfetiva === "2026-07-27") {
 }
 
 // ---- WO-23: Framework Multiagente (Fundação + Pilotos) ----
-import { ordemDeExecucao } from "../agents/registry";
+import { ordemDeExecucao, AGENTS } from "../agents/registry";
 import { classificarRisco, alocacaoPorBalde } from "../agents/risk";
 import { validarReport, type AgentReport } from "../agents/types";
-import { runAgent } from "../agents/orchestrator";
+import { runAgent, runCycle } from "../agents/orchestrator";
 import { verificarAfirmacoes, consolidarMemoria, salvarAfirmacoes, lerAfirmacoes } from "../agents/curator";
 import { prepararRequest, podarContexto } from "../agents/gateway";
+import { DEEP_LINKS } from "../agents/deeplinks";
+import { consolidarPipelineDeterminístico } from "../agents/senior/melhoria-continua";
+import { runScanner } from "../agents/tab/scanner";
 
 // Teste 1: ordemDeExecucao() respeita o DAG (macro depois de noticias e carteira, gestor-global depois de estrategia, prompt-gateway fora)
 const ordem = ordemDeExecucao();
@@ -831,6 +834,145 @@ async function testesAssincronos(): Promise<void> {
     console.log("✔ WO-23 Teste 9: prepararRequest() bloqueou request ao exceder teto orçamentário e aprovou dentro do teto");
   } else {
     console.log(`✘ WO-23 Teste 9 falhou: aprovadoBloqueado=${planoBloqueado.orcamento.aprovado}, aprovadoAprovado=${planoAprovado.orcamento.aprovado}`);
+    failures++;
+  }
+
+  // Teste 13: Conformidade de Contrato dos 13 Agentes Registrados
+  let complianceOk = true;
+  for (const agentDef of AGENTS) {
+    const rep = await runAgent(agentDef.id, {});
+    if (!validarReport(rep)) {
+      console.log(`✘ WO-24 Teste 13: Agente ${agentDef.id} falhou em validarReport`);
+      complianceOk = false;
+    }
+    for (const ach of rep.achados ?? []) {
+      if (!ach.evidencias || ach.evidencias.length === 0) {
+        console.log(`✘ WO-24 Teste 13: Agente ${agentDef.id} emitiu achado sem evidência`);
+        complianceOk = false;
+      }
+      for (const ev of ach.evidencias ?? []) {
+        if (!ev.fonte || ev.asOf === undefined) {
+          console.log(`✘ WO-24 Teste 13: Agente ${agentDef.id} emitiu evidência com fonte/asOf inválido`);
+          complianceOk = false;
+        }
+      }
+      if (ach.deepLink && !(ach.deepLink in DEEP_LINKS) && !Object.values(DEEP_LINKS).includes(ach.deepLink as any)) {
+        console.log(`✘ WO-24 Teste 13: Agente ${agentDef.id} emitiu deepLink '${ach.deepLink}' não registrado em DEEP_LINKS`);
+        complianceOk = false;
+      }
+    }
+    for (const [k, v] of Object.entries(rep.metricas ?? {})) {
+      if (typeof v === "number" && (isNaN(v) || !isFinite(v))) {
+        console.log(`✘ WO-24 Teste 13: Agente ${agentDef.id} emitiu métrica '${k}' NaN ou Infinity`);
+        complianceOk = false;
+      }
+    }
+    if (agentDef.camada === "aba" && rep.confianca !== "baixa" && (!rep.limitacoes || rep.limitacoes.length === 0)) {
+      console.log(`✘ WO-24 Teste 13: Agente de aba ${agentDef.id} com contexto vazio deveria indicar confianca baixa ou limitação`);
+      complianceOk = false;
+    }
+  }
+
+  if (complianceOk) {
+    console.log("✔ WO-24 Teste 13: Conformidade de Contrato passou em todos os 13 agentes registrados");
+  } else {
+    failures++;
+  }
+
+  // Teste 14: melhoria-continua (score prioridade = impacto / esforço e deduplicador)
+  const repMel1: AgentReport = {
+    schemaVersion: 1,
+    agentId: "carteira",
+    agentRole: "PM",
+    generatedAt: new Date().toISOString(),
+    headline: "h",
+    achados: [],
+    metricas: {},
+    recomendacoes: [],
+    melhorias: [{ titulo: "Ajustar Kelly", problema: "p", beneficio: "b", esforco: "S", impactoTrader: 5 }],
+    confianca: "alta",
+    limitacoes: [],
+    dependencias: [],
+    ticker: null,
+  };
+  const repMel2: AgentReport = {
+    schemaVersion: 1,
+    agentId: "macro",
+    agentRole: "Economista",
+    generatedAt: new Date().toISOString(),
+    headline: "h",
+    achados: [],
+    metricas: {},
+    recomendacoes: [],
+    melhorias: [
+      { titulo: "Ajustar Kelly", problema: "p", beneficio: "b", esforco: "S", impactoTrader: 5 },
+      { titulo: "Adicionar VIX 3D", problema: "p", beneficio: "b", esforco: "L", impactoTrader: 5 },
+    ],
+    confianca: "alta",
+    limitacoes: [],
+    dependencias: [],
+    ticker: null,
+  };
+
+  const pipeDet = consolidarPipelineDeterminístico([repMel1, repMel2]);
+  if (pipeDet.length === 2 && pipeDet[0].score === 5 && pipeDet[0].agentesSolicitantes.length === 2 && Math.abs(pipeDet[1].score - 5/3) < 1e-4) {
+    console.log("✔ WO-24 Teste 14: consolidarPipelineDeterminístico() priorizou por score e deduplicou sugestões equivalentes");
+  } else {
+    console.log(`✘ WO-24 Teste 14 falhou: pipeDet.length=${pipeDet.length}`);
+    failures++;
+  }
+
+  // Teste 15: estrategia (alocação em balde ALTO desanimadoramente elevado prioriza balde MÉDIO)
+  const repEst = await runAgent("estrategia", {
+    positions: [{ id: "1", kind: "OPTION", underlying: "PETR4", type: "CALL", strike: 30, du: 20, side: 1, qty: 100, price: 1.5, iv: 0.3 }],
+  });
+  const recsEst = repEst.recomendacoes ?? [];
+  const temRecAlto = recsEst.some((r) => r.risco === "ALTO");
+  if (!temRecAlto) {
+    console.log("✔ WO-24 Teste 15: Agente estrategia evitou sugerir nova estrutura de balde ALTO com o balde já estourado");
+  } else {
+    console.log("✘ WO-24 Teste 15 falhou: sugeriu balde ALTO mesmo com desvio");
+    failures++;
+  }
+
+  // Teste 16: scanner (candidato acima do orçamento ¼-Kelly traz aviso de orçamento)
+  const repScan = await runScanner({
+    chain: {
+      ticker: "PETR4",
+      spot: 30,
+      expiries: [{ date: "2026-08-21", isMonthly: true }],
+      options: [{ symbol: "PETRH30", underlying: "PETR4", type: "CALL", strike: 36, last: 0.05, volumeFin: 10000, expiry: "2026-08-21", du: 20, iv: 0.35, sourceIv: 0.35, delta: 0.1, markQuality: "fresh", distStrikePct: 0.2, moneyness: "OTM" }],
+    },
+    capitalTotal: 0,
+  });
+
+  const recScan = repScan.recomendacoes?.[0];
+  if (recScan && recScan.justificativa.includes("AVISO DE ORÇAMENTO")) {
+    console.log("✔ WO-24 Teste 16: Agente scanner emitiu aviso explícito ao exceder o orçamento ¼-Kelly");
+  } else {
+    console.log(`✘ WO-24 Teste 16 falhou: justificativa=${recScan?.justificativa}`);
+    failures++;
+  }
+
+  // Teste 17: macro (driver com movimento cita apenas tickers presentes na carteira)
+  const repMacro = await runAgent("macro", {
+    macroSeries: [{ symbol: "BZ=F", name: "Brent", chg1d: 0.03, last: 80 }],
+    positions: [{ underlying: "PETR4" }],
+  });
+  const achBrent = repMacro.achados.find((a) => a.id === "macro-driver-brent");
+  if (achBrent && achBrent.detalhe.includes("PETR4")) {
+    console.log("✔ WO-24 Teste 17: Agente macro citou explicitamente os tickers da carteira afetados pelo driver");
+  } else {
+    console.log(`✘ WO-24 Teste 17 falhou: detalhe=${achBrent?.detalhe}`);
+    failures++;
+  }
+
+  // Teste 18: Orquestrador executa o ciclo e devolve todos os 13 agentes
+  const cycle = await runCycle({});
+  if (cycle.executados.length === 13 && cycle.reports["carteira"] && cycle.reports["noticias"]) {
+    console.log("✔ WO-24 Teste 18: runCycle() executou o DAG de 13 agentes e registrou todos os reports");
+  } else {
+    console.log(`✘ WO-24 Teste 18 falhou: executados=${cycle.executados.length}`);
     failures++;
   }
 }

@@ -34,6 +34,7 @@ import { buildSectorRows, type SectorRow, useWatchlist, scanTicker } from "@/lib
 import { buildExpiryRisk, type ExpiryRisk } from "@/lib/event-radar";
 import { useEarnings } from "@/lib/earnings";
 import { EarningsEditor } from "@/components/EarningsEditor";
+import { AgentPanel } from "@/components/AgentPanel";
 
 interface CalBody {
   events: EconEvent[];
@@ -290,7 +291,8 @@ export default function NoticiasPage() {
       )}
 
       {/* 1. DASHBOARD SETORIAL */}
-      <div className="panel">
+      <AgentPanel agentId="noticias" title="Agente Especialista de Notícias & Sentiment" />
+      <div id="dashboard-setorial" className="panel">
         <div
           onClick={toggleSetorial}
           className="panel-title flex items-center justify-between cursor-pointer select-none"
@@ -449,7 +451,7 @@ export default function NoticiasPage() {
       </div>
 
       {/* 2. RADAR DE EVENTOS POR VENCIMENTO */}
-      <div className="panel">
+      <div id="radar-eventos" className="panel">
         <div
           onClick={toggleRadar}
           className="panel-title flex items-center justify-between cursor-pointer select-none"
@@ -642,7 +644,7 @@ export default function NoticiasPage() {
       </div>
 
       {/* 3. COBERTURA POR AÇÃO */}
-      <div className="panel">
+      <div id="cobertura-acoes" className="panel">
         <div
           onClick={toggleCobertura}
           className="panel-title flex items-center justify-between cursor-pointer select-none"

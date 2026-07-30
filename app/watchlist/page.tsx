@@ -21,6 +21,7 @@ import type { Candle } from "@/app/api/history/route";
  * ==========================================================================*/
 
 import { useWatchlist } from "@/lib/sector-dashboard";
+import { AgentPanel } from "@/components/AgentPanel";
 
 interface WatchRow {
   ticker: string;
@@ -178,6 +179,7 @@ export default function WatchlistPage() {
 
   return (
     <div className="space-y-3">
+      <AgentPanel agentId="watchlist" title="Agente Especialista de Watchlist & Skew" />
       <div className="panel px-3 py-2 flex flex-wrap items-center gap-2">
         <LayoutGrid size={14} className="text-term-cyan" />
         <span className="text-xxs uppercase tracking-widest text-term-dim font-semibold">
@@ -206,7 +208,7 @@ export default function WatchlistPage() {
         </div>
       )}
 
-      <div className="panel overflow-x-auto">
+      <div id="watchlist-tabela" className="panel overflow-x-auto">
         <table className="w-full text-xs">
           <thead>
             <tr className="border-b border-term-line">
