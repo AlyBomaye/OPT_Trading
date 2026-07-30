@@ -185,7 +185,8 @@ function PreMarketPanel() {
 
 /** Cockpit Pré-Market — réplica web do diagnóstico matinal da planilha. */
 export default function CockpitPage() {
-  const { chain, selic, positions, selectedExpiry, ticker } = useMarket();
+  const { chain, selic, positions, selectedExpiry, ticker, capitalTotal } = useMarket();
+  const closed = useMarket((st) => (st as any).closedPositions ?? []);
 
   // WO-18: Estado da busca de Posições em Aberto da B3
   const [oiData, setOiData] = useState<OiApiResponse | null>(null);
@@ -262,7 +263,20 @@ export default function CockpitPage() {
 
   return (
     <>
-      <AgentPanel agentId="cockpit" title="Agente Especialista do Cockpit" ticker={ticker} />
+      <AgentPanel
+        agentId="cockpit"
+        title="Agente Especialista do Cockpit"
+        ticker={ticker}
+        agentContext={{
+          ticker,
+          selic,
+          chain,
+          selectedExpiry,
+          positions,
+          closed,
+          capitalTotal,
+        }}
+      />
       <PreMarketPanel />
       <div className="grid md:grid-cols-3 gap-3">
         {/* [1] Choque do portfólio */}

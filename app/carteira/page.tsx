@@ -147,6 +147,13 @@ export default function CarteiraPage() {
       <AgentPanel
         agentId="carteira"
         title="Agente Especialista de Carteira"
+        agentContext={{
+          ticker: chain?.ticker ?? null,
+          selic,
+          positions,
+          closed,
+          capitalTotal,
+        }}
         carteiraCtx={{
           positions,
           closed,

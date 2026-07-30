@@ -11,6 +11,8 @@ import { sessionInfo } from "@/lib/session";
 import { getIvRank, snapshotCount, useSnapshots } from "@/lib/snapshots";
 import { UNIVERSE } from "@/lib/universe";
 
+import { TickerQuickSwitch } from "@/components/TickerQuickSwitch";
+
 export function TickerBar() {
   const {
     ticker,
@@ -30,23 +32,12 @@ export function TickerBar() {
     initHydrate,
   } = useMarket();
 
-  const [tickerInput, setTickerInput] = useState(ticker);
   const interval = useRef<ReturnType<typeof setInterval> | null>(null);
-  const [pickerOpen, setPickerOpen] = useState(false);
-  const pickerRef = useRef<HTMLDivElement | null>(null);
 
   // Hidratação inicial a partir do snapshot persistido
   useEffect(() => {
     initHydrate();
   }, [initHydrate]);
-
-  useEffect(() => {
-    const onClick = (e: MouseEvent) => {
-      if (pickerOpen && pickerRef.current && !pickerRef.current.contains(e.target as Node)) setPickerOpen(false);
-    };
-    document.addEventListener("mousedown", onClick);
-    return () => document.removeEventListener("mousedown", onClick);
-  }, [pickerOpen]);
 
   const [selicBcb, setSelicBcb] = useState<number | null>(null);
 
@@ -116,56 +107,8 @@ export function TickerBar() {
 
   return (
     <header className="flex items-center gap-3 px-3 py-2 border-b border-term-line bg-term-panel flex-wrap font-mono">
-      <form
-        onSubmit={(e) => {
-          e.preventDefault();
-          setTicker(tickerInput);
-        }}
-        className="flex items-center gap-1"
-      >
-        <div className="relative flex items-center" ref={pickerRef}>
-          <input
-            value={tickerInput}
-            onChange={(e) => setTickerInput(e.target.value.toUpperCase())}
-            className="cell-input !w-24 !text-left font-bold text-term-cyan !pr-6"
-            aria-label="Ticker"
-          />
-          <button
-            type="button"
-            className="absolute right-1 text-term-dim hover:text-term-cyan"
-            title="Universo monitorado (20 nomes)"
-            onClick={() => setPickerOpen((o) => !o)}
-          >
-            <ChevronDown size={13} className={clsx("transition-transform", pickerOpen && "rotate-180")} />
-          </button>
-          {pickerOpen && (
-            <div className="absolute left-0 top-full mt-1 z-50 panel border border-term-line shadow-xl w-64 max-h-80 overflow-y-auto">
-              {UNIVERSE.map((u) => (
-                <button
-                  key={u.ticker}
-                  type="button"
-                  className={clsx(
-                    "w-full flex items-center gap-2 px-2.5 py-1.5 text-xs hover:bg-term-panel2 transition-colors",
-                    u.ticker === ticker && "bg-term-cyan/10"
-                  )}
-                  onClick={() => {
-                    setTickerInput(u.ticker);
-                    setTicker(u.ticker);
-                    setPickerOpen(false);
-                  }}
-                >
-                  <span className="font-mono font-bold text-term-cyan w-16 text-left">{u.ticker}</span>
-                  <span className="flex-1 text-left text-term-text truncate">{u.name}</span>
-                  <span className="text-xxs text-term-dim">{u.sector}</span>
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
-        <button type="submit" className="btn">
-          Ir
-        </button>
-      </form>
+      {/* WO-28 C.1: Busca Rápida de Ativo Global (Atalhos T, setas/Enter, recentes) */}
+      <TickerQuickSwitch />
 
       {/* Chip de Estado da Sessão */}
       {sess.state === "ABERTO" && chain?.dataEfetiva === sess.ultimaSessao ? (

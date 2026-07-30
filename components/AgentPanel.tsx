@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { Bot, ChevronDown, ChevronUp, AlertTriangle, Info, CheckCircle2, Shield, RefreshCw } from "lucide-react";
 import clsx from "clsx";
 import Link from "next/link";
-import type { AgentReport, Risco } from "@/lib/agents/types";
+import type { AgentReport, AgentContext, Risco } from "@/lib/agents/types";
 
 interface AgentPanelProps {
   agentId: string;
@@ -12,9 +12,10 @@ interface AgentPanelProps {
   ticker?: string;
   carteiraCtx?: any;
   chainCtx?: any;
+  agentContext?: AgentContext;
 }
 
-export function AgentPanel({ agentId, title, ticker, carteiraCtx, chainCtx }: AgentPanelProps) {
+export function AgentPanel({ agentId, title, ticker, carteiraCtx, chainCtx, agentContext }: AgentPanelProps) {
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [report, setReport] = useState<AgentReport | null>(null);
@@ -40,7 +41,7 @@ export function AgentPanel({ agentId, title, ticker, carteiraCtx, chainCtx }: Ag
       const res = await fetch("/api/agents/run", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ agentId, ticker, carteiraCtx, chainCtx }),
+        body: JSON.stringify({ agentId, ticker, carteiraCtx, chainCtx, agentContext }),
       });
       if (res.ok) {
         const data: AgentReport = await res.json();

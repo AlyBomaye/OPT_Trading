@@ -359,16 +359,17 @@ export function analisarTelemetria(): AgentReport {
       cacheHitRatioPct: Number(cacheHitRatio.toFixed(1)),
       tetoDiarioUsd: budget.tetoDiarioUsd,
     },
-    recomendacoes: [
+    recomendacoes: [],
+    melhorias: [
       {
+        id: "gw-opt-01",
+        componente: "prompt-gateway",
         acao: cacheHitRatio < 50 ? "Estabilizar prefixo de contexto para elevar reaproveitamento de memória de longo prazo" : "Manter política de conservação de memória e monitorar consumo",
         justificativa: "Reaproveitamento reduz custo de processamento de entrada em até 90%.",
-        risco: "BAIXO",
-        horizonte: "estrutural",
-        deepLink: link("consultor.gateway"),
+        impactoTrader: 3,
+        esforco: "S",
       },
     ],
-    melhorias: [],
     confianca: totalCalls > 0 ? "alta" : "baixa",
     limitacoes: totalCalls === 0 ? ["Nenhuma requisição registrada no log de uso hoje."] : [],
     dependencias: [],

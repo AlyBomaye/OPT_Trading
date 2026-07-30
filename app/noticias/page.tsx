@@ -77,9 +77,10 @@ export default function NoticiasPage() {
   const [radarOpen, setRadarOpen] = useState(true);
   const [coberturaOpen, setCoberturaOpen] = useState(true);
 
+  const { ticker: selectedTicker, setTicker: setSelectedTicker } = useMarket();
+
   // Filtros e seleção
   const [selectedSector, setSelectedSector] = useState<Sector | "TODOS">("TODOS");
-  const [selectedTicker, setSelectedTicker] = useState<string | null>(null);
   const [tickerNews, setTickerNews] = useState<TickerNewsBody | null>(null);
   const [loadingTickerNews, setLoadingTickerNews] = useState(false);
   const [feedFilter, setFeedFilter] = useState<string>("TODOS");
@@ -291,7 +292,17 @@ export default function NoticiasPage() {
       )}
 
       {/* 1. DASHBOARD SETORIAL */}
-      <AgentPanel agentId="noticias" title="Agente Especialista de Notícias & Sentiment" />
+      <AgentPanel
+        agentId="noticias"
+        title="Agente Especialista de Notícias & Sentiment"
+        agentContext={{
+          ticker: selectedTicker,
+          news: {
+            items: news?.items ?? [],
+            macro: news?.macro ?? null,
+          },
+        }}
+      />
       <div id="dashboard-setorial" className="panel">
         <div
           onClick={toggleSetorial}
@@ -676,7 +687,7 @@ export default function NoticiasPage() {
                 return (
                   <button
                     key={u.ticker}
-                    onClick={() => setSelectedTicker(isSelected ? null : u.ticker)}
+                    onClick={() => setSelectedTicker(u.ticker)}
                     className={clsx(
                       "tag text-xs font-mono py-1 px-2.5 flex items-center gap-1.5 transition-colors cursor-pointer",
                       isSelected
@@ -722,7 +733,7 @@ export default function NoticiasPage() {
                       Carregar chain ({selectedTicker}) →
                     </button>
                     <button
-                      onClick={() => setSelectedTicker(null)}
+                      onClick={() => setSelectedTicker("PETR4")}
                       className="text-term-dim hover:text-term-text text-xs"
                     >
                       Fechar ✕

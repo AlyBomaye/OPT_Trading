@@ -11,7 +11,7 @@ import { fmtBRL, fmtCompact, fmtDateBR, fmtNum, fmtPct } from "@/lib/format";
 import { AgentPanel } from "@/components/AgentPanel";
 
 export default function ScannerPage() {
-  const { chain, addLeg, positions, closed, capitalTotal } = useMarket();
+  const { chain, ticker, selic, selectedExpiry, addLeg, positions, closed, capitalTotal } = useMarket();
   const router = useRouter();
   const [f, setF] = useState<PozinhoFilters>(DEFAULT_POZINHO_FILTERS);
 
@@ -40,7 +40,16 @@ export default function ScannerPage() {
 
   return (
     <>
-      <AgentPanel agentId="scanner" title="Agente Especialista de Convexidade & Scanner" />
+      <AgentPanel
+        agentId="scanner"
+        title="Agente Especialista de Convexidade & Scanner"
+        agentContext={{
+          ticker,
+          selic,
+          chain,
+          selectedExpiry,
+        }}
+      />
       <div className="panel">
         <div className="panel-title">Scanner de Pozinhos — OTM barato com máxima convexidade (Δ/R$)</div>
         <div className="flex flex-wrap gap-3 px-3 pb-2 text-xxs text-term-dim items-end">
@@ -58,8 +67,8 @@ export default function ScannerPage() {
       </div>
 
       <div id="pozinhos-tabela" className="panel overflow-x-auto">
-        <table className="w-full text-xs">
-          <thead>
+        <table className="w-full text-xs border-collapse">
+          <thead className="sticky top-0 bg-term-panel z-10 border-b border-term-line">
             <tr className="border-b border-term-line">
               {["Opção", "Setor", "Tipo", "Venc", "DU", "Strike", "Dist %", "Prêmio", "Δ", "IV", "Δ/R$ ▼", "Dist σ", "% até BE", "Neg", "Vol fin", ""].map((h) => (
                 <th key={h} className="th text-right first:text-left">{h}</th>

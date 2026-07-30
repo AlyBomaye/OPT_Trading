@@ -179,7 +179,15 @@ export default function WatchlistPage() {
 
   return (
     <div className="space-y-3">
-      <AgentPanel agentId="watchlist" title="Agente Especialista de Watchlist & Skew" />
+      <AgentPanel
+        agentId="watchlist"
+        title="Agente Especialista de Watchlist & Skew"
+        agentContext={{
+          ticker: null,
+          selic,
+          watchlistRows: rows,
+        }}
+      />
       <div className="panel px-3 py-2 flex flex-wrap items-center gap-2">
         <LayoutGrid size={14} className="text-term-cyan" />
         <span className="text-xxs uppercase tracking-widest text-term-dim font-semibold">

@@ -1,4 +1,4 @@
-import type { AgentReport } from "./types";
+import { validarReport, type AgentReport } from "./types";
 import { AGENTS, createStubReport, niveisTopologicos } from "./registry";
 import { buildCarteiraReport, type CarteiraInputContext } from "./tab/carteira";
 import { buildChainReport, type ChainInputContext } from "./tab/chain";
@@ -192,12 +192,23 @@ export async function runAgent(id: string, ctx: CycleContext): Promise<AgentRepo
   }
 }
 
+
 /**
- * WO-27 P0.2: Executa um único agente com timeout de 10s e logging com timestamp.
+ * WO-28 A.3: Timeouts por classe de agente.
+ * - regras: 8s (8000ms)
+ * - llm: 180s (180000ms) para gestor-global e melhoria-continua
+ * - teto global do ciclo: 300s (300000ms)
  */
-export async function runAgentWithTimeout(id: string, ctx: CycleContext, timeoutMs = 10000): Promise<AgentReport> {
+const TIMEOUT_REGRAS_MS = 8000;
+const TIMEOUT_LLM_MS = 180000;
+const TIMEOUT_GLOBAL_MS = 300000;
+
+export async function runAgentWithTimeout(id: string, ctx: CycleContext, customTimeoutMs?: number): Promise<AgentReport> {
+  const isLLM = id === "gestor-global" || id === "melhoria-continua";
+  const timeoutMs = customTimeoutMs ?? (isLLM ? TIMEOUT_LLM_MS : TIMEOUT_REGRAS_MS);
+  
   const inicio = Date.now();
-  console.log(`[ciclo] [${new Date().toISOString()}] início agente: ${id}`);
+  console.log(`[ciclo] [${new Date().toISOString()}] início agente (${isLLM ? "LLM" : "regras"}): ${id}`);
   
   let timer: NodeJS.Timeout | undefined;
   const timeoutPromise = new Promise<AgentReport>((resolve) => {
@@ -210,13 +221,13 @@ export async function runAgentWithTimeout(id: string, ctx: CycleContext, timeout
         agentRole: def?.role ?? "Desconhecido",
         generatedAt: new Date().toISOString(),
         ticker: ctx.ticker ?? null,
-        headline: `Timeout de 10s excedido na execução do agente ${id}.`,
+        headline: `Timeout de ${(timeoutMs / 1000).toFixed(0)}s excedido na execução do agente ${id}.`,
         achados: [],
         metricas: { duracaoMs: timeoutMs },
         recomendacoes: [],
         melhorias: [],
         confianca: "baixa",
-        limitacoes: [`Timeout de 10s excedido no agente ${id}`],
+        limitacoes: [`Timeout de ${(timeoutMs / 1000).toFixed(0)}s excedido no agente ${id}`],
         dependencias: def?.dependeDe ?? [],
       });
     }, timeoutMs);
@@ -229,6 +240,15 @@ export async function runAgentWithTimeout(id: string, ctx: CycleContext, timeout
     if (report && report.metricas) {
       report.metricas.duracaoMs = duracao;
     }
+
+    // WO-28 Adendo §2: Validação mandatória de contrato para TODO report gerado
+    if (report && !validarReport(report)) {
+      console.warn(`[orchestrator] Report do agente '${id}' reprovado em validarReport() (achado sem evidência ou recomendação de engenharia em trading)`);
+      report.confianca = "baixa";
+      report.limitacoes.push("Report reprovado na validação de contrato ou contém recomendação incompatível");
+      report.recomendacoes = [];
+    }
+
     return report;
   } finally {
     if (timer) clearTimeout(timer);
@@ -237,7 +257,7 @@ export async function runAgentWithTimeout(id: string, ctx: CycleContext, timeout
 
 /**
  * Executa o ciclo completo multiagente com paralelismo por nível topológico do DAG
- * e teto global de 60s (WO-27 P0.2).
+ * e teto global de 300s (WO-28 A.3).
  */
 export async function runCycle(ctx: CycleContext = {}, onAgentCompleted?: (rep: AgentReport) => void): Promise<CycleResult> {
   const inicio = Date.now();
@@ -251,9 +271,9 @@ export async function runCycle(ctx: CycleContext = {}, onAgentCompleted?: (rep: 
   // Níveis dinâmicos do DAG
   const niveis = niveisTopologicos();
   for (const nivel of niveis) {
-    // Verifica teto global de 60s
-    if (Date.now() - inicio > 60000) {
-      console.warn(`[ciclo] Teto global de 60s atingido. Agentes restantes serão marcados como timeout.`);
+    // Verifica teto global de 300s
+    if (Date.now() - inicio > TIMEOUT_GLOBAL_MS) {
+      console.warn(`[ciclo] Teto global de 300s atingido. Agentes restantes serão marcados como timeout.`);
       for (const id of nivel) {
         if (!reports[id]) {
           const def = AGENTS.find((a) => a.id === id);
@@ -263,13 +283,13 @@ export async function runCycle(ctx: CycleContext = {}, onAgentCompleted?: (rep: 
             agentRole: def?.role ?? "Desconhecido",
             generatedAt: new Date().toISOString(),
             ticker: ctx.ticker ?? null,
-            headline: `Ciclo cancelado por teto global de 60s.`,
+            headline: `Ciclo cancelado por teto global de 300s.`,
             achados: [],
             metricas: { duracaoMs: 0 },
             recomendacoes: [],
             melhorias: [],
             confianca: "baixa",
-            limitacoes: ["Ciclo cancelado por exceder o teto global de 60s"],
+            limitacoes: ["Ciclo cancelado por exceder o teto global de 300s"],
             dependencias: def?.dependeDe ?? [],
           };
           if (onAgentCompleted) onAgentCompleted(reports[id]);

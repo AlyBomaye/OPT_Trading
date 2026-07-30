@@ -96,7 +96,7 @@ const IMPACT_DRIVERS: ImpactDriverConfig[] = [
 
 export default function MacroPage() {
   const router = useRouter();
-  const { setTicker } = useMarket();
+  const { selic, setTicker } = useMarket();
 
   const [data, setData] = useState<MacroBody | null>(null);
   const [loading, setLoading] = useState(false);
@@ -217,7 +217,15 @@ export default function MacroPage() {
 
   return (
     <div className="p-4 space-y-4 max-w-7xl mx-auto font-mono">
-      <AgentPanel agentId="macro" title="Agente Especialista Macro & Rates" />
+      <AgentPanel
+        agentId="macro"
+        title="Agente Especialista Macro & Rates"
+        agentContext={{
+          ticker: null,
+          selic,
+          macroSeries: data,
+        }}
+      />
       {/* Header com Seletor de Janela & Status */}
       <div className="panel p-3 flex flex-wrap items-center justify-between gap-3 text-xs">
         <div className="flex items-center gap-2">
@@ -365,7 +373,7 @@ export default function MacroPage() {
           <div className="p-3">
             <div className="overflow-x-auto">
               <table className="w-full text-left text-xs font-mono border-collapse table-fixed min-w-[850px]">
-                <thead>
+                <thead className="sticky top-0 bg-term-panel z-10 border-b border-term-line">
                   <tr className="border-b border-term-line text-xxs text-term-dim uppercase bg-term-panel2/40">
                     <th className="py-2 px-2 w-[26%]">Ativo</th>
                     <th className="py-2 px-1 w-[10%]">Último</th>

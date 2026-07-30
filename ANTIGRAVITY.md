@@ -702,6 +702,14 @@ Execução por `runCycle()` em `lib/agents/orchestrator.ts` com paralelismo `Pro
 - Toda chamada passa obrigatoriamente por `prepararRequest()` em `lib/agents/gateway.ts`.
 - **Hot path determinístico:** sanitiza personas, ordena chaves JSON, invalida variáveis voláteis no prefixo estável, aplica `cache_control: { type: "ephemeral" }` e aplica tetos de orçamento (`data/agents/budget.json`).
 
+### 11.6 Contratos de Contexto, Isolamento e Timeouts (WO-28)
+1. **Contrato `AgentContext`**: O `AgentContext` (`lib/agents/types.ts`) é o contrato único de dados enviado a cada agente, contendo ticker, selic, chain, histórico, posições, watchlist, notícias e séries macro. Nenhuma aba envia contexto vazio.
+2. **Regra de Isolamento Servidor x Cliente (Sem Stores Zustand em Agentes)**: Agentes rodam no servidor e **NUNCA** podem importar módulos que instanciam Zustand stores (client-side) para evitar dependências circulares de empacotamento no Webpack. Funções puras de estatística/analytics vivem em módulos isolados (ex: `lib/sector-analytics.ts`).
+3. **Timeouts por Classe de Agente**:
+   - **Classe `regras` (Determinística):** Timeout de 8s (8.000 ms).
+   - **Classe `llm` (Sênior / Modelo):** Timeout de 180s (180.000 ms) para `gestor-global` e `melhoria-continua`.
+   - **Teto Global do Ciclo:** 300s (300.000 ms).
+
 ---
 
 ## 12. Testes (`lib/__tests__/engine.test.ts`)

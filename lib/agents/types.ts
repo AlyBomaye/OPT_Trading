@@ -52,6 +52,22 @@ export interface AgentReport {
   dependencias: string[];             // agentIds consumidos
 }
 
+/** Contexto completo enviado pelas 10 abas e pelo Consultor aos agentes (WO-28 A.1). */
+export interface AgentContext {
+  ticker: string | null;
+  selic?: number;
+  chain?: any | null;
+  selectedExpiry?: string | null;
+  positions?: any[];
+  closed?: any[];
+  capitalTotal?: number;
+  historico?: { candles: any[]; range: string } | null;
+  watchlistRows?: Record<string, any> | null;
+  macroSeries?: any | null;
+  news?: { items: any[]; macro: any } | null;
+  sessao?: { estado: string; dataEfetiva: string | null };
+}
+
 /** Tipo compartilhado entre a rota run-cycle e o page.tsx do Consultor. */
 export interface CycleResponse {
   reports: Record<string, AgentReport>;
@@ -88,7 +104,8 @@ export function validarReport(report: AgentReport): boolean {
     }
   }
   if (report.recomendacoes && Array.isArray(report.recomendacoes)) {
-    const regexEngenharia = /cache|prompt|refatorar|implementar|endpoint|agente|token/i;
+    // WO-28 Adendo §2: regex expandido para bloquear jargão de engenharia em recomendações de trading
+    const regexEngenharia = /cache|prompt|refatorar|implementar|endpoint|agente|token|contexto|memória de longo prazo|latência|bundle|store|deploy|schema|polling/i;
     for (const rec of report.recomendacoes) {
       if (regexEngenharia.test(rec.acao)) {
         return false;

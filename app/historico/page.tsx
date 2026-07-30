@@ -49,9 +49,8 @@ interface HistBody {
 }
 
 export default function HistoricoPage() {
-  const { chain, ticker: chainTicker } = useMarket();
+  const { chain, ticker, setTicker } = useMarket();
   const snapshots = useSnapshots((st) => st.snapshots);
-  const [ticker, setTicker] = useState<string>("PETR4");
   const [range, setRange] = useState<string>("1y");
   const [data, setData] = useState<HistBody | null>(null);
   const [loading, setLoading] = useState(false);
@@ -125,7 +124,15 @@ export default function HistoricoPage() {
 
   return (
     <div className="space-y-3">
-      <AgentPanel agentId="historico" title="Agente Especialista de Histórico & Vol" ticker={ticker} />
+      <AgentPanel
+        agentId="historico"
+        title="Agente Especialista de Histórico & Vol"
+        ticker={ticker}
+        agentContext={{
+          ticker,
+          historico: { candles, range },
+        }}
+      />
       {/* Controles */}
       <div className="panel px-3 py-2 flex flex-wrap items-center gap-2">
         <History size={14} className="text-term-cyan" />
@@ -177,7 +184,7 @@ export default function HistoricoPage() {
             { label: "HV 21d (c2c)", value: lastHv21 != null ? fmtPct(lastHv21) : "—", cls: "" },
             { label: "Parkinson (per.)", value: stats.parkinsonAnn != null ? fmtPct(stats.parkinsonAnn) : "—", cls: "" },
             {
-              label: `IV ATM (${chainTicker === ticker ? "live" : "carregue chain"})`,
+              label: `IV ATM (${chain?.ticker === ticker ? "live" : "carregue chain"})`,
               value: liveAtmIv != null ? fmtPct(liveAtmIv) : "—",
               cls: "text-term-cyan",
             },

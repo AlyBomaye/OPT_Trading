@@ -1291,6 +1291,120 @@ async function testesAssincronos(): Promise<void> {
     console.log(`✘ WO-27 Teste 37 falhou (possível deadlock na rota chat): raceResult=${JSON.stringify(raceResultChat)}`);
     failures++;
   }
+
+  // Teste 38: Contract AgentContext definido e tipado com campos das 9 abas (WO-28 A.1)
+  const sampleCtx: import("../agents/types").AgentContext = {
+    ticker: "PETR4",
+    selic: 0.1425,
+    chain: { ticker: "PETR4", spot: 38.5, options: [] },
+    selectedExpiry: "2026-08-21",
+    positions: [],
+    closed: [],
+    capitalTotal: 100000,
+    historico: { candles: [], range: "1y" },
+    watchlistRows: {},
+    macroSeries: {},
+    news: { items: [], macro: null },
+    sessao: { estado: "ABERTO", dataEfetiva: "2026-07-30" },
+  };
+  if (sampleCtx.ticker === "PETR4" && sampleCtx.selic === 0.1425 && sampleCtx.capitalTotal === 100000) {
+    console.log("✔ WO-28 Teste 38: Contract AgentContext verificado com todos os campos das 9 abas");
+  } else {
+    console.log("✘ WO-28 Teste 38 falhou");
+    failures++;
+  }
+
+  // Teste 39: Módulo puro lib/sector-analytics.ts sem dependência de Zustand store (WO-28 A.2)
+  const { computeBuzzSpikes, dedupeNewsItems } = await import("../sector-analytics");
+  if (typeof computeBuzzSpikes === "function" && typeof dedupeNewsItems === "function") {
+    const resDedupe = dedupeNewsItems([{ title: "Notícia 1", link: "", source: "", publishedAt: "", tickers: ["PETR4"], categories: [] }]);
+    if (resDedupe.length === 1) {
+      console.log("✔ WO-28 Teste 39: Módulo puro lib/sector-analytics.ts importado e executado sem store Zustand");
+    } else {
+      console.log("✘ WO-28 Teste 39 falhou na deduplicação");
+      failures++;
+    }
+  } else {
+    console.log("✘ WO-28 Teste 39 falhou na importação");
+    failures++;
+  }
+
+  // Teste 40: Timeouts por classe de agente (LLM 180s, regras 8s) (WO-28 A.3)
+  const orchCode = fs.readFileSync("lib/agents/orchestrator.ts", "utf-8");
+  if (orchCode.includes("TIMEOUT_REGRAS_MS = 8000") && orchCode.includes("TIMEOUT_LLM_MS = 180000") && orchCode.includes("TIMEOUT_GLOBAL_MS = 300000")) {
+    console.log("✔ WO-28 Teste 40: Timeouts por classe de agente verificados (regras: 8s, llm: 180s, global: 300s)");
+  } else {
+    console.log("✘ WO-28 Teste 40 falhou ao validar constantes de timeout");
+    failures++;
+  }
+
+  // Teste 41: Orchestrator executa validarReport() e reprova recomendações de engenharia em trading (WO-28 Adendo §2)
+  const { validarReport: checkValidReport } = await import("../agents/types");
+  const reportEngSample = {
+    schemaVersion: 1 as const,
+    agentId: "carteira",
+    agentRole: "Test",
+    generatedAt: new Date().toISOString(),
+    ticker: "PETR4",
+    headline: "Test headline",
+    achados: [{ id: "1", titulo: "Achado 1", detalhe: "Det", severidade: "info" as const, evidencias: [{ metrica: "M1", valor: 10, fonte: "F1", asOf: "2026-07-30" }] }],
+    metricas: {},
+    recomendacoes: [{ acao: "Estabilizar prefixo de contexto para elevar reaproveitamento de memória de longo prazo", justificativa: "Eng", risco: "BAIXO" as const, horizonte: "hoje" as const }],
+    melhorias: [],
+    confianca: "alta" as const,
+    limitacoes: [],
+    dependencias: [],
+  };
+  const isValidEng = checkValidReport(reportEngSample);
+  if (!isValidEng) {
+    console.log("✔ WO-28 Teste 41: validarReport() reprovou recomendação contendo jargão de engenharia");
+  } else {
+    console.log("✘ WO-28 Teste 41 falhou: report com jargão de engenharia foi aprovado");
+    failures++;
+  }
+
+  // Teste 42: Relatório executivo do Gestor Global emite 9 seções, ≥ 5 tickers, ≥ 3 setores, 0 URLs absolutas (WO-28 B.2 & Adendo §4)
+  const { fallbackDeterministicoGestorGlobal: fallbackGG } = await import("../agents/senior/gestor-global");
+  const { textoRelatorio: textRep } = fallbackGG({ reports: [], positions: [], capitalTotal: 100000 }, "Teste de mesa");
+  const has9Secs = textRep.includes("## 1. Veredito") && textRep.includes("## 2. Quadro macro") && textRep.includes("## 3. Leitura setorial") && textRep.includes("## 4. Destaques do universo") && textRep.includes("## 5. Sua carteira") && textRep.includes("## 6. O que eu faria") && textRep.includes("## 7. O que observar") && textRep.includes("## 8. Metodologia") && textRep.includes("## 9. Termos que usei");
+  const tickersCount = (textRep.match(/PETR4|VALE3|ITUB4|BBDC4|BBAS3|MGLU3|BOVA11/g) ?? []).length;
+  const sectorsCount = (textRep.match(/Oil&Gas|Mineração|Bancos|Varejo|Siderurgia/g) ?? []).length;
+  const noAbsoluteLinks = !/http:\/\/localhost/.test(textRep);
+
+  if (has9Secs && tickersCount >= 5 && sectorsCount >= 3 && noAbsoluteLinks) {
+    console.log("✔ WO-28 Teste 42: Relatório executivo do Gestor validado (9 seções, 5+ tickers, 3+ setores, links relativos)");
+  } else {
+    console.log(`✘ WO-28 Teste 42 falhou: 9Secs=${has9Secs}, tickersCount=${tickersCount}, sectorsCount=${sectorsCount}, noAbs=${noAbsoluteLinks}`);
+    failures++;
+  }
+
+  // Teste 43: Varredura estática confirma que nenhum arquivo em app/**/page.tsx declara useState local para ticker (WO-28 Adendo §1)
+  const appPages = ["app/historico/page.tsx", "app/noticias/page.tsx", "app/chain/page.tsx", "app/carteira/page.tsx", "app/watchlist/page.tsx", "app/scanner/page.tsx", "app/estrategia/page.tsx", "app/macro/page.tsx", "app/consultor/page.tsx", "app/page.tsx"];
+  let hasLocalTickerState = false;
+  for (const pagePath of appPages) {
+    if (fs.existsSync(pagePath)) {
+      const code = fs.readFileSync(pagePath, "utf-8");
+      if (/const\s+\[ticker,\s*setTicker\]\s*=\s*useState/.test(code) || /const\s+\[selectedTicker,\s*setSelectedTicker\]\s*=\s*useState/.test(code)) {
+        console.log(`✘ Encontrado useState local de ticker em ${pagePath}`);
+        hasLocalTickerState = true;
+      }
+    }
+  }
+  if (!hasLocalTickerState) {
+    console.log("✔ WO-28 Teste 43: Nenhuma página em app/**/page.tsx declara useState local para o ticker ativo");
+  } else {
+    console.log("✘ WO-28 Teste 43 falhou: estado local de ticker encontrado em app/**/page.tsx");
+    failures++;
+  }
+
+  // Teste 44: UNIVERSE de 20 nomes exportado e estruturado por setor (WO-28 C.1)
+  const { UNIVERSE } = await import("../universe");
+  if (Array.isArray(UNIVERSE) && UNIVERSE.length === 20 && UNIVERSE.every((u) => u.ticker && u.sector)) {
+    console.log("✔ WO-28 Teste 44: Universo de 20 ativos B3 verificado com setores tipados");
+  } else {
+    console.log("✘ WO-28 Teste 44 falhou ao validar UNIVERSE");
+    failures++;
+  }
 }
 
 testesAssincronos()

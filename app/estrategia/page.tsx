@@ -36,6 +36,7 @@ const BIAS_CLS: Record<string, string> = {
 export default function EstrategiaPage() {
   const {
     chain,
+    ticker,
     selic,
     legs,
     updateLeg,
@@ -148,7 +149,16 @@ export default function EstrategiaPage() {
 
   return (
     <>
-      <AgentPanel agentId="estrategia" title="Agente Especialista de Estratégias & Workbench" />
+      <AgentPanel
+        agentId="estrategia"
+        title="Agente Especialista de Estratégias & Workbench"
+        agentContext={{
+          ticker,
+          selic,
+          chain,
+          selectedExpiry,
+        }}
+      />
       {/* Sugestão orientada a decisão */}
       {suggestion && !legs.length && (
         <div className="panel px-3 py-2 flex items-center gap-3 flex-wrap border-l-2 !border-l-term-gold">

@@ -11,6 +11,7 @@ export default function ChainPage() {
   const chain = useMarket((st) => st.chain);
   const ticker = useMarket((st) => st.ticker);
   const selectedExpiry = useMarket((st) => st.selectedExpiry);
+  const selic = useMarket((st) => st.selic);
 
   const skew = chain && selectedExpiry ? skewInfo(chain, selectedExpiry) : null;
   const atmIv = chain && selectedExpiry ? atmIvNearest(chain, selectedExpiry) : null;
@@ -21,6 +22,12 @@ export default function ChainPage() {
         agentId="chain"
         title="Agente Especialista de Option Chain"
         ticker={ticker}
+        agentContext={{
+          ticker,
+          selic,
+          chain,
+          selectedExpiry,
+        }}
         chainCtx={{
           chain,
           skewInfo: skew,

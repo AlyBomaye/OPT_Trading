@@ -1,6 +1,6 @@
 import type { AgentReport, Achado, Recomendacao } from "../types";
 import { link } from "../deeplinks";
-import { dedupeNewsItems, computeBuzzSpikes } from "@/lib/sector-dashboard";
+import { dedupeNewsItems, computeBuzzSpikes } from "@/lib/sector-analytics";
 import { buildExpiryRisk } from "@/lib/event-radar";
 
 export async function runNoticias(ctx: unknown): Promise<AgentReport> {

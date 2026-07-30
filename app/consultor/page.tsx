@@ -13,6 +13,8 @@ import { alocacaoPorBalde, type AlocacaoBaldes } from "@/lib/agents/risk";
 import { AGENTS } from "@/lib/agents/registry";
 import type { AgentReport, Recomendacao, Achado, Melhoria, CycleResponse } from "@/lib/agents/types";
 import type { RunState } from "@/lib/agents/orchestrator";
+import { MapaOportunidades } from "@/components/agents/MapaOportunidades";
+import { useWatchlist } from "@/lib/sector-dashboard";
 
 // Gráficos do WO-26 (D.1)
 import { RiskTargetChart } from "@/components/agents/RiskTargetChart";
@@ -197,6 +199,15 @@ export default function ConsultorPage() {
             capitalTotal,
           },
           chainCtx: hasChain ? { chain } : undefined,
+          agentContext: {
+            ticker,
+            selic: useMarket.getState().selic,
+            chain: hasChain ? chain : null,
+            positions,
+            closed,
+            capitalTotal,
+            watchlistRows: useWatchlist.getState ? useWatchlist.getState().rows : {},
+          },
         }),
       });
 
@@ -438,24 +449,8 @@ export default function ConsultorPage() {
             <div className="lg:col-span-5 h-full">
               <RiskMixBar {...alocacao.mix} utilizacaoPct={alocacao.utilizacaoCapitalPct} desvio={alocacao.desvio} />
             </div>
-            <div className="lg:col-span-7 bg-neutral-900 border border-neutral-800 p-4 h-full flex flex-col rounded">
-              <h4 className="text-sm text-neutral-200 mb-4 border-b border-neutral-800 pb-2 flex items-center">
-                <Zap size={14} className="text-yellow-500 mr-2" />
-                Ações Priorizadas
-              </h4>
-              <div className="flex-1">
-                {recomendacoes.length === 0 ? (
-                  <div className="h-full flex items-center justify-center text-neutral-500 text-sm italic py-8">
-                    {loading ? "Avaliando cenários..." : "Nenhuma ação recomendada hoje — book dentro dos parâmetros."}
-                  </div>
-                ) : (
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                    {recomendacoes.slice(0, 4).map((rec, i) => (
-                      <ActionCard key={i} rec={rec} />
-                    ))}
-                  </div>
-                )}
-              </div>
+            <div className="lg:col-span-7">
+              <MapaOportunidades />
             </div>
           </div>
 
