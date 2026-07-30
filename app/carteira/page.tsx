@@ -22,6 +22,7 @@ import { evaluateFlags, useFlagSettings } from "@/lib/position-flags";
 import { groupTrades, performanceStats } from "@/lib/performance";
 import { ActionFlags } from "@/components/ActionFlags";
 import { PerformanceCharts } from "@/components/PerformanceCharts";
+import { AgentPanel } from "@/components/AgentPanel";
 
 export default function CarteiraPage() {
   const {
@@ -143,6 +144,19 @@ export default function CarteiraPage() {
 
   return (
     <>
+      <AgentPanel
+        agentId="carteira"
+        title="Agente Especialista de Carteira"
+        carteiraCtx={{
+          positions,
+          closed,
+          capitalTotal,
+          netGreeks: greeks,
+          varGrid: risk ?? { var95: 0, es: 0 },
+          journalStats: journal ?? { n: 0, winRate: 0, payoffRatio: 0, realizedKelly: 0 },
+        }}
+      />
+
       {/* WO-17 Bloco A: Painel de Ação do Dia (Flags de Risco) */}
       <ActionFlags
         positions={positions}

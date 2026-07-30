@@ -39,6 +39,35 @@ Abra http://localhost:3000. Build de produção: `npm run build && npm start`.
 
 Testes numéricos (valores de referência de Hull): `npm run test:engine`. Type-check: `npm run typecheck`.
 
+## Framework Multiagente & Agendamento Diário (WO-23)
+
+### 1. Configuração da Chave LLM (`ANTHROPIC_API_KEY`)
+Para habilitar sínteses em linguagem natural do Gestor Global no Consultor, crie o arquivo `.env.local` na raiz do projeto:
+
+```env
+ANTHROPIC_API_KEY=sk-ant-api03-...
+```
+
+*Nota: Se a chave não for configurada ou o teto de orçamento for atingido, a plataforma operará em modo determinístico com custo zero.*
+
+### 2. Agendamento do Ciclo Diário (23h) no Windows
+Para executar o ciclo diário off-line às 23h sem necessidade de manter o navegador aberto:
+
+```bash
+npm run agents:daily
+```
+
+**Agendador de Tarefas do Windows (Task Scheduler):**
+1. Abra o **Agendador de Tarefas** (`taskschd.msc`).
+2. Clique em **Criar Tarefa Básica...** → Nome: `OpcoesTerminalAgentsDaily`.
+3. Disparador: **Diariamente** às `23:00`.
+4. Ação: **Iniciar um programa**.
+5. Programa/script: `npm.cmd` (ou caminho completo `C:\Program Files\nodejs\npm.cmd`).
+6. Adicionar argumentos: `run agents:daily`.
+7. Iniciar em (pasta do projeto): `C:\Users\viito\OneDrive\Vitor\Opções - Trading\opcoes-terminal`.
+
+---
+
 ## Avisos
 
 Dados com atraso; ferramenta educacional e de apoio à decisão — **não é recomendação de investimento**. Valide toda operação com sua própria análise.

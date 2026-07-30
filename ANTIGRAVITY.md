@@ -671,6 +671,27 @@ Ao alterar o universo: atualizar também `TICKER_KEYWORDS` em `app/api/news/rout
 
 ---
 
+## 11. Framework Multiagente (WO-23)
+
+O ecossistema multiagente combina execução **determinística de alta performance** para agentes de aba/infraestrutura e **síntese executiva didática via LLM (`claude-opus-5`)** para o Gestor Global.
+
+### 11.1 Contrato de Report e Regras Invioláveis
+- **Interface canônica:** Todo agente emite a estrutura `AgentReport` (`lib/agents/types.ts`).
+- **Validação de evidência:** Todo `Achado` **DEVE** conter ao menos 1 `Evidencia` com `fonte` e `asOf` válidos. Achado sem número é rejeitado.
+- **Links diretos (`deepLink`):** Apontam para rotas e âncoras reais da plataforma (ex: `[1,27](/chain#skew)`).
+
+### 11.2 Orquestração DAG e 13 Agentes
+- Execução encadeada via `runCycle()` (`lib/agents/orchestrator.ts`).
+- Nenhuma falha em agente derruba o ciclo: exceções são convertidas em reports de `confianca: "baixa"`.
+- Estabilidade de runtime: sem `ANTHROPIC_API_KEY` ou com teto estourado, o Gestor Global degrada graciosamente para **consolidação determinística**, mantendo 100% da plataforma funcional e sem custos.
+
+### 11.3 Regra Inviolável do Prompt Gateway (`prompt-gateway`)
+- **NENHUMA requisição ao modelo LLM é feita diretamente por agentes sêniores.**
+- Toda chamada passa obrigatoriamente por `prepararRequest()` em `lib/agents/gateway.ts`.
+- **Hot path determinístico:** sanitiza personas, ordena chaves JSON, invalida variáveis voláteis no prefixo estável, aplica `cache_control: { type: "ephemeral" }` e aplica tetos de orçamento (`data/agents/budget.json`).
+
+---
+
 ## 12. Testes (`lib/__tests__/engine.test.ts`)
 
 Harness próprio (`assertClose`, exit code 1 em falha). Cobertura atual: normCdf; BS call/put

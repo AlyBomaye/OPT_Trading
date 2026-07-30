@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
-import { Gauge, Table2, GitBranch, Search, Briefcase, Newspaper, History, LayoutGrid, BookOpen, Globe } from "lucide-react";
+import { Gauge, Table2, GitBranch, Search, Briefcase, Newspaper, History, LayoutGrid, BookOpen, Globe, Bot } from "lucide-react";
 import clsx from "clsx";
 
 import { useMarket } from "@/store/market";
@@ -12,15 +12,16 @@ import { fmtDateBR } from "@/lib/format";
 
 const ITEMS = [
   { href: "/carteira", label: "Carteira", key: "1", icon: Briefcase },
-  { href: "/macro", label: "Macro", key: "2", icon: Globe },
-  { href: "/noticias", label: "Notícias", key: "3", icon: Newspaper },
-  { href: "/scanner", label: "Scanner", key: "4", icon: Search },
+  { href: "/noticias", label: "Notícias", key: "2", icon: Newspaper },
+  { href: "/macro", label: "Macro", key: "3", icon: Globe },
+  { href: "/", label: "Cockpit", key: "4", icon: Gauge },
   { href: "/watchlist", label: "Watchlist", key: "5", icon: LayoutGrid },
-  { href: "/estrategia", label: "Estratégia", key: "6", icon: GitBranch },
-  { href: "/", label: "Cockpit", key: "7", icon: Gauge },
+  { href: "/scanner", label: "Scanner", key: "6", icon: Search },
+  { href: "/estrategia", label: "Estratégia", key: "7", icon: GitBranch },
   { href: "/chain", label: "Chain", key: "8", icon: Table2 },
-  { href: "/manual", label: "Manual", key: "9", icon: BookOpen },
-  { href: "/historico", label: "Histórico", key: "0", icon: History },
+  { href: "/historico", label: "Histórico", key: "9", icon: History },
+  { href: "/manual", label: "Manual", key: "0", icon: BookOpen },
+  { href: "/consultor", label: "Consultor", key: "C", icon: Bot },
 ];
 
 export function Nav() {

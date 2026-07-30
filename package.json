@@ -7,9 +7,11 @@
     "build": "next build",
     "start": "next start",
     "typecheck": "tsc --noEmit",
-    "test:engine": "tsx lib/__tests__/engine.test.ts"
+    "test:engine": "tsx lib/__tests__/engine.test.ts",
+    "agents:daily": "node scripts/agents-daily.mjs"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.115.0",
     "clsx": "^2.1.1",
     "lucide-react": "^0.428.0",
     "next": "^14.2.5",

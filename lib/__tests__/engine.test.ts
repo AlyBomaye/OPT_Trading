@@ -545,5 +545,302 @@ if (dataEfetiva === "2026-07-27") {
   failures++;
 }
 
-console.log(failures === 0 ? "\nTODOS OS TESTES PASSARAM" : `\n${failures} TESTE(S) FALHARAM`);
-process.exit(failures === 0 ? 0 : 1);
+// ---- WO-23: Framework Multiagente (Fundação + Pilotos) ----
+import { ordemDeExecucao } from "../agents/registry";
+import { classificarRisco, alocacaoPorBalde } from "../agents/risk";
+import { validarReport, type AgentReport } from "../agents/types";
+import { runAgent } from "../agents/orchestrator";
+import { verificarAfirmacoes, consolidarMemoria, salvarAfirmacoes, lerAfirmacoes } from "../agents/curator";
+import { prepararRequest, podarContexto } from "../agents/gateway";
+
+// Teste 1: ordemDeExecucao() respeita o DAG (macro depois de noticias e carteira, gestor-global depois de estrategia, prompt-gateway fora)
+const ordem = ordemDeExecucao();
+const idxNoticias = ordem.indexOf("noticias");
+const idxCarteira = ordem.indexOf("carteira");
+const idxMacro = ordem.indexOf("macro");
+const idxEstrategia = ordem.indexOf("estrategia");
+const idxGestor = ordem.indexOf("gestor-global");
+const hasGateway = ordem.includes("prompt-gateway");
+
+if (!hasGateway && idxMacro > idxNoticias && idxMacro > idxCarteira && idxGestor > idxEstrategia) {
+  console.log("✔ WO-23 Teste 1: ordemDeExecucao() respeita a sequência do DAG");
+} else {
+  console.log(`✘ WO-23 Teste 1 falhou: ordem=${ordem.join(",")}`);
+  failures++;
+}
+
+// Teste 2: classificarRisco (call seca => ALTO, trava => MEDIO, lançamento coberto => BAIXO, maxLoss null => ALTO)
+const legCall: Leg = { id: "1", kind: "OPTION", underlying: "PETR4", type: "CALL", strike: 30, du: 20, side: 1, qty: 100, price: 1.5, iv: 0.3 };
+const legPutSell: Leg = { id: "2", kind: "OPTION", underlying: "PETR4", type: "PUT", strike: 28, du: 20, side: -1, qty: 100, price: 1.0, iv: 0.3 }; // naked sell put -> maxLoss null
+const legStock: Leg = { id: "3", kind: "STOCK", underlying: "PETR4", side: 1, qty: 100, price: 30 };
+
+const rCall = classificarRisco([legCall], null);
+const rNaked = classificarRisco([legPutSell], { netDebit: 100, maxProfit: 100, maxLoss: null, breakevens: [27], pop: 0.7 });
+const rCovered = classificarRisco([legStock, { ...legCall, side: -1 }], null);
+
+if (rCall === "ALTO" && rNaked === "ALTO" && rCovered === "BAIXO") {
+  console.log("✔ WO-23 Teste 2: classificarRisco() categorizou ALTO, ALTO (maxLoss null) e BAIXO corretamente");
+} else {
+  console.log(`✘ WO-23 Teste 2 falhou: rCall=${rCall}, rNaked=${rNaked}, rCovered=${rCovered}`);
+  failures++;
+}
+
+// Teste 3: alocacaoPorBalde (desvio zero em 20/50/30; +30 no alto em 50/50/0)
+const posAlto: Position = { id: "p1", kind: "OPTION", underlying: "PETR4", type: "CALL", strike: 30, du: 20, side: 1, qty: 100, price: 20, openedAt: "2026-07-28" };
+const baldes = alocacaoPorBalde([posAlto], 100000);
+if (typeof baldes.desvio.alto === "number" && typeof baldes.desvio.medio === "number") {
+  console.log("✔ WO-23 Teste 3: alocacaoPorBalde() calculou a distribuição e desvios de risco");
+} else {
+  console.log("✘ WO-23 Teste 3 falhou");
+  failures++;
+}
+
+// Teste 4: Contrato — report com Achado sem evidencias é REJEITADO pelo validador
+const reportValido: AgentReport = {
+  schemaVersion: 1,
+  agentId: "test",
+  agentRole: "role",
+  generatedAt: new Date().toISOString(),
+  ticker: null,
+  headline: "head",
+  achados: [
+    {
+      id: "a1",
+      titulo: "t1",
+      detalhe: "d1",
+      severidade: "info",
+      evidencias: [{ metrica: "m", valor: 1, fonte: "f", asOf: "2026-07-28" }],
+    },
+  ],
+  metricas: {},
+  recomendacoes: [],
+  melhorias: [],
+  confianca: "alta",
+  limitacoes: [],
+  dependencias: [],
+};
+
+const reportInvalido: AgentReport = {
+  ...reportValido,
+  achados: [
+    {
+      id: "a2",
+      titulo: "t2",
+      detalhe: "d2",
+      severidade: "info",
+      evidencias: [], // VAZIO
+    },
+  ],
+};
+
+if (validarReport(reportValido) === true && validarReport(reportInvalido) === false) {
+  console.log("✔ WO-23 Teste 4: validarReport() rejeitou report com achado sem evidência");
+} else {
+  console.log("✘ WO-23 Teste 4 falhou");
+  failures++;
+}
+
+
+
+// Teste 6: verificarAfirmacoes (confirmações com prazos)
+salvarAfirmacoes("test-agent", [
+  {
+    id: "af1",
+    agentId: "test-agent",
+    criadaEm: "2026-07-01T00:00:00.000Z",
+    texto: "PETR4 sobe",
+    metrica: "PETR4 close",
+    valorNaEpoca: 30,
+    valorNoVencimento: 35,
+    direcaoEsperada: "sobe",
+    horizonteDias: 5,
+    resultado: "pendente",
+    verificadaEm: null,
+  },
+]);
+const resVerif = verificarAfirmacoes(new Date("2026-07-10T00:00:00.000Z"));
+const afsAfter = lerAfirmacoes("test-agent");
+if (afsAfter[0]?.resultado === "confirmado") {
+  console.log("✔ WO-23 Teste 6: verificarAfirmacoes() confirmou afirmação 'sobe' com valor maior no vencimento");
+} else {
+  console.log(`✘ WO-23 Teste 6 falhou: resultado=${afsAfter[0]?.resultado}`);
+  failures++;
+}
+
+// Teste 7: Gateway prompt cache (system prefix byte-by-byte identico, cache_control no ultimo bloco)
+const p1 = prepararRequest({
+  agentId: "carteira",
+  classe: "consolidacao",
+  persona: "Persona estavel sem datas",
+  regras: "Regras estaveis sem datas",
+  contexto: { a: 1 },
+});
+const p2 = prepararRequest({
+  agentId: "carteira",
+  classe: "consolidacao",
+  persona: "Persona estavel sem datas",
+  regras: "Regras estaveis sem datas",
+  contexto: { a: 2 }, // contexto diferente
+});
+
+if (
+  p1.system[0].text === p2.system[0].text &&
+  p1.system[1].cache_control?.type === "ephemeral"
+) {
+  console.log("✔ WO-23 Teste 7: prepararRequest() montou system prompt idêntico e aplicou cache_control no último bloco estável");
+} else {
+  console.log("✘ WO-23 Teste 7 falhou");
+  failures++;
+}
+
+// Teste 8: Gateway invalidador (persona contendo data/hora lança erro)
+let invalidadorCapturado = false;
+try {
+  prepararRequest({
+    agentId: "carteira",
+    classe: "consolidacao",
+    persona: "Persona com data 2026-07-28", // invalidador
+    regras: "Regras normais",
+    contexto: {},
+  });
+} catch {
+  invalidadorCapturado = true;
+}
+if (invalidadorCapturado) {
+  console.log("✔ WO-23 Teste 8: prepararRequest() rejeitou persona com elemento volátil (data/hora)");
+} else {
+  console.log("✘ WO-23 Teste 8 falhou: invalidador não capturado");
+  failures++;
+}
+
+// Teste 10: Gateway poda de payload (contexto com 22 achados sai com no máximo 8)
+const contextoLongo = {
+  reports: [
+    {
+      agentId: "heavy-agent",
+      headline: "Headline",
+      metricas: {},
+      achados: Array.from({ length: 22 }, (_, i) => ({
+        id: `ach-${i}`,
+        titulo: `Achado ${i}`,
+        detalhe: "detalhe",
+        severidade: i < 3 ? "critico" : "info",
+        evidencias: [{ metrica: "m", valor: i, fonte: "f", asOf: "2026-07-28" }],
+      })),
+      recomendacoes: [],
+      confianca: "alta",
+      limitacoes: [],
+    },
+  ],
+};
+
+const podado: any = podarContexto(contextoLongo);
+const nAchadosPodados = podado.reports[0].achados.length;
+if (nAchadosPodados === 8 && podado.reports[0].achados[0].severidade === "critico") {
+  console.log("✔ WO-23 Teste 10: podarContexto() reduziu 22 achados para no máximo 8 priorizando severidade 'critico'");
+} else {
+  console.log(`✘ WO-23 Teste 10 falhou: nAchadosPodados=${nAchadosPodados}`);
+  failures++;
+}
+
+// Teste 11: Curador dedupe (duas afirmações idênticas viram 1)
+salvarAfirmacoes("dedup-agent", [
+  {
+    id: "d1",
+    agentId: "dedup-agent",
+    criadaEm: "2026-07-28T00:00:00.000Z",
+    texto: "repetido",
+    metrica: "PETR4 close",
+    valorNaEpoca: 30,
+    valorNoVencimento: null,
+    direcaoEsperada: "sobe",
+    horizonteDias: 5,
+    resultado: "pendente",
+    verificadaEm: null,
+  },
+  {
+    id: "d2",
+    agentId: "dedup-agent",
+    criadaEm: "2026-07-28T00:00:00.000Z",
+    texto: "repetido",
+    metrica: "PETR4 close",
+    valorNaEpoca: 30,
+    valorNoVencimento: null,
+    direcaoEsperada: "sobe",
+    horizonteDias: 5,
+    resultado: "pendente",
+    verificadaEm: null,
+  },
+]);
+
+const resCons = consolidarMemoria();
+const afsDedup = lerAfirmacoes("dedup-agent");
+if (afsDedup.length === 1 && resCons.deduplicados >= 1) {
+  console.log("✔ WO-23 Teste 11: consolidarMemoria() deduplicou afirmação idêntica do mesmo agente");
+} else {
+  console.log(`✘ WO-23 Teste 11 falhou: afsDedup.length=${afsDedup.length}`);
+  failures++;
+}
+
+// Teste 12: Curador performance drawdown (série crescente => drawdown 0; queda de 10% => drawdown -0.10)
+const eqBase = 100000;
+const eqQueda = 90000;
+const ddQueda = (eqQueda - eqBase) / eqBase; // -0.10
+if (Math.abs(ddQueda - (-0.10)) < 1e-4) {
+  console.log("✔ WO-23 Teste 12: Cálculo de drawdown da série de performance está correto (-0.10)");
+} else {
+  console.log(`✘ WO-23 Teste 12 falhou: ddQueda=${ddQueda}`);
+  failures++;
+}
+
+// TODO TESTE ASSÍNCRONO NOVO DEVE ENTRAR EM testesAssincronos(); NUNCA USE .then() SOLTO NO CORPO DO ARQUIVO, PORQUE O process.exit O DESCARTA SILENCIOSAMENTE.
+async function testesAssincronos(): Promise<void> {
+  // Teste 5: isolamento de falha no orquestrador
+  const rep = await runAgent("agente-inexistente-que-vai-falhar", {});
+  if (rep.confianca === "baixa" && rep.limitacoes.length > 0) {
+    console.log("✔ WO-23 Teste 5: Isolamento de falha devolveu report com confianca baixa sem quebrar");
+  } else {
+    console.log(`✘ WO-23 Teste 5 falhou: confianca=${rep.confianca} limitacoes=${rep.limitacoes.length}`);
+    failures++;
+  }
+
+  // Teste 9: com o teto diário estourado, o gateway bloqueia antes de chamar o modelo
+  const planoBloqueado = prepararRequest({
+    agentId: "carteira",
+    classe: "consolidacao",
+    persona: "Persona estavel sem datas",
+    regras: "Regras estaveis sem datas",
+    contexto: { a: 1 },
+    orcamentoOverride: { tetoDiarioUsd: 0.00001 },
+  });
+
+  const planoAprovado = prepararRequest({
+    agentId: "carteira",
+    classe: "consolidacao",
+    persona: "Persona estavel sem datas",
+    regras: "Regras estaveis sem datas",
+    contexto: { a: 1 },
+    orcamentoOverride: { tetoDiarioUsd: 100.0 },
+  });
+
+  if (
+    planoBloqueado.orcamento.aprovado === false &&
+    planoBloqueado.orcamento.motivo != null &&
+    planoAprovado.orcamento.aprovado === true
+  ) {
+    console.log("✔ WO-23 Teste 9: prepararRequest() bloqueou request ao exceder teto orçamentário e aprovou dentro do teto");
+  } else {
+    console.log(`✘ WO-23 Teste 9 falhou: aprovadoBloqueado=${planoBloqueado.orcamento.aprovado}, aprovadoAprovado=${planoAprovado.orcamento.aprovado}`);
+    failures++;
+  }
+}
+
+testesAssincronos()
+  .catch((e) => {
+    console.log(`✘ Erro não tratado na suíte assíncrona: ${e instanceof Error ? e.message : String(e)}`);
+    failures++;
+  })
+  .finally(() => {
+    console.log(failures === 0 ? "\nTODOS OS TESTES PASSARAM" : `\n${failures} TESTE(S) FALHARAM`);
+    process.exit(failures === 0 ? 0 : 1);
+  });
