@@ -20,23 +20,26 @@ export function buildCarteiraReport(ctx: CarteiraInputContext): AgentReport {
 
   // 1. Análise dos Baldes de Risco 20 / 50 / 30
   const baldes = alocacaoPorBalde(ctx.positions, cap);
-  if (Math.abs(baldes.desvio.alto) > 10 || Math.abs(baldes.desvio.medio) > 15) {
-    const sev: Severidade = baldes.desvio.alto > 15 ? "critico" : "atencao";
+  const desvioAlto = baldes.desvio?.alto ?? 0;
+  const desvioMedio = baldes.desvio?.medio ?? 0;
+  
+  if (Math.abs(desvioAlto) > 10 || Math.abs(desvioMedio) > 15) {
+    const sev: Severidade = desvioAlto > 15 ? "critico" : "atencao";
     achados.push({
       id: "cart-risk-01",
-      titulo: `Desvio nos baldes de risco (Alto: ${baldes.alto}% vs alvo 20%)`,
-      detalhe: `Os baldes de risco medem a distribuição de capital entre posições de Risco ALTO (pernas secas/ilimitadas), MÉDIO (travas/estruturas compostas) e BAIXO (coberturas/ações). A carteira atual está com ${baldes.alto}% em Risco ALTO (desvio de ${baldes.desvio.alto > 0 ? "+" : ""}${baldes.desvio.alto} pp do alvo de 20%).`,
+      titulo: `Desvio nos baldes de risco (Alto: ${baldes.mix.alto}% vs alvo 20%)`,
+      detalhe: `Os baldes de risco medem a distribuição de capital entre posições de Risco ALTO (pernas secas/ilimitadas), MÉDIO (travas/estruturas compostas) e BAIXO (coberturas/ações). A carteira atual está com ${baldes.mix.alto}% em Risco ALTO (desvio de ${desvioAlto > 0 ? "+" : ""}${desvioAlto} pp do alvo de 20%).`,
       severidade: sev,
       evidencias: [
         {
           metrica: "Alocação Balde ALTO",
-          valor: `${baldes.alto}%`,
+          valor: `${baldes.mix.alto}%`,
           fonte: "lib/agents/risk.ts alocacaoPorBalde",
           asOf,
         },
         {
           metrica: "Desvio Balde ALTO",
-          valor: `${baldes.desvio.alto} pp`,
+          valor: `${desvioAlto} pp`,
           fonte: "lib/agents/risk.ts alocacaoPorBalde",
           asOf,
         },
@@ -44,7 +47,7 @@ export function buildCarteiraReport(ctx: CarteiraInputContext): AgentReport {
       deepLink: "/carteira#risk-profile",
     });
 
-    if (baldes.desvio.alto > 10) {
+    if (desvioAlto > 10) {
       recomendacoes.push({
         acao: "Rebalançar posições de risco ALTO reduzindo exposição em pernas secas ou adicionando travas de cobertura",
         justificativa: "A alocação em risco alto acima do alvo de 20% expõe o portfólio a drawdowns severos em surtos de volatilidade.",
@@ -135,7 +138,7 @@ export function buildCarteiraReport(ctx: CarteiraInputContext): AgentReport {
     achados.push({
       id: "cart-info-01",
       titulo: "Carteira sem alertas graves de risco",
-      detalhe: `O book possui ${ctx.positions.length} posições abertas. A distribuição por baldes de risco está em ${baldes.alto}% ALTO, ${baldes.medio}% MÉDIO e ${baldes.baixo}% BAIXO.`,
+      detalhe: `O book possui ${ctx.positions.length} posições abertas. A distribuição por baldes de risco está em ${baldes.mix.alto}% ALTO, ${baldes.mix.medio}% MÉDIO e ${baldes.mix.baixo}% BAIXO.`,
       severidade: "info",
       evidencias: [
         {
@@ -151,7 +154,7 @@ export function buildCarteiraReport(ctx: CarteiraInputContext): AgentReport {
 
   const headline = flagsUrgentes.length > 0
     ? `Atenção: ${flagsUrgentes.length} posição(ões) com alerta urgente no book.`
-    : `Carteira monitorada com ${ctx.positions.length} posição(ões). Balde ALTO em ${baldes.alto}%.`;
+    : `Carteira monitorada com ${ctx.positions.length} posição(ões). Balde ALTO em ${baldes.mix.alto}%.`;
 
   return {
     schemaVersion: 1,
@@ -164,9 +167,9 @@ export function buildCarteiraReport(ctx: CarteiraInputContext): AgentReport {
     metricas: {
       nPosicoes: ctx.positions.length,
       capitalTotal: ctx.capitalTotal,
-      baldeAltoPct: baldes.alto,
-      baldeMedioPct: baldes.medio,
-      baldeBaixoPct: baldes.baixo,
+      baldeAltoPct: baldes.mix.alto,
+      baldeMedioPct: baldes.mix.medio,
+      baldeBaixoPct: baldes.mix.baixo,
       deltaBook: ctx.netGreeks.delta,
       thetaBook: ctx.netGreeks.theta,
       var95: ctx.varGrid.var95,

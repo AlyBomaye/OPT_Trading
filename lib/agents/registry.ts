@@ -159,6 +159,66 @@ export function ordemDeExecucao(): string[] {
   return order;
 }
 
+/**
+ * Agrupa agentes por nível de dependência (resolução topológica do DAG).
+ * Lança erro se houver ciclo.
+ */
+export function niveisTopologicos(): string[][] {
+  const dagAgents = AGENTS.filter((a) => a.id !== "prompt-gateway" && a.id !== "curador-memoria");
+  
+  const inDegree: Record<string, number> = {};
+  const adjList: Record<string, string[]> = {};
+  
+  for (const agent of dagAgents) {
+    inDegree[agent.id] = 0;
+    adjList[agent.id] = [];
+  }
+  
+  for (const agent of dagAgents) {
+    for (const dep of agent.dependeDe) {
+      if (adjList[dep]) {
+        adjList[dep].push(agent.id);
+        inDegree[agent.id]++;
+      }
+    }
+  }
+  
+  const niveis: string[][] = [];
+  let currentLevel: string[] = [];
+  
+  for (const agent of dagAgents) {
+    if (inDegree[agent.id] === 0) {
+      currentLevel.push(agent.id);
+    }
+  }
+  
+  let visitedCount = 0;
+  
+  while (currentLevel.length > 0) {
+    // Sort current level to ensure determinism
+    currentLevel.sort();
+    niveis.push([...currentLevel]);
+    visitedCount += currentLevel.length;
+    
+    const nextLevel: string[] = [];
+    for (const node of currentLevel) {
+      for (const neighbor of adjList[node]) {
+        inDegree[neighbor]--;
+        if (inDegree[neighbor] === 0) {
+          nextLevel.push(neighbor);
+        }
+      }
+    }
+    currentLevel = nextLevel;
+  }
+  
+  if (visitedCount !== dagAgents.length) {
+    throw new Error("Ciclo detectado no DAG de agentes ou dependência inexistente registrada.");
+  }
+  
+  return niveis;
+}
+
 /** Gera um esqueleto de report válido para os 8 agentes ainda não implementados (WO-24). */
 export function createStubReport(agentId: string, ticker: string | null = null): AgentReport {
   const def = AGENTS.find((a) => a.id === agentId);

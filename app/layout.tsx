@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 import { Nav } from "@/components/Nav";
 import { TickerBar } from "@/components/TickerBar";
+import { GestorDock } from "@/components/agents/GestorDock";
 
 export const metadata: Metadata = {
   title: "Opções Terminal — B3",
@@ -23,6 +24,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             </footer>
           </div>
         </div>
+        <GestorDock />
       </body>
     </html>
   );

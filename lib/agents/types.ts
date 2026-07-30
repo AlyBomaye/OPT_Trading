@@ -52,6 +52,15 @@ export interface AgentReport {
   dependencias: string[];             // agentIds consumidos
 }
 
+/** Tipo compartilhado entre a rota run-cycle e o page.tsx do Consultor. */
+export interface CycleResponse {
+  reports: Record<string, AgentReport>;
+  executados: string[];
+  duracaoMs: number;
+  modoLLM: boolean;
+  performanceSeries?: any[];
+}
+
 export interface Afirmacao {
   id: string;
   agentId: string;
@@ -78,5 +87,14 @@ export function validarReport(report: AgentReport): boolean {
       if (!ev.fonte || ev.fonte.trim() === "") return false;
     }
   }
+  if (report.recomendacoes && Array.isArray(report.recomendacoes)) {
+    const regexEngenharia = /cache|prompt|refatorar|implementar|endpoint|agente|token/i;
+    for (const rec of report.recomendacoes) {
+      if (regexEngenharia.test(rec.acao)) {
+        return false;
+      }
+    }
+  }
+
   return true;
 }

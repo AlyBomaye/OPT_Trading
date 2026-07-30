@@ -2,6 +2,8 @@ import type { Leg, Position, StrategyMetrics } from "../types";
 import type { Risco } from "./types";
 import { detectStrategy } from "../strategy-detect";
 import { allocatedCapital } from "../portfolio";
+import { groupTrades } from "../performance";
+import { strategyMetrics } from "../payoff";
 
 /**
  * Classifica o risco de uma posição/estrutura com base nas pernas e métricas de payoff:
@@ -57,15 +59,13 @@ export function classificarRisco(legs: Leg[], metrics: StrategyMetrics | null): 
 }
 
 export interface AlocacaoBaldes {
-  alto: number;     // % do capital (ex: 25)
-  medio: number;    // % do capital (ex: 45)
-  baixo: number;    // % do capital (ex: 30)
+  // COMPOSIÇÃO do risco alocado — é o que se compara com 20/50/30
+  mix: { alto: number; medio: number; baixo: number };
+  desvio?: { alto: number; medio: number; baixo: number };
+  // UTILIZAÇÃO do bankroll — métrica independente
+  utilizacaoCapitalPct: number;
   capitalAlocadoTotal: number;
-  desvio: {
-    alto: number;   // pp vs alvo 20%
-    medio: number;  // pp vs alvo 50%
-    baixo: number;  // pp vs alvo 30%
-  };
+  capitalLivre: number;
 }
 
 /**
@@ -78,27 +78,41 @@ export function alocacaoPorBalde(positions: Position[], capitalTotal: number): A
   let alocadoMedio = 0;
   let alocadoBaixo = 0;
 
-  for (const pos of positions) {
-    const cost = Math.abs(allocatedCapital([pos]));
-    const risco = classificarRisco([pos], null);
+  const groups = groupTrades(positions, []);
+
+  for (const group of groups) {
+    if (!group.legs.length) continue;
+    const metrics = strategyMetrics(group.legs, 0, 0.10); // dummy spot/r for maxLoss check
+    const risco = classificarRisco(group.legs, metrics);
+    const cost = Math.abs(allocatedCapital(group.legs));
+    
     if (risco === "ALTO") alocadoAlto += cost;
     else if (risco === "MEDIO") alocadoMedio += cost;
     else alocadoBaixo += cost;
   }
 
-  const pctAlto = (alocadoAlto / cap) * 100;
-  const pctMedio = (alocadoMedio / cap) * 100;
-  const pctBaixo = (alocadoBaixo / cap) * 100;
+  const alocadoTotal = alocadoAlto + alocadoMedio + alocadoBaixo;
+  const mix = {
+    alto: alocadoTotal > 0 ? (alocadoAlto / alocadoTotal) * 100 : 0,
+    medio: alocadoTotal > 0 ? (alocadoMedio / alocadoTotal) * 100 : 0,
+    baixo: alocadoTotal > 0 ? (alocadoBaixo / alocadoTotal) * 100 : 0,
+  };
+
+  const desvio = alocadoTotal > 0 ? {
+    alto: Number((mix.alto - 20).toFixed(1)),
+    medio: Number((mix.medio - 50).toFixed(1)),
+    baixo: Number((mix.baixo - 30).toFixed(1)),
+  } : undefined;
 
   return {
-    alto: Number(pctAlto.toFixed(1)),
-    medio: Number(pctMedio.toFixed(1)),
-    baixo: Number(pctBaixo.toFixed(1)),
-    capitalAlocadoTotal: alocadoAlto + alocadoMedio + alocadoBaixo,
-    desvio: {
-      alto: Number((pctAlto - 20).toFixed(1)),
-      medio: Number((pctMedio - 50).toFixed(1)),
-      baixo: Number((pctBaixo - 30).toFixed(1)),
+    mix: {
+      alto: Number(mix.alto.toFixed(1)),
+      medio: Number(mix.medio.toFixed(1)),
+      baixo: Number(mix.baixo.toFixed(1)),
     },
+    desvio,
+    utilizacaoCapitalPct: Number(((alocadoTotal / cap) * 100).toFixed(1)),
+    capitalAlocadoTotal: alocadoTotal,
+    capitalLivre: cap - alocadoTotal,
   };
 }

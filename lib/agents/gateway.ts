@@ -1,5 +1,6 @@
 import fs from "fs";
 import path from "path";
+import type Anthropic from "@anthropic-ai/sdk";
 import type { AgentReport } from "./types";
 import { link } from "./deeplinks";
 
@@ -8,9 +9,14 @@ export type ClasseTarefa = "consolidacao" | "redacao" | "chat" | "trivial";
 export interface PlanoDeRequest {
   model: "claude-opus-5";
   max_tokens: number;
-  output_config: { effort: "low" | "medium" | "high" | "xhigh" };
-  system: Array<{ type: "text"; text: string; cache_control?: { type: "ephemeral" } }>;
-  messages: Array<{ role: "user" | "assistant"; content: string }>;
+  output_config: { 
+    effort: "low" | "medium" | "high" | "xhigh";
+    format?: { type: "json_schema"; schema: Record<string, unknown> };
+  };
+  system: Anthropic.Beta.BetaTextBlockParam[];
+  messages: Anthropic.Beta.BetaMessageParam[];
+  tools?: any[]; // Array of BetaRunnableTool ou ferramentas do SDK
+  tool_choice?: any;
   betas: string[];
   fallbacks: "default";
   orcamento: {
@@ -140,6 +146,9 @@ export function prepararRequest(input: {
   persona: string;
   regras: string;
   contexto: unknown;
+  tools?: any[];
+  tool_choice?: any;
+  outputSchema?: Record<string, unknown>;
   /** Override opcional de orçamento — utilizado para testes unitários de teto orçamentário */
   orcamentoOverride?: Partial<BudgetConfig>;
 }): PlanoDeRequest {
@@ -174,7 +183,7 @@ export function prepararRequest(input: {
   const blockPersona = `PERSONA DO AGENTE (${input.agentId}):\n${input.persona.trim()}\n\nREGRAS DE CONDUTA:\n${input.regras.trim()}`;
   const blockGlossario = `GLOSSÁRIO & DIRETRIZES DA PLATAFORMA:\n- Mantenha rigor numérico e explicabilidade.\n- Destaque os baldes de risco 20% ALTO / 50% MÉDIO / 30% BAIXO.\n- Todos os números devem possuir proveniência explícita.`;
 
-  const system: Array<{ type: "text"; text: string; cache_control?: { type: "ephemeral" } }> = [
+  const system: any[] = [
     { type: "text", text: blockPersona },
     { type: "text", text: blockGlossario, cache_control: { type: "ephemeral" } },
   ];
@@ -185,7 +194,7 @@ export function prepararRequest(input: {
   const jsonContexto = stringifyDeterminístico(contextoPodado);
   decisoes.push("Contexto podado para no máximo 8 achados prioritários e serializado deterministicamente com chaves ordenadas.");
 
-  const messages: Array<{ role: "user" | "assistant"; content: string }> = [
+  const messages: Anthropic.Beta.BetaMessageParam[] = [
     {
       role: "user",
       content: `DADOS E CONTEXTO DE ENTRADA:\n${jsonContexto}\n\nPor favor, processe esta solicitação estritamente de acordo com sua persona e regras.`,
@@ -214,12 +223,23 @@ export function prepararRequest(input: {
     decisoes.push(`Orçamento APROVADO (Gasto hoje: US$ ${gasto.hojeUsd.toFixed(2)} / Teto: US$ ${budget.tetoDiarioUsd.toFixed(2)}).`);
   }
 
+  const output_config: PlanoDeRequest["output_config"] = { effort };
+  if (input.outputSchema) {
+    output_config.format = { type: "json_schema", schema: input.outputSchema };
+  }
+
+  if (input.tools?.length) {
+    decisoes.push(`Ferramentas carregadas: ${input.tools.length} (ordenadas deterministicamente para cache).`);
+  }
+
   return {
     model: "claude-opus-5",
     max_tokens,
-    output_config: { effort },
+    output_config,
     system,
     messages,
+    tools: input.tools,
+    tool_choice: input.tool_choice,
     betas: ["server-side-fallback-2026-07-01"],
     fallbacks: "default",
     orcamento: {
@@ -341,8 +361,8 @@ export function analisarTelemetria(): AgentReport {
     },
     recomendacoes: [
       {
-        acao: cacheHitRatio < 50 ? "Estabilizar prefixo de contexto nos agentes sêniores para elevar reaproveitamento de cache" : "Manter política de cache e monitorar consumo",
-        justificativa: "Reaproveitamento de cache reduz custo de tokens de entrada em até 90%.",
+        acao: cacheHitRatio < 50 ? "Estabilizar prefixo de contexto para elevar reaproveitamento de memória de longo prazo" : "Manter política de conservação de memória e monitorar consumo",
+        justificativa: "Reaproveitamento reduz custo de processamento de entrada em até 90%.",
         risco: "BAIXO",
         horizonte: "estrutural",
         deepLink: link("consultor.gateway"),

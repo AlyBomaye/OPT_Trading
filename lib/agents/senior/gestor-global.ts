@@ -3,6 +3,7 @@ import type { AgentReport, Achado, Recomendacao } from "../types";
 import { prepararRequest, registrarUso } from "../gateway";
 import { alocacaoPorBalde } from "../risk";
 import type { Position } from "../../types";
+import { getAgentTools } from "../tools";
 
 export interface GestorGlobalInputContext {
   reports: AgentReport[];
@@ -18,16 +19,37 @@ export function fallbackDeterministicoGestorGlobal(
   const cap = ctx.capitalTotal > 0 ? ctx.capitalTotal : 100000;
   const baldes = alocacaoPorBalde(ctx.positions, cap);
 
-  // Consolida achados de todos os reports
-  const achadosConsolidados: Achado[] = [];
-  const recomendacoesConsolidadas: Recomendacao[] = [];
+  // Consolida achados de todos os reports — com deduplicação (C.1)
+  const achadosRaw: Achado[] = [];
+  const recomendacoesRaw: Recomendacao[] = [];
 
   for (const r of ctx.reports) {
     if (r && Array.isArray(r.achados)) {
-      achadosConsolidados.push(...r.achados);
+      achadosRaw.push(...r.achados);
     }
     if (r && Array.isArray(r.recomendacoes)) {
-      recomendacoesConsolidadas.push(...r.recomendacoes);
+      recomendacoesRaw.push(...r.recomendacoes);
+    }
+  }
+
+  // Dedup por (titulo + primeira evidencia.metrica)
+  const seenAchados = new Set<string>();
+  const achadosConsolidados: Achado[] = [];
+  for (const a of achadosRaw) {
+    const key = `${a.titulo}|${a.evidencias?.[0]?.metrica ?? ""}`;
+    if (!seenAchados.has(key)) {
+      seenAchados.add(key);
+      achadosConsolidados.push(a);
+    }
+  }
+
+  const seenRecs = new Set<string>();
+  const recomendacoesConsolidadas: Recomendacao[] = [];
+  for (const r of recomendacoesRaw) {
+    const key = `${r.acao}|${r.risco}`;
+    if (!seenRecs.has(key)) {
+      seenRecs.add(key);
+      recomendacoesConsolidadas.push(r);
     }
   }
 
@@ -35,7 +57,7 @@ export function fallbackDeterministicoGestorGlobal(
   const severidadeOrder = { critico: 0, atencao: 1, info: 2 };
   achadosConsolidados.sort((a, b) => (severidadeOrder[a.severidade] ?? 2) - (severidadeOrder[b.severidade] ?? 2));
 
-  const headline = `Relatório Executivo (Modo Determinístico): Portfólio com ${ctx.positions.length} posições abertas. Alocação em risco alto: ${baldes.alto}% (alvo 20%).`;
+  const headline = `Relatório Executivo (Modo Determinístico): Portfólio com ${ctx.positions.length} posições abertas. Alocação em risco alto: ${baldes.mix.alto}% (alvo 20%).`;
 
   const report: AgentReport = {
     schemaVersion: 1,
@@ -48,10 +70,10 @@ export function fallbackDeterministicoGestorGlobal(
     metricas: {
       capitalTotal: cap,
       nPosicoes: ctx.positions.length,
-      baldeAltoPct: baldes.alto,
-      baldeMedioPct: baldes.medio,
-      baldeBaixoPct: baldes.baixo,
-      desvioAltoPp: baldes.desvio.alto,
+      baldeAltoPct: baldes.mix.alto,
+      baldeMedioPct: baldes.mix.medio,
+      baldeBaixoPct: baldes.mix.baixo,
+      desvioAltoPp: baldes.desvio?.alto ?? 0,
     },
     recomendacoes: recomendacoesConsolidadas,
     melhorias: [],
@@ -74,16 +96,15 @@ ${headline}
 
 | Balde de Risco | Risco Definido / Tipo | Alocação Real | Alvo Sugerido | Desvio |
 |---|---|---|---|---|
-| **ALTO** | Pernas secas compradas / ilimitadas | [${baldes.alto}%](/carteira#risk-profile) | 20,0% | ${baldes.desvio.alto > 0 ? "+" : ""}${baldes.desvio.alto} pp |
-| **MÉDIO** | Travas, condors, borboletas | [${baldes.medio}%](/carteira#risk-profile) | 50,0% | ${baldes.desvio.medio > 0 ? "+" : ""}${baldes.desvio.medio} pp |
-| **BAIXO** | Lançamento coberto, ações | [${baldes.baixo}%](/carteira#risk-profile) | 30,0% | ${baldes.desvio.baixo > 0 ? "+" : ""}${baldes.desvio.baixo} pp |
+| **ALTO** | Pernas secas compradas / ilimitadas | [${baldes.mix.alto}%](/carteira#risk-profile) | 20,0% | ${(baldes.desvio?.alto ?? 0) > 0 ? "+" : ""}${baldes.desvio?.alto ?? 0} pp |
+| **MÉDIO** | Travas, condors, borboletas | [${baldes.mix.medio}%](/carteira#risk-profile) | 50,0% | ${(baldes.desvio?.medio ?? 0) > 0 ? "+" : ""}${baldes.desvio?.medio ?? 0} pp |
+| **BAIXO** | Lançamento coberto, ações | [${baldes.mix.baixo}%](/carteira#risk-profile) | 30,0% | ${(baldes.desvio?.baixo ?? 0) > 0 ? "+" : ""}${baldes.desvio?.baixo ?? 0} pp |
 
-## 3. O que eu faria hoje (Ações priorizadas)
-
+## 3. O que eu faria hoje
 ${
   recomendacoesConsolidadas.length > 0
     ? recomendacoesConsolidadas.map((rec, i) => `${i + 1}. **[${rec.risco}]** ${rec.acao} — *${rec.justificativa}* [Ir para aba](${rec.deepLink ?? "/carteira"})`).join("\n")
-    : "1. **[BAIXO]** Manter monitoramento do book e respeitar os limites de alocação por balde de risco."
+    : "nenhuma ação recomendada hoje — book dentro dos parâmetros"
 }
 
 ## 4. O que observar
@@ -112,9 +133,33 @@ export async function executarGestorGlobal(ctx: GestorGlobalInputContext): Promi
 3. Seções obrigatórias: Leitura do dia | Sua carteira hoje (tabela 20/50/30) | O que eu faria | O que observar | Termos que usei.
 4. Todo número DEVE virar um link markdown para a aba e âncora corretas (ex: [1,27](/chain#skew), [R$ 320/dia](/carteira#greeks)).
 5. Proibido inventar números — utilize estritamente as métricas e achados dos reports.
-6. Termine com o disclaimer educacional.`;
+6. Termine com o disclaimer educacional.
+7. Se não houver recomendações de trading (array vazio), escreva exatamente "nenhuma ação recomendada hoje" na seção 'O que eu faria'.`;
 
   try {
+    // Schema de saída estruturada para o AgentReport
+    const reportSchema = {
+      type: "object",
+      properties: {
+        schemaVersion: { type: "number" },
+        agentId: { type: "string" },
+        agentRole: { type: "string" },
+        generatedAt: { type: "string" },
+        ticker: { type: "string" },
+        headline: { type: "string" },
+        achados: { type: "array", items: { type: "object" } },
+        metricas: { type: "object" },
+        recomendacoes: { type: "array", items: { type: "object" } },
+        melhorias: { type: "array", items: { type: "object" } },
+        confianca: { type: "string", enum: ["alta", "media", "baixa"] },
+        limitacoes: { type: "array", items: { type: "string" } },
+        dependencias: { type: "array", items: { type: "string" } }
+      },
+      required: ["schemaVersion", "agentId", "agentRole", "generatedAt", "headline", "achados", "metricas", "recomendacoes", "melhorias", "confianca", "limitacoes", "dependencias"]
+    };
+
+    const tools = getAgentTools(ctx).sort((a, b) => a.name.localeCompare(b.name));
+
     // Fase A — Análise e montagem do Plano pelo Gateway
     const plano = prepararRequest({
       agentId: "gestor-global",
@@ -122,6 +167,9 @@ export async function executarGestorGlobal(ctx: GestorGlobalInputContext): Promi
       persona,
       regras,
       contexto: ctx,
+      tools,
+      tool_choice: { type: "auto" },
+      outputSchema: reportSchema,
     });
 
     if (!plano.orcamento.aprovado) {
@@ -129,32 +177,54 @@ export async function executarGestorGlobal(ctx: GestorGlobalInputContext): Promi
     }
 
     const anthropic = new Anthropic({ apiKey });
-    const resA = await anthropic.beta.messages.create({
-      model: plano.model,
-      max_tokens: plano.max_tokens,
-      output_config: plano.output_config,
-      system: plano.system as any,
-      messages: plano.messages as any,
-      betas: ["server-side-fallback-2026-07-01"],
-      fallbacks: "default",
-    } as any);
+    
+    let resA: any;
+    let currentMessages = plano.messages as any[];
+    let tentativas = 0;
 
-    registrarUso("gestor-global", resA.usage, plano.model);
+    while (tentativas < 5) {
+      const runner = anthropic.beta.messages.toolRunner({
+        model: plano.model,
+        max_tokens: plano.max_tokens,
+        system: plano.system as any,
+        messages: currentMessages,
+        tools: plano.tools as any,
+        tool_choice: plano.tool_choice as any,
+        betas: plano.betas,
+      } as any);
+
+      try {
+        resA = await runner.done();
+      } catch (e: any) {
+        return fallbackDeterministicoGestorGlobal(ctx, `Erro na Fase A (tool runner): ${e?.message}`);
+      }
+
+      if (resA.stop_reason === "pause_turn") {
+        currentMessages.push({ role: "assistant", content: resA.content });
+        tentativas++;
+      } else {
+        break;
+      }
+    }
+
+    if (resA && resA.usage) {
+      registrarUso("gestor-global", resA.usage, plano.model);
+    }
 
     if (resA.stop_reason === "refusal") {
       const cat = (resA as any).stop_details?.category ?? "não informada";
       return fallbackDeterministicoGestorGlobal(ctx, `Modelo recusou a solicitação na Fase A (categoria: ${cat}).`);
     }
 
-    // Converte resposta da Fase A em AgentReport ou faz fallback
+    // A resposta deve seguir o json_schema de output_config (se suportado nativamente) ou estar no bloco de texto.
     const blockA = resA.content.find((c: any) => c.type === "text") as any;
     const rawText = blockA?.text ?? "";
     let report: AgentReport;
     try {
       report = JSON.parse(rawText);
     } catch {
-      // Se não retornou JSON estrito, gera fallback estruturado com o texto obtido
-      const det = fallbackDeterministicoGestorGlobal(ctx, "Sintetizado com Anthropic Claude Opus 5");
+      // Se não retornou JSON estrito (ou falhou a extração da tool), gera fallback estruturado com o texto obtido
+      const det = fallbackDeterministicoGestorGlobal(ctx, "Sintetizado com Anthropic Claude Opus 5 - Parse falhou na Fase A");
       return det;
     }
 

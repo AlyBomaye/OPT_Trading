@@ -13,7 +13,7 @@ function getCuradorDir(): string {
   return path.join(process.cwd(), "data", "agents", "curador-memoria");
 }
 
-function getPerformancePath(): string {
+export function getPerformancePath(): string {
   return path.join(getCuradorDir(), "performance.jsonl");
 }
 
@@ -217,9 +217,9 @@ export function gravarSnapshotPerformance(
     equity: Number(equity.toFixed(2)),
     drawdown: Number(drawdown.toFixed(4)),
     baldes: {
-      alto: baldesInfo.alto,
-      medio: baldesInfo.medio,
-      baixo: baldesInfo.baixo,
+      alto: baldesInfo.mix.alto,
+      medio: baldesInfo.mix.medio,
+      baixo: baldesInfo.mix.baixo,
     },
     nPosicoes: positions.length,
     deltaBook: Number(deltaBook.toFixed(2)),

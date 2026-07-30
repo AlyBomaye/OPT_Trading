@@ -1,31 +1,94 @@
 import { NextResponse } from "next/server";
-import { runCycle } from "@/lib/agents/orchestrator";
-import { executarGestorGlobal, fallbackDeterministicoGestorGlobal } from "@/lib/agents/senior/gestor-global";
+import { runCycle, iniciarRunCycle, obterRunState, cancelarRunState } from "@/lib/agents/orchestrator";
+import type { CycleResponse } from "@/lib/agents/types";
+import { lerHistoricoPerformance } from "@/lib/agents/curator";
 
+/**
+ * POST /api/agents/run-cycle
+ * WO-27 P0.3: Inicia a execução assíncrona do ciclo de agentes e devolve { runId } IMEDIATAMENTE.
+ * Se body contiver { sync: true }, executa de forma síncrona (usado em testes/ambientes CLI).
+ */
 export async function POST(req: Request) {
   try {
     const body = await req.json().catch(() => ({}));
-    const { ticker, carteiraCtx, chainCtx } = body;
+    const { ticker, carteiraCtx, chainCtx, sync } = body;
 
-    const result = await runCycle({ ticker, carteiraCtx, chainCtx });
+    if (sync) {
+      // Modo síncrono para testes ou chamadas diretas
+      const result = await runCycle({ ticker, carteiraCtx, chainCtx });
+      const response: CycleResponse = {
+        reports: result.reports,
+        executados: result.executados,
+        duracaoMs: result.duracaoMs,
+        modoLLM: !!process.env.ANTHROPIC_API_KEY,
+        performanceSeries: lerHistoricoPerformance(),
+      };
+      return NextResponse.json(response);
+    }
 
-    // Gera o texto do Relatório Executivo didático com o Gestor Global
-    const gestorRes = await executarGestorGlobal({
-      reports: Object.values(result.reports),
-      positions: carteiraCtx?.positions ?? [],
-      capitalTotal: carteiraCtx?.capitalTotal ?? 100000,
-      ticker,
-    });
+    // Modo assíncrono padrão (P0.3): Inicia e responde imediatamente
+    const { runId } = iniciarRunCycle({ ticker, carteiraCtx, chainCtx });
 
     return NextResponse.json({
-      ...result,
-      relatorioExecutivoText: gestorRes.textoRelatorio,
-      gestorReport: gestorRes.report,
+      runId,
+      status: "iniciado",
+      modoLLM: !!process.env.ANTHROPIC_API_KEY,
     });
   } catch (err: any) {
+    console.error("[run-cycle POST] Erro:", err);
     return NextResponse.json(
-      { error: "Erro ao executar ciclo completo", message: err?.message },
-      { status: 500 }
+      { error: "Erro ao iniciar ciclo de agentes", message: err?.message },
+      { status: 502 }
+    );
+  }
+}
+
+/**
+ * GET /api/agents/run-cycle?runId=...
+ * WO-27 P0.3: Polling de progresso. Devolve o estado atual da execução.
+ */
+export async function GET(req: Request) {
+  try {
+    const url = new URL(req.url);
+    const runId = url.searchParams.get("runId");
+
+    if (!runId) {
+      return NextResponse.json({ error: "Parâmetro 'runId' é obrigatório." }, { status: 400 });
+    }
+
+    const state = obterRunState(runId);
+    if (!state) {
+      return NextResponse.json({ error: `Execução '${runId}' não encontrada ou expirada.` }, { status: 404 });
+    }
+
+    return NextResponse.json(state);
+  } catch (err: any) {
+    return NextResponse.json(
+      { error: "Erro ao consultar estado do ciclo", message: err?.message },
+      { status: 502 }
+    );
+  }
+}
+
+/**
+ * DELETE /api/agents/run-cycle?runId=...
+ * WO-27 P0.3: Cancela o ciclo em andamento.
+ */
+export async function DELETE(req: Request) {
+  try {
+    const url = new URL(req.url);
+    const runId = url.searchParams.get("runId");
+
+    if (!runId) {
+      return NextResponse.json({ error: "Parâmetro 'runId' é obrigatório." }, { status: 400 });
+    }
+
+    const cancelado = cancelarRunState(runId);
+    return NextResponse.json({ runId, cancelado });
+  } catch (err: any) {
+    return NextResponse.json(
+      { error: "Erro ao cancelar ciclo", message: err?.message },
+      { status: 502 }
     );
   }
 }

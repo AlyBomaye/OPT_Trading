@@ -20,10 +20,10 @@ export async function runEstrategia(ctx: unknown): Promise<AgentReport> {
 
   // 1. Diagnóstico do Balde de Risco Atual
   const alocacao = alocacaoPorBalde(positions, capitalTotal);
-  const pctAlto = alocacao.alto / 100;
-  const pctMedio = alocacao.medio / 100;
-  const pctBaixo = alocacao.baixo / 100;
-  const desvioAlto = alocacao.desvio.alto;
+  const pctAlto = alocacao.mix.alto / 100;
+  const pctMedio = alocacao.mix.medio / 100;
+  const pctBaixo = alocacao.mix.baixo / 100;
+  const desvioAlto = alocacao.desvio?.alto ?? 0;
 
   if (desvioAlto > 5) {
     achados.push({

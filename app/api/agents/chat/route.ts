@@ -1,11 +1,92 @@
 import { NextResponse } from "next/server";
 import Anthropic from "@anthropic-ai/sdk";
 import { prepararRequest, registrarUso } from "@/lib/agents/gateway";
+import { alocacaoPorBalde } from "@/lib/agents/risk";
+import type { AgentReport } from "@/lib/agents/types";
+
+/**
+ * WO-26 C.4: Roteamento determinístico por palavra-chave.
+ * Responde com números reais + deep link quando não há chave de API.
+ */
+function respostaDeterministica(message: string, contextReports: Record<string, AgentReport> | undefined, carteiraCtx: any): string | null {
+  const msg = message.toLowerCase();
+  const parts: string[] = [];
+
+  // Risco / Balde
+  if (/risco|balde|aloca[çc][aã]o|20.?50.?30/.test(msg)) {
+    const positions = carteiraCtx?.positions ?? [];
+    const cap = carteiraCtx?.capitalTotal ?? 100000;
+    const baldes = alocacaoPorBalde(positions, cap);
+    parts.push(`**Alocação por baldes de risco:**`);
+    parts.push(`- ALTO: [${baldes.mix.alto.toFixed(1)}%](/carteira#risk-profile) (alvo 20%, desvio ${baldes.desvio ? (baldes.desvio.alto > 0 ? "+" : "") + baldes.desvio.alto + " pp" : "N/A"})`);
+    parts.push(`- MÉDIO: [${baldes.mix.medio.toFixed(1)}%](/carteira#risk-profile) (alvo 50%)`);
+    parts.push(`- BAIXO: [${baldes.mix.baixo.toFixed(1)}%](/carteira#risk-profile) (alvo 30%)`);
+    parts.push(`- Utilização do capital: ${baldes.utilizacaoCapitalPct.toFixed(1)}% · Caixa livre: R$ ${baldes.capitalLivre.toFixed(0)}`);
+  }
+
+  // Gregas
+  if (/grega|delta|theta|gamma|vega/.test(msg)) {
+    const greeksReport = contextReports?.["carteira"];
+    if (greeksReport?.metricas) {
+      parts.push(`**Gregas do book:**`);
+      parts.push(`- [Delta](/carteira#greeks): ${greeksReport.metricas.deltaBook ?? "—"}`);
+      parts.push(`- [Theta](/carteira#greeks): ${greeksReport.metricas.thetaBook ?? "—"} R$/dia`);
+    } else {
+      parts.push(`Gregas não disponíveis — execute o ciclo de agentes primeiro.`);
+    }
+  }
+
+  // VaR
+  if (/var|valor.?em.?risco/.test(msg)) {
+    const carteiraRep = contextReports?.["carteira"];
+    if (carteiraRep?.metricas?.var95) {
+      parts.push(`**[VaR 95% (1d)](/carteira#risk-profile):** R$ ${carteiraRep.metricas.var95}`);
+    } else {
+      parts.push(`VaR não calculado — carregue o chain e execute o ciclo.`);
+    }
+  }
+
+  // Skew / Volatilidade
+  if (/skew|vol[aá]til|iv|hv|smile/.test(msg)) {
+    const chainRep = contextReports?.["chain"];
+    const histRep = contextReports?.["historico"];
+    if (chainRep?.metricas) {
+      parts.push(`**Chain:**`);
+      if (chainRep.metricas.skewRatio) parts.push(`- [Skew P/C](/chain#skew): ${chainRep.metricas.skewRatio}`);
+      if (chainRep.metricas.ivAtmPct) parts.push(`- [IV ATM](/chain#smile): ${chainRep.metricas.ivAtmPct}%`);
+    }
+    if (histRep?.metricas) {
+      if (histRep.metricas.hv21Pct) parts.push(`- [HV21](/historico#iv-vs-hv): ${histRep.metricas.hv21Pct}%`);
+      if (histRep.metricas.spreadIvHvPp) parts.push(`- Spread IV−HV21: ${histRep.metricas.spreadIvHvPp} pp`);
+    }
+    if (!chainRep?.metricas && !histRep?.metricas) {
+      parts.push(`Dados de volatilidade não disponíveis — carregue o [chain (tecla 8)](/chain).`);
+    }
+  }
+
+  // Custo / FinOps
+  if (/custo|finops|gasto|or[çc]amento|consumo/.test(msg)) {
+    const gwRep = contextReports?.["prompt-gateway"];
+    if (gwRep?.metricas) {
+      parts.push(`**FinOps do Gestor:**`);
+      parts.push(`- Gasto hoje: US$ ${gwRep.metricas.gastoHojeUsd ?? 0}`);
+      parts.push(`- Gasto no mês: US$ ${gwRep.metricas.gastoMesUsd ?? 0}`);
+      parts.push(`- Teto diário: US$ ${gwRep.metricas.tetoDiarioUsd ?? "—"}`);
+    } else {
+      parts.push(`Telemetria de custos não disponível neste ciclo.`);
+    }
+  }
+
+  if (parts.length === 0) return null;
+
+  parts.push(`\n---\n*Modo determinístico — para respostas em linguagem natural, configure a ANTHROPIC_API_KEY em .env.local.*`);
+  return parts.join("\n");
+}
 
 export async function POST(req: Request) {
   try {
     const body = await req.json().catch(() => ({}));
-    const { message, contextReports, history } = body;
+    const { message, contextReports, history, carteiraCtx, currentPath, currentAgentReport } = body;
 
     if (!message) {
       return NextResponse.json({ error: "Mensagem é obrigatória" }, { status: 400 });
@@ -13,9 +94,18 @@ export async function POST(req: Request) {
 
     const apiKey = process.env.ANTHROPIC_API_KEY;
     if (!apiKey) {
+      // C.4: Roteamento determinístico com números reais
+      const deterministicReply = respostaDeterministica(message, contextReports, carteiraCtx);
+      if (deterministicReply) {
+        return NextResponse.json({
+          reply: deterministicReply,
+          gatewayDecisoes: ["Modo determinístico — resposta por palavra-chave com dados reais."],
+        });
+      }
+      // Nenhum match — explique como habilitar
       return NextResponse.json({
-        reply: `[Modo Determinístico] ANTHROPIC_API_KEY não configurada em .env.local. Para habilitar respostas completas em linguagem natural do Gestor Global, insira sua chave no arquivo .env.local.\n\nSua pergunta sobre "${message}" foi registrada.`,
-        gatewayDecisoes: ["ANTHROPIC_API_KEY ausente — fallback determinístico ativado."],
+        reply: `Não encontrei dados correspondentes à sua pergunta sobre "${message}".\n\nTente perguntar sobre: **risco/baldes**, **gregas**, **VaR**, **skew/volatilidade** ou **custos**.\n\nPara respostas completas em linguagem natural, configure a ANTHROPIC_API_KEY em .env.local.`,
+        gatewayDecisoes: ["Modo determinístico — sem match de palavra-chave."],
       });
     }
 
@@ -27,7 +117,7 @@ export async function POST(req: Request) {
       classe: "chat",
       persona,
       regras,
-      contexto: { message, contextReports, history },
+      contexto: { message, contextReports, history, currentPath, currentAgentReport },
     });
 
     if (!plano.orcamento.aprovado) {

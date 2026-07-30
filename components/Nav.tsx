@@ -87,7 +87,7 @@ export function Nav() {
         ))}
       </div>
       <div className="px-3 py-2 text-xxs text-term-dim border-t border-term-line">
-        Atalhos: <kbd>1</kbd>–<kbd>9</kbd>, <kbd>0</kbd> módulos · <kbd>R</kbd> atualizar · <kbd>?</kbd> ajuda
+        Atalhos: <kbd>1</kbd>–<kbd>0</kbd> abas · <kbd>G</kbd> Gestor · <kbd>R</kbd> atualizar · <kbd>?</kbd> ajuda
       </div>
 
       {showHelp && (
@@ -107,6 +107,12 @@ export function Nav() {
                     <td className="py-1">{i.label}</td>
                   </tr>
                 ))}
+                <tr className="border-t border-term-line/40">
+                  <td className="py-1">
+                    <kbd className="text-xxs bg-term-panel2 border border-term-line rounded px-1">G</kbd>
+                  </td>
+                  <td className="py-1">Abrir/fechar Gestor (Dock)</td>
+                </tr>
                 <tr className="border-t border-term-line/40">
                   <td className="py-1">
                     <kbd className="text-xxs bg-term-panel2 border border-term-line rounded px-1">R</kbd>
