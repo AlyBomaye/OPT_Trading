@@ -132,23 +132,23 @@ export function MapaOportunidades() {
         </div>
       ) : (
         <div className="relative">
-          {/* Legenda dos Quadrantes */}
-          <div className="grid grid-cols-2 gap-2 text-[10px] font-mono text-neutral-500 mb-2">
+          {/* Legenda dos Quadrantes — uma fileira em telas largas (WO-32 A.2) */}
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-2 text-[10px] font-mono text-neutral-500 mb-2">
             <div className="border border-neutral-800 p-1.5 rounded bg-neutral-950/40">
               <span className="text-red-400 font-bold">▲ Vol Rica + Puts Caras</span> (Skew ≥ 1.25, IV &gt; HV) → Put Ratio Backspread / Venda Vol
             </div>
-            <div className="border border-neutral-800 p-1.5 rounded bg-neutral-950/40 text-right">
+            <div className="border border-neutral-800 p-1.5 rounded bg-neutral-950/40">
               <span className="text-green-400 font-bold">▲ Vol Rica + Calls Caras</span> (Skew ≤ 0.90, IV &gt; HV) → Call Ratio Backspread / Lançamento
             </div>
             <div className="border border-neutral-800 p-1.5 rounded bg-neutral-950/40">
               <span className="text-cyan-400 font-bold">▼ Vol Barata + Proteção Barata</span> (Skew ≥ 1.25, IV &lt; HV) → Compra de Put / Hedge
             </div>
-            <div className="border border-neutral-800 p-1.5 rounded bg-neutral-950/40 text-right">
+            <div className="border border-neutral-800 p-1.5 rounded bg-neutral-950/40">
               <span className="text-purple-400 font-bold">▼ Vol Barata + Calls Baratas</span> (Skew ≤ 0.90, IV &lt; HV) → Trava de Alta / Pozinhos
             </div>
           </div>
 
-          <ResponsiveContainer width="100%" height={260}>
+          <ResponsiveContainer width="100%" height={420}>
             <ScatterChart margin={{ top: 10, right: 20, bottom: 20, left: 10 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="#333" />
               <XAxis
@@ -169,9 +169,9 @@ export function MapaOportunidades() {
                 label={{ value: "Spread IV-HV21 (pp)", angle: -90, position: "left", offset: 0, fill: "#666", fontSize: 10 }}
               />
               <ZAxis type="number" dataKey="vol" range={[60, 200]} />
-              <ReferenceLine x={1.25} stroke="#ef4444" strokeDasharray="3 3" label={{ value: "Puts Caras (1.25)", fill: "#ef4444", fontSize: 9 }} />
-              <ReferenceLine x={0.90} stroke="#22c55e" strokeDasharray="3 3" label={{ value: "Calls Caras (0.90)", fill: "#22c55e", fontSize: 9 }} />
-              <ReferenceLine y={0} stroke="#666" strokeDasharray="2 2" />
+              <ReferenceLine x={1.25} stroke="#ef4444" strokeDasharray="3 3" label={{ value: "Puts Caras (1,25)", position: "top", fill: "#ef4444", fontSize: 9 }} />
+              <ReferenceLine x={0.90} stroke="#22c55e" strokeDasharray="3 3" label={{ value: "Calls Caras (0,90)", position: "top", fill: "#22c55e", fontSize: 9 }} />
+              <ReferenceLine y={0} stroke="#666" strokeDasharray="2 2" label={{ value: "IV = HV", position: "right", fill: "#666", fontSize: 9 }} />
               <Tooltip
                 cursor={{ strokeDasharray: "3 3" }}
                 contentStyle={{ background: "#1a1a1a", border: "1px solid #333", fontSize: 11 }}
@@ -218,7 +218,7 @@ export function MapaOportunidades() {
       )}
 
       {/* Tabela do Universo de 20 Nomes */}
-      <div className="overflow-x-auto pt-2 border-t border-neutral-800">
+      <div className="overflow-x-auto overflow-y-auto max-h-80 pt-2 border-t border-neutral-800">
         <table className="w-full text-left text-xs border-collapse">
           <thead>
             <tr className="border-b border-neutral-800 text-[10px] font-mono text-neutral-500 bg-neutral-950 sticky top-0 z-10">

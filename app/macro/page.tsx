@@ -36,6 +36,9 @@ import { construirProvenance } from "@/lib/provenance";
 import { curveSlope, sessionStatus } from "@/lib/macro";
 import { Sparkline } from "@/components/Sparkline";
 import { AgentPanel } from "@/components/AgentPanel";
+import { CurvaBox } from "@/components/macro/CurvaBox";
+import { calcularCupomCambial, type VerticeCurva } from "@/lib/curvas";
+import type { CurvasBrBody } from "@/app/api/curvas-br/route";
 
 type WindowKey = "1d" | "5d" | "1m" | "3m" | "6m" | "12m" | "YTD";
 
@@ -100,6 +103,8 @@ export default function MacroPage() {
   const { selic, setTicker } = useMarket();
 
   const [data, setData] = useState<MacroBody | null>(null);
+  // WO-32: curvas brasileiras (pré e NTN-B) do Tesouro Transparente.
+  const [curvas, setCurvas] = useState<CurvasBrBody | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [selectedWindow, setSelectedWindow] = useState<WindowKey>("1d");
@@ -144,6 +149,49 @@ export default function MacroPage() {
     const id = setInterval(() => void loadData(), 10 * 60 * 1000);
     return () => clearInterval(id);
   }, [loadData]);
+
+  // O CSV do Tesouro é atualizado uma vez por dia útil; a rota já cacheia por 6h.
+  useEffect(() => {
+    let vivo = true;
+    fetch("/api/curvas-br")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((j) => { if (vivo && j) setCurvas(j); })
+      .catch(() => undefined);
+    return () => { vivo = false; };
+  }, []);
+
+  // Curva US em anos, para interpolar no prazo de cada vértice brasileiro.
+  const curvaUsEmAnos: VerticeCurva[] = useMemo(() => {
+    if (!data) return [];
+    const mapa: [string, number][] = [["^IRX", 0.25], ["^FVX", 5], ["^TNX", 10], ["^TYX", 30]];
+    return mapa
+      .map(([sym, anos]) => {
+        const s = data.series.find((x) => x.symbol === sym);
+        return s?.last != null ? { vencimento: `US-${anos}Y`, anos, taxa: s.last } : null;
+      })
+      .filter((x): x is VerticeCurva => x != null);
+  }, [data]);
+
+  const cupomCambial = useMemo(
+    () => calcularCupomCambial(curvas?.pre ?? [], curvaUsEmAnos),
+    [curvas, curvaUsEmAnos]
+  );
+
+  // BRL/USD: preço no gráfico, variação por janela na tabela.
+  const usdBrlSerie = useMemo(() => {
+    const s = data?.series.find((x) => x.symbol === "USDBRL=X");
+    if (!s) return null;
+    const serie = (s.sparkline ?? []).map((v, i) => ({ rotulo: String(i + 1), valor: v }));
+    const janelas = [
+      { rotulo: "1D", anos: 0, valor: s.chg1d != null ? s.chg1d * 100 : null },
+      { rotulo: "5D", anos: 0, valor: s.chg5d != null ? s.chg5d * 100 : null },
+      { rotulo: "1M", anos: 0, valor: s.chg1m != null ? s.chg1m * 100 : null },
+      { rotulo: "3M", anos: 0, valor: s.chg3m != null ? s.chg3m * 100 : null },
+      { rotulo: "6M", anos: 0, valor: s.chg6m != null ? s.chg6m * 100 : null },
+      { rotulo: "12M", anos: 0, valor: s.chg12m != null ? s.chg12m * 100 : null },
+    ];
+    return { serie, janelas, dataDoDado: s.dataDoDado ?? null };
+  }, [data]);
 
   // Status das sessões
   const sessoesStatus = useMemo(() => {
@@ -448,7 +496,7 @@ export default function MacroPage() {
           <div className="flex items-center gap-2">
             {ratesOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
             <LineChartIcon size={14} className="text-term-up" />
-            <span className="font-bold">[3] Curva de Juros US (Treasuries) + Rates & Inflação Brasil</span>
+            <span className="font-bold">[3] Rates &amp; FX</span>
           </div>
         </div>
 
@@ -515,7 +563,53 @@ export default function MacroPage() {
               </div>
             </div>
 
-            {/* Bloco Brasil (BCB SGS) */}
+            {/* WO-32: curvas brasileiras e câmbio — quatro boxes do mesmo tamanho do Treasuries */}
+            <CurvaBox
+              titulo="Pré (Tesouro) — curva nominal BR"
+              fonte="Tesouro Transparente"
+              dataDoDado={curvas?.dataBase ?? null}
+              pontos={(curvas?.pre ?? []).map((v) => ({ rotulo: v.vencimento.slice(0, 7), anos: v.anos, valor: v.taxa }))}
+              cor="#fbbf24"
+              nota="Curva dos títulos prefixados do Tesouro (LTN/NTN-F). Não é a curva de futuros DI1 da B3."
+              vazio="Curva do Tesouro indisponível nesta execução."
+            />
+            <CurvaBox
+              titulo="NTN-B — curva real BR"
+              fonte="Tesouro Transparente"
+              dataDoDado={curvas?.dataBase ?? null}
+              pontos={(curvas?.ntnb ?? []).map((v) => ({ rotulo: v.vencimento.slice(0, 7), anos: v.anos, valor: v.taxa }))}
+              cor="#34d399"
+              nota="Taxa real (acima do IPCA) dos títulos Tesouro IPCA+."
+              vazio="Curva NTN-B indisponível nesta execução."
+            />
+            <CurvaBox
+              titulo="BRL/USD — série e janelas"
+              fonte="Yahoo Finance"
+              dataDoDado={usdBrlSerie?.dataDoDado ?? null}
+              serie={usdBrlSerie?.serie ?? []}
+              pontos={usdBrlSerie?.janelas ?? []}
+              unidade="%"
+              cor="#f87171"
+              nota="Gráfico: preço nos últimos pregões. Tabela: variação por janela."
+              vazio="Série USD/BRL indisponível nesta execução."
+              tipoTabela="janelas"
+            />
+            <CurvaBox
+              titulo="Cupom cambial — diferencial BR × US"
+              fonte="derivado (pré × Treasuries)"
+              dataDoDado={curvas?.dataBase ?? null}
+              pontos={cupomCambial.map((c) => ({ rotulo: c.vencimento.slice(0, 7), anos: c.anos, valor: c.cupom }))}
+              estimado
+              cor="#a78bfa"
+              nota="Derivado: (1+pré)/(1+US)−1, com a curva US interpolada para o prazo de cada vértice brasileiro. Fora do intervalo dos Treasuries o vértice fica em —."
+              vazio="Precisa da curva pré e dos Treasuries para calcular."
+            />
+          </div>
+        )}
+
+        {/* Rates & Inflação Brasil em faixa de largura total */}
+        {ratesOpen && (
+          <div className="px-3 pb-3">
             <div className="space-y-3 p-3 bg-term-panel rounded border border-term-line/60">
               <div className="flex items-center justify-between border-b border-term-line/40 pb-2">
                 <span className="font-bold text-xs text-term-gold">Rates & Inflação Brasil (BCB SGS)</span>

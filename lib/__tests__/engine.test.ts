@@ -1931,6 +1931,135 @@ async function testesWo31() {
   }
 
   await testesWo28Restaurados();
+  await testesWo32();
+}
+
+// ============ WO-32 — CURVAS BR (Tesouro), CUPOM CAMBIAL E LAYOUT ============
+
+async function testesWo32() {
+  const fs = await import("fs");
+  const path = await import("path");
+  const raiz = path.resolve(__dirname, "..", "..");
+  const { parseCurvasTesouro, interpolarCurva, calcularCupomCambial } = await import("../curvas");
+
+  // Fixture com TRÊS datas-base fora de ordem cronológica: a mais recente (03/08/2026) está no
+  // MEIO do arquivo. Varrer só o fim devolveria 2016 — foi o erro cometido na primeira medição.
+  const cab =
+    "Tipo Titulo;Data Vencimento;Data Base;Taxa Compra Manha;Taxa Venda Manha;PU Compra Manha;PU Venda Manha;PU Base Manha";
+  const fixture = [
+    cab,
+    "Tesouro Prefixado;01/01/2018;29/11/2016;12,09;12,15;100;100;100",
+    "Tesouro IPCA+;15/05/2019;29/11/2016;6,22;6,30;100;100;100",
+    "Tesouro Prefixado;01/01/2027;03/08/2026;13,55;13,60;100;100;100",
+    "Tesouro Prefixado;01/01/2028;03/08/2026;13,78;13,80;100;100;100",
+    "Tesouro Prefixado;01/01/2032;03/08/2026;14,45;14,50;100;100;100",
+    "Tesouro Prefixado com Juros Semestrais;01/01/2027;03/08/2026;13,61;13,65;100;100;100",
+    "Tesouro Prefixado com Juros Semestrais;01/01/2037;03/08/2026;14,65;14,70;100;100;100",
+    "Tesouro IPCA+;15/08/2026;03/08/2026;14,41;14,50;100;100;100",
+    "Tesouro IPCA+;15/05/2029;03/08/2026;8,15;8,20;100;100;100",
+    "Tesouro IPCA+;15/05/2045;03/08/2026;7,37;7,40;100;100;100",
+    "Tesouro Selic;01/03/2029;03/08/2026;0,04;0,05;100;100;100",
+    "Tesouro Prefixado;01/01/2020;15/07/2020;5,00;5,10;100;100;100",
+  ].join("\n");
+
+  const c = parseCurvasTesouro(fixture);
+
+  // ---- Teste 1: escolhe a data-base mais recente do arquivo inteiro, não a última linha
+  if (c.dataBase === "2026-08-03") {
+    console.log("✔ WO-32 Teste 1: data-base mais recente encontrada varrendo o arquivo inteiro (2026-08-03)");
+  } else {
+    console.log(`✘ WO-32 Teste 1 falhou: dataBase=${c.dataBase} (esperado 2026-08-03)`);
+    failures++;
+  }
+
+  // ---- Teste 2: vértice a menos de 3 meses do vencimento é descartado
+  // O IPCA+ 15/08/2026 aparece com 14,41% — distorção de título prestes a vencer.
+  const temCurto = c.ntnb.some((v) => v.vencimento === "2026-08-15");
+  const avisouDescarte = c.falhas.some((f) => /menos de 3 meses/i.test(f));
+  if (!temCurto && avisouDescarte) {
+    console.log("✔ WO-32 Teste 2: vértice a menos de 3 meses descartado e registrado em falhas");
+  } else {
+    console.log(`✘ WO-32 Teste 2 falhou: temCurto=${temCurto}, avisou=${avisouDescarte}`);
+    failures++;
+  }
+
+  // ---- Teste 3: fusão das duas séries prefixadas, sem vencimento duplicado, ordenada
+  const vencs = c.pre.map((v) => v.vencimento);
+  const semDuplicata = new Set(vencs).size === vencs.length;
+  const ordenada = vencs.every((v, i) => i === 0 || vencs[i - 1] < v);
+  // 2027-01 existe nas duas séries: vence a zero-cupom (13,55), não a de juros semestrais (13,61)
+  const jan27 = c.pre.find((v) => v.vencimento === "2027-01-01");
+  const temJan37 = vencs.includes("2037-01-01"); // só existe na série com juros semestrais
+  if (semDuplicata && ordenada && jan27?.taxa === 13.55 && temJan37 && !vencs.includes("2020-01-01")) {
+    console.log(`✔ WO-32 Teste 3: séries prefixadas fundidas em ${vencs.length} vértices ordenados, zero-cupom prevalece`);
+  } else {
+    console.log(
+      `✘ WO-32 Teste 3 falhou: dup=${!semDuplicata}, ordenada=${ordenada}, jan27=${jan27?.taxa}, jan37=${temJan37}`
+    );
+    failures++;
+  }
+
+  // ---- Teste 4: cupom cambial e a recusa de extrapolar
+  const us = [
+    { vencimento: "US-0.25Y", anos: 0.25, taxa: 4.0 },
+    { vencimento: "US-5Y", anos: 5, taxa: 4.3 },
+    { vencimento: "US-10Y", anos: 10, taxa: 4.5 },
+  ];
+  const interp = interpolarCurva(us, 0.41);
+  const cupons = calcularCupomCambial(c.pre, us);
+  const jan27c = cupons.find((x) => x.vencimento === "2027-01-01");
+  // Fora do intervalo (2037 → ~10,4 anos > 10) não extrapola
+  const jan37c = cupons.find((x) => x.vencimento === "2037-01-01");
+  const esperado = jan27c?.taxaUs != null ? ((1 + 13.55 / 100) / (1 + jan27c.taxaUs / 100) - 1) * 100 : NaN;
+  const bate = jan27c?.cupom != null && Math.abs(jan27c.cupom - esperado) < 0.011;
+  if (interp != null && interp > 4.0 && interp < 4.3 && bate && jan37c?.cupom === null) {
+    console.log(
+      `✔ WO-32 Teste 4: cupom cambial em jan/27 = ${jan27c!.cupom}% (US interpolada ${jan27c!.taxaUs!.toFixed(2)}%); fora do intervalo devolve null`
+    );
+  } else {
+    console.log(`✘ WO-32 Teste 4 falhou: interp=${interp}, jan27=${jan27c?.cupom}, jan37=${jan37c?.cupom}`);
+    failures++;
+  }
+
+  // ---- Teste 5: degradação — CSV ilegível não derruba a aba
+  const vazio = parseCurvasTesouro("");
+  const cabInvalido = parseCurvasTesouro("coluna1;coluna2\na;b");
+  if (
+    vazio.pre.length === 0 && vazio.ntnb.length === 0 && vazio.falhas.length > 0 &&
+    cabInvalido.dataBase === null && cabInvalido.falhas.length > 0
+  ) {
+    console.log("✔ WO-32 Teste 5: CSV vazio ou com cabeçalho inesperado devolve curvas vazias e falha registrada");
+  } else {
+    console.log("✘ WO-32 Teste 5 falhou: degradação do parser não se comportou");
+    failures++;
+  }
+
+  // ---- Teste 6: nenhum box da Macro exibe o relógio do fetch como data do dado
+  const srcCurvaBox = fs.readFileSync(path.join(raiz, "components", "macro", "CurvaBox.tsx"), "utf-8");
+  const usaDataDoDado = /dataDoDado/.test(srcCurvaBox) && /construirProvenance/.test(srcCurvaBox);
+  const naoUsaBuscadoEm = !/fmtDateBR\(\s*\w*buscadoEm/i.test(srcCurvaBox);
+  if (usaDataDoDado && naoUsaBuscadoEm) {
+    console.log("✔ WO-32 Teste 6: CurvaBox carimba dataDoDado via provenance, nunca o buscadoEm");
+  } else {
+    console.log(`✘ WO-32 Teste 6 falhou: dataDoDado=${usaDataDoDado}, semBuscadoEm=${naoUsaBuscadoEm}`);
+    failures++;
+  }
+
+  // ---- Teste 7: o Mapa de Oportunidades não está mais espremido num col-span
+  const srcConsultor = fs.readFileSync(path.join(raiz, "app", "consultor", "page.tsx"), "utf-8");
+  const trecho = srcConsultor.slice(
+    Math.max(0, srcConsultor.indexOf("<MapaOportunidades") - 400),
+    srcConsultor.indexOf("<MapaOportunidades")
+  );
+  const semColSpan = !/col-span-(1|2|3|4|5|6|7|8|9|10|11)\b/.test(trecho);
+  const srcMapa = fs.readFileSync(path.join(raiz, "components", "agents", "MapaOportunidades.tsx"), "utf-8");
+  const alturaMaior = /height=\{420\}/.test(srcMapa);
+  if (semColSpan && alturaMaior) {
+    console.log("✔ WO-32 Teste 7: Mapa em largura total (sem col-span) e scatter em 420px");
+  } else {
+    console.log(`✘ WO-32 Teste 7 falhou: semColSpan=${semColSpan}, altura420=${alturaMaior}`);
+    failures++;
+  }
 }
 
 // ============ WO-28 — TESTES RESTAURADOS (apagados durante o WO-29) ============

@@ -316,6 +316,38 @@ calendários oficiais (BCB, Fed, IBGE, BLS) no mesmo formato.
 
 ---
 
+
+### 6.7 `GET /api/curvas-br` (WO-32)
+
+Curvas de juros brasileiras do **Tesouro Transparente** (CKAN, CSV de ~13,7 MB, 174 mil linhas,
+atualizado uma vez por dia útil — cache de 6 h na rota).
+
+```ts
+{
+  dataBase: "2026-08-03",      // data do PREGÃO; o Tesouro publica D-1
+  buscadoEm: "2026-08-04T...", // diagnóstico; NUNCA exibido como data do dado
+  pre:  [{ vencimento: "2027-01-01", anos: 0.41, taxa: 13.55 }, ...],  // LTN/NTN-F
+  ntnb: [{ vencimento: "2029-05-15", anos: 2.78, taxa: 8.15 }, ...],   // Tesouro IPCA+
+  falhas: string[]
+}
+```
+
+**Não existe fonte pública para a curva de futuros DI1 da B3.** Verificado em 04/08/2026: o JSON
+do Tesouro Direto responde **410 Gone** e a página de taxas referenciais da B3 devolve HTML sem
+tabela. Por isso a curva nominal é rotulada **"Pré (Tesouro)"**, nunca "DI" — chamá-la de DI
+mentiria sobre a fonte.
+
+Armadilhas do parsing, ambas cobertas por teste:
+
+1. **O CSV não está em ordem cronológica.** Varrer só o final devolve datas de 2016; a varredura
+   pela data-base máxima tem de ser integral.
+2. **Vértices a menos de 3 meses do vencimento distorcem a ponta curta** — o IPCA+ de ago/26
+   apareceu com 14,41% contra 8,15% do vértice seguinte. São descartados e registrados em `falhas`.
+
+O **cupom cambial** da aba Rates & FX é derivado: `((1+pré)/(1+US) − 1)`, com a curva Treasury
+interpolada linearmente para o prazo de cada vértice brasileiro. Vai para a tela com chip **EST**;
+fora do intervalo coberto pelos Treasuries o vértice fica em `—` (não se extrapola juro).
+
 ## 7. Engine quantitativo
 
 ### 7.1 Convenções numéricas (fixas — comentar qualquer exceção)

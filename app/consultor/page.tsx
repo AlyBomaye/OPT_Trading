@@ -467,13 +467,12 @@ export default function ConsultorPage() {
           </div>
 
           {/* ALOCAÇÃO E AÇÕES */}
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
-            <div className="lg:col-span-5 h-full">
-              <RiskMixBar {...alocacao.mix} utilizacaoPct={alocacao.utilizacaoCapitalPct} desvio={alocacao.desvio} />
-            </div>
-            <div className="lg:col-span-7">
-              <MapaOportunidades />
-            </div>
+          {/* WO-32 A: a Composição do Risco é uma barra horizontal e cabe em qualquer largura;
+              o Mapa é uma dispersão com quadrantes, legenda de 9 setores e tabela. Dividir 5/7
+              comprimia o scatter. Faixa fina em cima, mapa com a largura inteira embaixo. */}
+          <div className="space-y-4">
+            <RiskMixBar {...alocacao.mix} utilizacaoPct={alocacao.utilizacaoCapitalPct} desvio={alocacao.desvio} />
+            <MapaOportunidades />
           </div>
 
           {/* RISCOS E LEITURA DE MERCADO */}
