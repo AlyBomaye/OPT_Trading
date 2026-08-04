@@ -32,6 +32,7 @@ import {
 import type { BrasilMacro, MacroBody, MacroSeries } from "@/app/api/macro/route";
 import { useMarket } from "@/store/market";
 import { fmtBRL, fmtDateBR, fmtNum, fmtPct, pnlColor } from "@/lib/format";
+import { construirProvenance } from "@/lib/provenance";
 import { curveSlope, sessionStatus } from "@/lib/macro";
 import { Sparkline } from "@/components/Sparkline";
 import { AgentPanel } from "@/components/AgentPanel";
@@ -231,11 +232,30 @@ export default function MacroPage() {
         <div className="flex items-center gap-2">
           <Globe size={16} className="text-term-cyan" />
           <span className="font-bold text-term-cyan text-sm">Macro Global & Rates — A Tela das 9h</span>
-          {data?.updatedAt && (
-            <span className="tag bg-term-cyan/15 text-term-cyan">
-              Atualizado: {new Date(data.updatedAt).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}
-            </span>
-          )}
+          {/* WO-30 §2.1: o carimbo é a data do PREGÃO das séries, não a hora do fetch.
+              Séries de praças diferentes podem fechar em datas diferentes — mostramos a
+              mais recente e a mais antiga quando divergem. */}
+          {(() => {
+            if (!data?.series?.length) return null;
+            const datas = Array.from(
+              new Set(data.series.map((s) => s.dataDoDado).filter((d): d is string => !!d))
+            ).sort();
+            if (!datas.length) return null;
+            const maisNova = datas[datas.length - 1];
+            const maisAntiga = datas[0];
+            const prov = construirProvenance("Yahoo Finance", maisNova, { buscadoEm: data.updatedAt });
+            return (
+              <span
+                className={`tag ${prov.frescor === "ANTIGO" ? "bg-term-gold/20 text-term-gold" : "bg-term-cyan/15 text-term-cyan"}`}
+                title={`Fechamentos de ${fmtDateBR(maisAntiga)} a ${fmtDateBR(maisNova)} — praças distintas fecham em datas distintas. Buscado às ${new Date(
+                  data.updatedAt
+                ).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}.`}
+              >
+                DADOS DE {fmtDateBR(maisNova)}
+                {maisAntiga !== maisNova ? ` (mais antiga ${fmtDateBR(maisAntiga)})` : ""}
+              </span>
+            );
+          })()}
         </div>
 
         <div className="flex items-center gap-3">

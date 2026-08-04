@@ -74,6 +74,12 @@ export interface MacroSeries {
   sparkline: number[];
   closes1y: number[];
   updatedAt: string;
+  /**
+   * WO-30 §2.1: data do PREGÃO a que `last` se refere (YYYY-MM-DD), lida do timestamp
+   * do Yahoo. Antes só existia `updatedAt`, que é o relógio do fetch — e a tela exibia
+   * o relógio como se fosse a hora do dado.
+   */
+  dataDoDado: string | null;
   ok: boolean;
 }
 
@@ -193,6 +199,7 @@ async function fetchYahooSymbol(cfg: MacroSymbolConfig): Promise<MacroSeries> {
       sparkline,
       closes1y: validCloses,
       updatedAt: new Date().toISOString(),
+      dataDoDado: candles.length ? candles[candles.length - 1].date || null : null,
       ok: true,
     };
   } catch {
@@ -217,6 +224,7 @@ async function fetchYahooSymbol(cfg: MacroSymbolConfig): Promise<MacroSeries> {
       sparkline: [],
       closes1y: [],
       updatedAt: new Date().toISOString(),
+      dataDoDado: null,
       ok: false,
     };
   }
