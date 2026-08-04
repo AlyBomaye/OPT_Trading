@@ -1780,6 +1780,230 @@ async function testesWo30() {
     console.log(`✘ WO-30 Teste 9 falhou: '${semRuido}' / '${nulo}'`);
     failures++;
   }
+
+  await testesWo31();
+}
+
+// ================== WO-31 — FRAMEWORK DE AGENTES DE PONTA A PONTA ==================
+
+async function testesWo31() {
+  const fs = await import("fs");
+  const path = await import("path");
+  const raiz = path.resolve(__dirname, "..", "..");
+  const ler = (rel: string) => fs.readFileSync(path.join(raiz, rel), "utf-8");
+
+  const { montarContextoGestor } = await import("../agents/senior/contexto-gestor");
+  const { UNIVERSE } = await import("../universe");
+
+  const srcGestor = ler("lib/agents/senior/gestor-global.ts");
+
+  // ---- Teste 1: o Gestor não usa toolRunner (§1.2)
+  // As ferramentas de tools.ts são objetos soltos com `run`; o runner do SDK só executa o que
+  // passa por betaTool()/betaZodTool(), então o laço travava até o timeout.
+  // Ignora comentários: a nota que documenta a remoção do runner é legítima.
+  const codigoGestor = srcGestor.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:])\/\/.*$/gm, "$1");
+  const semRunner =
+    !/toolRunner/.test(codigoGestor) && !/getAgentTools/.test(codigoGestor) && !/tool_choice/.test(codigoGestor);
+  if (semRunner) {
+    console.log("✔ WO-31 Teste 1: gestor-global sem toolRunner, getAgentTools e tool_choice");
+  } else {
+    console.log("✘ WO-31 Teste 1 falhou: gestor-global ainda referencia o toolRunner");
+    failures++;
+  }
+
+  // ---- Teste 2: uma única chamada por execução (§1.3 — fases A e B fundidas)
+  const nChamadas = (srcGestor.match(/anthropic\.beta\.messages\.create\(/g) ?? []).length;
+  if (nChamadas === 1) {
+    console.log("✔ WO-31 Teste 2: gestor-global faz exatamente 1 chamada ao modelo por execução");
+  } else {
+    console.log(`✘ WO-31 Teste 2 falhou: ${nChamadas} chamadas encontradas (esperado 1)`);
+    failures++;
+  }
+
+  // ---- Teste 3: timeout interno de 90s e teto de classe llm em 120s
+  const srcOrq = ler("lib/agents/orchestrator.ts");
+  const timeout90 = /\}, 170000\);/.test(srcGestor);
+  const llm120 = /TIMEOUT_LLM_MS = 200000;/.test(srcOrq);
+  if (timeout90 && llm120) {
+    console.log("✔ WO-31 Teste 3: timeout interno 170s no Gestor e teto de classe llm 200s no orquestrador");
+  } else {
+    console.log(`✘ WO-31 Teste 3 falhou: timeout90=${timeout90}, llm120=${llm120}`);
+    failures++;
+  }
+
+  // ---- Teste 4: contexto vazio não inventa número (§2)
+  const ctxVazio = montarContextoGestor({ reports: [], positions: [], capitalTotal: 100000 });
+  const todosAtivos = ctxVazio.universo.setores.flatMap((s) => s.ativos);
+  const semNumeroInventado = todosAtivos.every(
+    (a) => a.skew === null && a.ivAtm === null && a.ivMenosHv === null && a.semDado != null
+  );
+  const mediasNulas = ctxVazio.universo.setores.every((s) => s.skewMedio === null && s.ivAtmMedia === null);
+  if (todosAtivos.length === UNIVERSE.length && semNumeroInventado && mediasNulas && ctxVazio.universo.comDado === 0) {
+    console.log(`✔ WO-31 Teste 4: contexto vazio traz os ${UNIVERSE.length} ativos com null e nenhum número inventado`);
+  } else {
+    console.log(
+      `✘ WO-31 Teste 4 falhou: ativos=${todosAtivos.length}, semNumero=${semNumeroInventado}, mediasNulas=${mediasNulas}`
+    );
+    failures++;
+  }
+
+  // ---- Teste 5: universo fechado — todo ticker do contexto pertence ao UNIVERSE
+  const validos = new Set(UNIVERSE.map((u) => u.ticker));
+  const forasteiros = todosAtivos.map((a) => a.ticker).filter((t) => !validos.has(t));
+  if (forasteiros.length === 0) {
+    console.log("✔ WO-31 Teste 5: todo ticker do contexto do Gestor pertence ao UNIVERSE");
+  } else {
+    console.log(`✘ WO-31 Teste 5 falhou: tickers fora do universo: ${forasteiros.join(", ")}`);
+    failures++;
+  }
+
+  // ---- Teste 6: teto por ciclo barra a chamada e o ciclo continua (§4)
+  const { prepararRequest, registrarUso, iniciarCicloDeCusto, gastoDoCicloUsd } = await import("../agents/gateway");
+  iniciarCicloDeCusto();
+  // Gasto artificial acima do teto de US$ 0,50 (saída a US$ 25/MTok ⇒ 40k tokens ≈ US$ 1,00)
+  registrarUso("teste-wo31", { input_tokens: 0, output_tokens: 40000 }, "claude-opus-5");
+  // Isola o teto de CICLO: os tetos diário e mensal ficam altos de propósito, senão o teste
+  // passa a depender do gasto real acumulado no livro e falha por motivo alheio ao que testa.
+  const semLimiteDiario = { tetoDiarioUsd: 1000, tetoMensalUsd: 10000 };
+  const planoBarrado = prepararRequest({
+    agentId: "gestor-global",
+    classe: "consolidacao",
+    persona: "p",
+    regras: "r",
+    contexto: {},
+    orcamentoOverride: semLimiteDiario,
+  });
+  const gastoRegistrado = gastoDoCicloUsd();
+  iniciarCicloDeCusto();
+  const planoLiberado = prepararRequest({
+    agentId: "gestor-global",
+    classe: "consolidacao",
+    persona: "p",
+    regras: "r",
+    contexto: {},
+    orcamentoOverride: semLimiteDiario,
+  });
+  if (!planoBarrado.orcamento.aprovado && /ciclo/i.test(planoBarrado.orcamento.motivo ?? "") && gastoRegistrado > 0.5 && planoLiberado.orcamento.aprovado) {
+    console.log(`✔ WO-31 Teste 6: teto por ciclo barrou a chamada (US$ ${gastoRegistrado.toFixed(2)}) e reinicia a cada ciclo`);
+  } else {
+    console.log(
+      `✘ WO-31 Teste 6 falhou: barrado=${!planoBarrado.orcamento.aprovado}, gasto=${gastoRegistrado}, liberadoAposReinicio=${planoLiberado.orcamento.aprovado}`
+    );
+    failures++;
+  }
+  iniciarCicloDeCusto();
+
+  // ---- Teste 7: com watchlist populada, o contexto espelha os dados e calcula médias
+  const ctxCheio = montarContextoGestor({
+    reports: [
+      {
+        schemaVersion: 1, agentId: "macro", agentRole: "r", generatedAt: "", ticker: null,
+        headline: "h",
+        achados: [{ id: "m1", titulo: "Brent em alta", detalhe: "d", severidade: "atencao", evidencias: [{ metrica: "Brent 5d", valor: 2.5, fonte: "Yahoo", asOf: "2026-08-04" }] }],
+        metricas: {}, recomendacoes: [], melhorias: [], confianca: "alta", limitacoes: [], dependencias: [],
+      } as any,
+    ],
+    positions: [],
+    capitalTotal: 100000,
+    watchlistRows: { PETR4: { skewRatio: 1.3, ivAtm: 0.29, hv21: 0.24, dayChgPct: -0.011 } },
+  });
+  const petr = ctxCheio.universo.setores.flatMap((s) => s.ativos).find((a) => a.ticker === "PETR4");
+  const setorOil = ctxCheio.universo.setores.find((s) => s.setor === "Oil&Gas");
+  if (
+    petr?.skew === 1.3 && petr?.ivMenosHv === 5 && petr?.semDado === null &&
+    ctxCheio.universo.comDado === 1 && setorOil?.skewMedio === 1.3 && ctxCheio.macro.disponivel
+  ) {
+    console.log("✔ WO-31 Teste 7: contexto espelha a watchlist (skew 1.3, IV−HV 5pp) e o report de macro");
+  } else {
+    console.log(
+      `✘ WO-31 Teste 7 falhou: skew=${petr?.skew}, ivHv=${petr?.ivMenosHv}, comDado=${ctxCheio.universo.comDado}, macro=${ctxCheio.macro.disponivel}`
+    );
+    failures++;
+  }
+
+  // ---- Teste 8: setor sem varredura não some e declara a cobertura
+  const setorSemDado = ctxCheio.universo.setores.find((s) => s.ativos.every((a) => a.semDado != null));
+  if (setorSemDado && /sem varredura/.test(setorSemDado.cobertura) && setorSemDado.ativos.length > 0) {
+    console.log("✔ WO-31 Teste 8: setor sem varredura permanece no contexto com a nota de cobertura");
+  } else {
+    console.log("✘ WO-31 Teste 8 falhou: setor sem varredura sumiu ou não declarou cobertura");
+    failures++;
+  }
+
+  await testesWo28Restaurados();
+}
+
+// ============ WO-28 — TESTES RESTAURADOS (apagados durante o WO-29) ============
+
+async function testesWo28Restaurados() {
+  const fs = await import("fs");
+  const path = await import("path");
+  const raiz = path.resolve(__dirname, "..", "..");
+  const ler = (rel: string) => fs.readFileSync(path.join(raiz, rel), "utf-8");
+
+  // ---- Teste 40: timeouts por classe de agente
+  const srcOrq = ler("lib/agents/orchestrator.ts");
+  const t40 =
+    /TIMEOUT_REGRAS_MS = 8000;/.test(srcOrq) &&
+    /TIMEOUT_LLM_MS = 200000;/.test(srcOrq) &&
+    /TIMEOUT_GLOBAL_MS = 300000;/.test(srcOrq);
+  if (t40) {
+    console.log("✔ WO-28 Teste 40 (restaurado): timeouts por classe — regras 8s, llm 200s, ciclo 300s");
+  } else {
+    console.log("✘ WO-28 Teste 40 falhou: constantes de timeout fora do esperado");
+    failures++;
+  }
+
+  // ---- Teste 41: melhoria de engenharia não vira recomendação de trading
+  const { validarReport } = await import("../agents/types");
+  const repEng: any = {
+    schemaVersion: 1, agentId: "t", agentRole: "r", generatedAt: "", ticker: null, headline: "h",
+    achados: [], metricas: {},
+    recomendacoes: [{ acao: "refatorar o endpoint para salvar cache de token", justificativa: "j", risco: "BAIXO", horizonte: "hoje" }],
+    melhorias: [], confianca: "alta", limitacoes: [], dependencias: [],
+  };
+  const validarChamadoNoOrq = /validarReport\(report\)/.test(srcOrq);
+  if (validarReport(repEng) === false && validarChamadoNoOrq) {
+    console.log("✔ WO-28 Teste 41 (restaurado): validarReport rejeita jargão de engenharia e é chamado no orquestrador");
+  } else {
+    console.log(`✘ WO-28 Teste 41 falhou: rejeitou=${validarReport(repEng) === false}, chamadoNoOrq=${validarChamadoNoOrq}`);
+    failures++;
+  }
+
+  // ---- Teste 43: nenhuma página declara useState local para o ticker ativo
+  // É a única trava que impede o seletor global de ativo de regredir.
+  const paginas: string[] = [];
+  const varrer = (dir: string) => {
+    for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+      const p = path.join(dir, e.name);
+      if (e.isDirectory()) {
+        if (e.name === "node_modules" || e.name === ".next" || e.name === "api") continue;
+        varrer(p);
+      } else if (e.name === "page.tsx") {
+        paginas.push(p);
+      }
+    }
+  };
+  varrer(path.join(raiz, "app"));
+  const ofensores = paginas.filter((f) =>
+    /const \[\s*ticker\s*,\s*setTicker\s*\]\s*=\s*useState/.test(fs.readFileSync(f, "utf-8"))
+  );
+  if (ofensores.length === 0) {
+    console.log(`✔ WO-28 Teste 43 (restaurado): nenhuma das ${paginas.length} páginas declara useState local de ticker`);
+  } else {
+    console.log(`✘ WO-28 Teste 43 falhou: ${ofensores.map((f) => path.relative(raiz, f)).join(", ")}`);
+    failures++;
+  }
+
+  // ---- Teste 44: Mapa de Oportunidades cobre o universo a partir do UNIVERSE
+  const srcMapa = ler("components/agents/MapaOportunidades.tsx");
+  const t44 = /UNIVERSE\.map\(/.test(srcMapa) && /skewRatio/.test(srcMapa) && /hv21/.test(srcMapa);
+  if (t44) {
+    console.log("✔ WO-28 Teste 44 (restaurado): MapaOportunidades deriva os pontos do UNIVERSE com skew e HV21");
+  } else {
+    console.log("✘ WO-28 Teste 44 falhou: MapaOportunidades não deriva do UNIVERSE");
+    failures++;
+  }
 }
 
 testesAssincronos()

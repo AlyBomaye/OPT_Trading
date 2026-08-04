@@ -15,6 +15,7 @@ import type { AgentReport, Recomendacao, Achado, Melhoria, CycleResponse } from 
 import type { RunState } from "@/lib/agents/orchestrator";
 import { MapaOportunidades } from "@/components/agents/MapaOportunidades";
 import { useWatchlist } from "@/lib/sector-dashboard";
+import { sessionInfo } from "@/lib/session";
 
 // Gráficos do WO-26 (D.1)
 import { RiskTargetChart } from "@/components/agents/RiskTargetChart";
@@ -187,6 +188,21 @@ export default function ConsultorPage() {
     setCycleError(null);
 
     try {
+      // WO-31 §3: o ciclo é dirigido pela tela — o servidor não busca chain, histórico e macro
+      // por conta própria. Reunimos aqui tudo o que as abas usam para renderizar; sem isso os
+      // nove agentes de aba voltam com confiança baixa e o Gestor não tem o que consolidar.
+      const mkt = useMarket.getState();
+      const wl = useWatchlist.getState();
+
+      const [histRes, macroRes, newsRes] = await Promise.allSettled([
+        ticker ? fetch(`/api/history?ticker=${encodeURIComponent(ticker)}`).then((r) => (r.ok ? r.json() : null)) : Promise.resolve(null),
+        fetch("/api/macro").then((r) => (r.ok ? r.json() : null)),
+        fetch("/api/news").then((r) => (r.ok ? r.json() : null)),
+      ]);
+      const histData = histRes.status === "fulfilled" ? histRes.value : null;
+      const macroData = macroRes.status === "fulfilled" ? macroRes.value : null;
+      const newsData = newsRes.status === "fulfilled" ? newsRes.value : null;
+
       // 1. Inicia o ciclo e obtém runId
       const res = await fetch("/api/agents/run-cycle", {
         method: "POST",
@@ -201,12 +217,18 @@ export default function ConsultorPage() {
           chainCtx: hasChain ? { chain } : undefined,
           agentContext: {
             ticker,
-            selic: useMarket.getState().selic,
+            selic: mkt.selic,
             chain: hasChain ? chain : null,
+            selectedExpiry: mkt.selectedExpiry ?? null,
             positions,
             closed,
             capitalTotal,
-            watchlistRows: useWatchlist.getState ? useWatchlist.getState().rows : {},
+            historico: histData?.candles ? { candles: histData.candles, range: "1y" } : null,
+            watchlistRows: wl.rows ?? {},
+            lastRunAt: wl.lastRunAt ?? null,
+            macroSeries: macroData ?? null,
+            news: newsData ? { items: newsData.items ?? [], macro: newsData.macro ?? null } : null,
+            sessao: { estado: sessionInfo().state, dataEfetiva: chain?.dataEfetiva ?? null },
           },
         }),
       });

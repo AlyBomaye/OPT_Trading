@@ -11,11 +11,24 @@ import { lerHistoricoPerformance } from "@/lib/agents/curator";
 export async function POST(req: Request) {
   try {
     const body = await req.json().catch(() => ({}));
-    const { ticker, carteiraCtx, chainCtx, sync } = body;
+    const { ticker, carteiraCtx, chainCtx, sync, agentContext } = body;
+
+    // WO-31 §3: o ciclo é dirigido pela tela. Sem repassar o agentContext, os nove agentes de
+    // aba rodam cegos — era o que acontecia: /api/agents/run tratava o campo e o ciclo não.
+    const ctxCompleto = {
+      ticker: ticker ?? agentContext?.ticker ?? null,
+      carteiraCtx:
+        carteiraCtx ??
+        (agentContext?.positions
+          ? { positions: agentContext.positions, closed: agentContext.closed, capitalTotal: agentContext.capitalTotal ?? 100000 }
+          : undefined),
+      chainCtx: chainCtx ?? (agentContext?.chain ? { chain: agentContext.chain } : undefined),
+      ...agentContext,
+    };
 
     if (sync) {
       // Modo síncrono para testes ou chamadas diretas
-      const result = await runCycle({ ticker, carteiraCtx, chainCtx });
+      const result = await runCycle(ctxCompleto);
       const response: CycleResponse = {
         reports: result.reports,
         executados: result.executados,
@@ -27,7 +40,7 @@ export async function POST(req: Request) {
     }
 
     // Modo assíncrono padrão (P0.3): Inicia e responde imediatamente
-    const { runId } = iniciarRunCycle({ ticker, carteiraCtx, chainCtx });
+    const { runId } = iniciarRunCycle(ctxCompleto);
 
     return NextResponse.json({
       runId,

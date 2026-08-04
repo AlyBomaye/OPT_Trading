@@ -1,9 +1,9 @@
 import Anthropic from "@anthropic-ai/sdk";
+import { montarContextoGestor } from "./contexto-gestor";
 import type { AgentReport, Achado, Recomendacao } from "../types";
 import { prepararRequest, registrarUso } from "../gateway";
 import { alocacaoPorBalde } from "../risk";
 import type { Position } from "../../types";
-import { getAgentTools } from "../tools";
 import { UNIVERSE, bySector, type Sector } from "../../universe";
 
 export interface GestorGlobalInputContext {
@@ -269,48 +269,84 @@ export async function executarGestorGlobal(ctx: GestorGlobalInputContext): Promi
 3. Analise o universo de 20 nomes organizados por setor (Oil&Gas, Mineração, Bancos, Varejo, Utilidades, Siderurgia, Frigoríficos). Cite apenas tickers do UNIVERSE.
 4. Todo número deve vir acompanhado de janela e fonte em parênteses (ex: IV ATM 29,1% (fechamento 29/07, engine local)).
 5. Em 'O que eu faria', se não houver recomendações, escreva 'nenhuma ação recomendada hoje'. Proibido emitir recomendações com jargão de engenharia.
-6. Nunca insira tabelas vazias com todas as células em 'não apurada'.`;
+6. Nunca insira tabelas vazias com todas as células em 'não apurada'.
+7. Devolva UM único JSON com os campos do schema. O relatório em markdown vai no campo
+   'textoRelatorio' — as 9 seções inteiras, como string. Não faça uma segunda chamada.
+8. O contexto que você recebe já foi apurado pelo orquestrador. NÃO invente números: use apenas os
+   valores presentes no contexto. Campo com valor null significa 'não apurado' — diga isso em uma
+   linha explicando o que falta, em vez de preencher com um número plausível.
+9. Cite apenas tickers presentes no contexto (são os 20 do UNIVERSE). Setor sem varredura aparece
+   na leitura setorial com '—' e a nota de cobertura; não o omita.`;
 
   const timeoutPromise = new Promise<{ report: AgentReport; textoRelatorio: string }>((resolve) => {
     setTimeout(() => {
-      console.warn("[gestor-global] Timeout interno de 120s atingido na execução com Anthropic. Ativando fallback determinístico.");
-      resolve(fallbackDeterministicoGestorGlobal(ctx, "Timeout interno de 120s atingido na chamada à API LLM. Fallback determinístico acionado."));
-    }, 120000);
+      console.warn("[gestor-global] Timeout interno de 170s atingido na execução com Anthropic. Ativando fallback determinístico.");
+      resolve(fallbackDeterministicoGestorGlobal(ctx, "Timeout interno de 170s atingido na chamada à API LLM. Fallback determinístico acionado."));
+    }, 170000);
   });
 
   const apiPromise = (async () => {
     try {
       console.log(`[gestor-global] [${new Date().toISOString()}] Request enviado para Anthropic SDK...`);
+      // Structured outputs exigem `additionalProperties: false` em TODO objeto — sem isso a API
+      // devolve 400. E o schema pede só o que é do modelo: schemaVersion, agentId, generatedAt e
+      // dependências são nossos, preenchidos no código, não pelo modelo.
       const reportSchema = {
         type: "object",
+        additionalProperties: false,
         properties: {
-          schemaVersion: { type: "number" },
-          agentId: { type: "string" },
-          agentRole: { type: "string" },
-          generatedAt: { type: "string" },
-          ticker: { type: "string" },
           headline: { type: "string" },
-          achados: { type: "array", items: { type: "object" } },
-          metricas: { type: "object" },
-          recomendacoes: { type: "array", items: { type: "object" } },
-          melhorias: { type: "array", items: { type: "object" } },
+          textoRelatorio: { type: "string" },
           confianca: { type: "string", enum: ["alta", "media", "baixa"] },
           limitacoes: { type: "array", items: { type: "string" } },
-          dependencias: { type: "array", items: { type: "string" } }
+          achados: {
+            type: "array",
+            items: {
+              type: "object",
+              additionalProperties: false,
+              properties: {
+                titulo: { type: "string" },
+                detalhe: { type: "string" },
+                severidade: { type: "string", enum: ["critico", "atencao", "info"] },
+                deepLink: { type: "string" },
+              },
+              required: ["titulo", "detalhe", "severidade"],
+            },
+          },
+          recomendacoes: {
+            type: "array",
+            items: {
+              type: "object",
+              additionalProperties: false,
+              properties: {
+                acao: { type: "string" },
+                justificativa: { type: "string" },
+                risco: { type: "string", enum: ["ALTO", "MEDIO", "BAIXO"] },
+                horizonte: { type: "string", enum: ["hoje", "semana", "estrutural"] },
+                deepLink: { type: "string" },
+              },
+              required: ["acao", "justificativa", "risco", "horizonte"],
+            },
+          },
         },
-        required: ["schemaVersion", "agentId", "agentRole", "generatedAt", "headline", "achados", "metricas", "recomendacoes", "melhorias", "confianca", "limitacoes", "dependencias"]
+        required: ["headline", "textoRelatorio", "confianca", "limitacoes", "achados", "recomendacoes"]
       };
 
-      const tools = getAgentTools(ctx).sort((a, b) => a.name.localeCompare(b.name));
+      // WO-31 §2: contexto pré-computado. O modelo redige; não apura.
+      const contexto = montarContextoGestor({
+        reports: ctx.reports ?? [],
+        positions: ctx.positions ?? [],
+        capitalTotal: ctx.capitalTotal,
+        watchlistRows: ctx.watchlistRows ?? null,
+        curatorMemory: ctx.curatorMemory ?? null,
+      });
 
       const plano = prepararRequest({
         agentId: "gestor-global",
         classe: "consolidacao",
         persona,
         regras,
-        contexto: ctx,
-        tools,
-        tool_choice: { type: "auto" },
+        contexto,
         outputSchema: reportSchema,
       });
 
@@ -320,96 +356,86 @@ export async function executarGestorGlobal(ctx: GestorGlobalInputContext): Promi
       }
 
       const anthropic = new Anthropic({ apiKey });
-      
-      console.log(`[gestor-global] [${new Date().toISOString()}] Executando mensagens create/toolRunner com modelo ${plano.model}...`);
-      let resA: any;
-      let currentMessages = plano.messages as any[];
-      let tentativas = 0;
 
-      while (tentativas < 3) {
-        console.log(`[gestor-global] Tentativa ${tentativas + 1}: enviando mensagens (${currentMessages.length} msgs)...`);
-        const runner = anthropic.beta.messages.toolRunner({
-          model: plano.model,
-          max_tokens: plano.max_tokens,
-          system: plano.system as any,
-          messages: currentMessages,
-          tools: plano.tools as any,
-          tool_choice: plano.tool_choice as any,
-          betas: plano.betas,
-        } as any);
-
-        try {
-          resA = await runner.done();
-          console.log(`[gestor-global] Fase A resposta recebida. stop_reason: ${resA?.stop_reason}`);
-        } catch (e: any) {
-          console.error("[gestor-global] Erro na Fase A (tool runner):", e);
-          return fallbackDeterministicoGestorGlobal(ctx, `Erro na Fase A (tool runner): ${e?.message}`);
-        }
-
-        if (resA?.stop_reason === "pause_turn") {
-          currentMessages.push({ role: "assistant", content: resA.content });
-          tentativas++;
-        } else {
-          break;
-        }
-      }
-
-      if (resA && resA.usage) {
-        registrarUso("gestor-global", resA.usage, plano.model);
-      }
-
-      if (!resA || resA.stop_reason === "refusal") {
-        const cat = (resA as any)?.stop_details?.category ?? "não informada";
-        return fallbackDeterministicoGestorGlobal(ctx, `Modelo recusou a solicitação na Fase A (categoria: ${cat}).`);
-      }
-
-      const blockA = resA.content.find((c: any) => c.type === "text") as any;
-      const rawText = blockA?.text ?? "";
-      let report: AgentReport;
-      try {
-        report = JSON.parse(rawText);
-        console.log("[gestor-global] Report da Fase A parseado com sucesso.");
-      } catch {
-        console.warn("[gestor-global] Parse JSON falhou na Fase A. Recorrendo ao fallback.");
-        return fallbackDeterministicoGestorGlobal(ctx, "Parse de JSON falhou na Fase A.");
-      }
-
-      console.log(`[gestor-global] [${new Date().toISOString()}] Solicitando Fase B (redação de relatório)...`);
-      const planoB = prepararRequest({
-        agentId: "gestor-global",
-        classe: "redacao",
-        persona,
-        regras: regras + "\nTransforme a análise obtida num relatório executivo de mesa em markdown didático de 9 seções com links relativos.",
-        contexto: { reportFaseA: report },
-      });
-
-      if (!planoB.orcamento.aprovado) {
-        const det = fallbackDeterministicoGestorGlobal(ctx, planoB.orcamento.motivo ?? "Teto excedido na Fase B.");
-        return { report, textoRelatorio: det.textoRelatorio };
-      }
-
-      const resB = await anthropic.beta.messages.create({
-        model: planoB.model,
-        max_tokens: planoB.max_tokens,
-        output_config: planoB.output_config,
-        system: planoB.system as any,
-        messages: planoB.messages as any,
+      // WO-31 §1.2: UMA chamada, sem toolRunner. As ferramentas de `lib/agents/tools.ts` eram
+      // objetos soltos com `run` — o runner do SDK só executa o que passa por betaTool()/
+      // betaZodTool(), então o laço nunca avançava e `runner.done()` nunca resolvia.
+      console.log(`[gestor-global] [${new Date().toISOString()}] Request enviado (${plano.model}, effort=${plano.output_config.effort}).`);
+      const res = await anthropic.beta.messages.create({
+        model: plano.model,
+        max_tokens: plano.max_tokens,
+        output_config: plano.output_config,
+        system: plano.system as any,
+        messages: plano.messages as any,
         betas: ["server-side-fallback-2026-07-01"],
         fallbacks: "default",
       } as any);
 
-      console.log(`[gestor-global] [${new Date().toISOString()}] Fase B concluída com sucesso.`);
-      registrarUso("gestor-global", resB.usage, planoB.model);
+      registrarUso("gestor-global", res.usage, plano.model);
+      console.log(
+        `[gestor-global] [${new Date().toISOString()}] Resposta recebida. stop_reason=${res.stop_reason} ` +
+          `cache_read=${(res.usage as any)?.cache_read_input_tokens ?? 0}`
+      );
 
-      if (resB.stop_reason === "refusal") {
-        const cat = (resB as any).stop_details?.category ?? "não informada";
-        const det = fallbackDeterministicoGestorGlobal(ctx, `Modelo recusou a redação na Fase B (categoria: ${cat}).`);
-        return { report, textoRelatorio: det.textoRelatorio };
+      // Refusal antes de ler content — stop_details pode ser null.
+      if (res.stop_reason === "refusal") {
+        const cat = (res as any).stop_details?.category ?? "não informada";
+        return fallbackDeterministicoGestorGlobal(ctx, `Modelo recusou a solicitação (categoria: ${cat}).`);
+      }
+      if (res.stop_reason === "max_tokens") {
+        return fallbackDeterministicoGestorGlobal(
+          ctx,
+          "Resposta truncada por max_tokens — aumente o teto da classe 'consolidacao'."
+        );
       }
 
-      const blockB = resB.content.find((c: any) => c.type === "text") as any;
-      let textoRelatorio = blockB?.text ?? "";
-      textoRelatorio = textoRelatorio.replace(/http:\/\/localhost:3001/g, "").replace(/http:\/\/localhost:\d+/g, "");
+      const bloco = res.content.find((c: any) => c.type === "text") as any;
+      let parsed: any;
+      try {
+        parsed = JSON.parse(bloco?.text ?? "");
+      } catch {
+        console.warn("[gestor-global] Parse JSON falhou. Recorrendo ao fallback determinístico.");
+        return fallbackDeterministicoGestorGlobal(ctx, "Parse de JSON da resposta do modelo falhou.");
+      }
+
+      // Fases A e B fundidas: o markdown vem no mesmo JSON (WO-31 §1.3).
+      const textoRelatorio = String(parsed.textoRelatorio ?? "")
+        .replace(/https?:\/\/localhost:\d+/g, "")
+        .trim();
+
+      if (!textoRelatorio) {
+        return fallbackDeterministicoGestorGlobal(ctx, "Modelo não devolveu o campo 'textoRelatorio'.");
+      }
+
+      // Campos de identidade são nossos, não do modelo — preenchidos aqui para que o report
+      // sempre satisfaça validarReport() no orquestrador.
+      const report: AgentReport = {
+        schemaVersion: 1,
+        agentId: "gestor-global",
+        agentRole: "O trader mais sênior da mesa — PhD e professor",
+        generatedAt: new Date().toISOString(),
+        ticker: ctx.ticker ?? null,
+        headline: String(parsed.headline ?? "Relatório executivo de mesa."),
+        achados: (Array.isArray(parsed.achados) ? parsed.achados : []).map((a: any, i: number) => ({
+          id: `gg-${i}`,
+          titulo: String(a?.titulo ?? ""),
+          detalhe: String(a?.detalhe ?? ""),
+          severidade: a?.severidade ?? "info",
+          // validarReport exige ao menos uma evidência com fonte.
+          evidencias: [{ metrica: "consolidação do ciclo", valor: 0, fonte: "reports dos agentes", asOf: contexto.geradoEm }],
+          deepLink: a?.deepLink,
+        })),
+        metricas: {
+          ativosComDado: contexto.universo.comDado,
+          totalAtivos: contexto.universo.totalAtivos,
+          agentesAusentes: contexto.cobertura.agentesAusentes.length,
+        },
+        recomendacoes: Array.isArray(parsed.recomendacoes) ? parsed.recomendacoes : [],
+        melhorias: [],
+        confianca: parsed.confianca ?? "media",
+        limitacoes: Array.isArray(parsed.limitacoes) ? parsed.limitacoes : [],
+        dependencias: (ctx.reports ?? []).map((r) => r.agentId),
+      };
 
       return { report, textoRelatorio };
     } catch (err: any) {

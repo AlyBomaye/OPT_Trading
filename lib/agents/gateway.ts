@@ -1,5 +1,6 @@
 import fs from "fs";
 import path from "path";
+import { AGENTS } from "./registry";
 import type Anthropic from "@anthropic-ai/sdk";
 import type { AgentReport } from "./types";
 import { link } from "./deeplinks";
@@ -31,16 +32,36 @@ export interface PlanoDeRequest {
 export interface BudgetConfig {
   tetoDiarioUsd: number;
   tetoMensalUsd: number;
+  /** WO-31 §4: teto por ciclo completo — impede um único ciclo de consumir o dia inteiro. */
+  tetoPorCicloUsd: number;
 }
 
 const DEFAULT_BUDGET: BudgetConfig = {
   tetoDiarioUsd: 2.0,
   tetoMensalUsd: 30.0,
+  tetoPorCicloUsd: 0.5,
 };
+
+/**
+ * WO-31 §4: gasto acumulado no ciclo corrente, em memória.
+ * O orquestrador chama `iniciarCicloDeCusto()` no começo de cada ciclo.
+ */
+let gastoCicloUsd = 0;
+
+export function iniciarCicloDeCusto(): void {
+  gastoCicloUsd = 0;
+}
+
+export function gastoDoCicloUsd(): number {
+  return Number(gastoCicloUsd.toFixed(4));
+}
 
 // Preços Claude Opus 5 (US$ / MTokens)
 const PRECO_ENTRADA_MTOK = 5.0;
 const PRECO_SAIDA_MTOK = 25.0;
+
+/** Agentes que podem escrever no livro de custos (fonte dos tetos diário e mensal). */
+const AGENT_IDS = new Set(AGENTS.map((a) => a.id));
 
 /** Order keys recursively for deterministic JSON stringification */
 export function stringifyDeterminístico(obj: unknown): string {
@@ -165,7 +186,16 @@ export function prepararRequest(input: {
   let effort: "low" | "medium" | "high" | "xhigh" = "medium";
   let max_tokens = 8000;
   if (input.classe === "consolidacao") {
-    effort = "high";
+    // WO-31 §1.3: fases A e B fundidas — esta chamada carrega o relatório inteiro. No Opus 5 o
+    // pensamento está ligado por padrão e max_tokens limita pensamento + texto JUNTOS.
+    // 16k mantém a estimativa de pior caso (16k × US$25/MTok = US$0,40) dentro do teto de ciclo
+    // de US$0,50. Se o relatório truncar, o agente detecta stop_reason=max_tokens e avisa.
+    //
+    // effort=medium, não high: medido em 04/08/2026 com o mesmo contexto —
+    //   medium → 70,8s · US$ 0,149 · relatório de 10.097 caracteres
+    //   high   → 92,5s · US$ 0,194 · relatório de 13.218 caracteres
+    // O relatório de 9 seções cabe folgado em medium, que é 24% mais rápido e 23% mais barato.
+    effort = "medium";
     max_tokens = 16000;
   } else if (input.classe === "redacao") {
     effort = "high";
@@ -211,7 +241,13 @@ export function prepararRequest(input: {
   let aprovado = true;
   let motivo: string | undefined;
 
-  if (gasto.hojeUsd + custoEstimadoUsd > budget.tetoDiarioUsd) {
+  // WO-31 §4: o teto do ciclo é o primeiro a ser checado — é o que protege contra um único
+  // ciclo consumir o orçamento do dia. Estourar não é exceção: o agente cai no determinístico.
+  if (gastoCicloUsd + custoEstimadoUsd > budget.tetoPorCicloUsd) {
+    aprovado = false;
+    motivo = `Teto do ciclo excedido: gasto no ciclo US$ ${gastoCicloUsd.toFixed(3)} + est. US$ ${custoEstimadoUsd.toFixed(3)} > teto US$ ${budget.tetoPorCicloUsd.toFixed(2)}`;
+    decisoes.push(`REJEITADO: ${motivo}`);
+  } else if (gasto.hojeUsd + custoEstimadoUsd > budget.tetoDiarioUsd) {
     aprovado = false;
     motivo = `Orçamento diário excedido: gasto hoje US$ ${gasto.hojeUsd.toFixed(2)} + est. US$ ${custoEstimadoUsd.toFixed(2)} > teto US$ ${budget.tetoDiarioUsd.toFixed(2)}`;
     decisoes.push(`REJEITADO: ${motivo}`);
@@ -220,7 +256,10 @@ export function prepararRequest(input: {
     motivo = `Orçamento mensal excedido: gasto mês US$ ${gasto.mesUsd.toFixed(2)} + est. US$ ${custoEstimadoUsd.toFixed(2)} > teto US$ ${budget.tetoMensalUsd.toFixed(2)}`;
     decisoes.push(`REJEITADO: ${motivo}`);
   } else {
-    decisoes.push(`Orçamento APROVADO (Gasto hoje: US$ ${gasto.hojeUsd.toFixed(2)} / Teto: US$ ${budget.tetoDiarioUsd.toFixed(2)}).`);
+    decisoes.push(
+      `Orçamento APROVADO (ciclo US$ ${gastoCicloUsd.toFixed(3)}/${budget.tetoPorCicloUsd.toFixed(2)} · ` +
+        `dia US$ ${gasto.hojeUsd.toFixed(2)}/${budget.tetoDiarioUsd.toFixed(2)}).`
+    );
   }
 
   const output_config: PlanoDeRequest["output_config"] = { effort };
@@ -264,6 +303,17 @@ export function registrarUso(agentId: string, usage: any, model: string): void {
       (cacheReadTokens / 1_000_000) * (PRECO_ENTRADA_MTOK * 0.1) +
       (cacheWriteTokens / 1_000_000) * (PRECO_ENTRADA_MTOK * 1.25) +
       (outputTokens / 1_000_000) * PRECO_SAIDA_MTOK;
+
+    // WO-31 §4: acumula no ciclo corrente para o próximo agente ver o gasto real.
+    gastoCicloUsd += custoUsd;
+
+    // O livro de custos é a fonte do teto diário/mensal. Só agentes registrados escrevem nele —
+    // caso contrário uma suíte de teste (ou qualquer chamador espúrio) inflaria o gasto do dia e
+    // bloquearia ciclos reais. Medido: duas execuções de teste gravaram US$ 2,00 falsos.
+    if (!AGENT_IDS.has(agentId)) {
+      console.warn(`[gateway] Uso de '${agentId}' contabilizado só no ciclo — agente não registrado, não persiste no livro.`);
+      return;
+    }
 
     const record = {
       timestamp: new Date().toISOString(),

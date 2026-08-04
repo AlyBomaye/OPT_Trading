@@ -671,6 +671,29 @@ fontSize 11`, ticks `fontSize 9-11, fill #6b7689|#7a8499`.
 
 ---
 
+
+### 11.9 Framework de agentes — regras aprendidas (WO-29 a WO-31)
+
+| Regra | Por quê |
+|---|---|
+| **Ferramentas do `toolRunner` só funcionam registradas por `betaTool()` / `betaZodTool()`** do SDK. Um objeto solto com `name`/`input_schema`/`run` é aceito como *definição* mas o runner fica sem handler: o modelo pede a ferramenta, ninguém executa, e `runner.done()` nunca resolve. | Custou o Gestor Global inteiro em duas work orders — travava 120s a cada ciclo. |
+| **Agente e rota nunca importam módulo que cria store.** Stores são client-side; agentes e rotas rodam no servidor. | `app/api/news/route.ts` importando o barril de `sector-dashboard` derrubou `/api/news` com 500. |
+| **`adaptarContexto()` é a única fronteira** entre o `AgentContext` das abas e os campos que os agentes consomem. Nenhum agente conhece dois nomes para o mesmo dado. | Sem ele, as páginas mandavam `historico.candles` e o agente lia `ctx.candles`. |
+| **O ciclo é dirigido pela tela.** O servidor não busca chain, histórico e macro sozinho — o Consultor reúne tudo e envia no `agentContext`. A rota `run-cycle` **precisa repassá-lo** ao `runCycle`. | Rodar sem navegador produz treze reports vazios. `npm run agents:dag-smoke` existe só para exercitar o DAG, não para gerar relatório. |
+| **Structured outputs exigem `additionalProperties: false` em todo objeto** do schema, senão a API devolve 400. | Foi o erro do primeiro ciclo do WO-31. |
+| **Só agentes registrados escrevem no livro de custos.** `registrarUso` ignora ids fora do `AGENTS`. | Duas execuções de teste gravaram US$ 2,00 falsos e bloquearam o orçamento real. |
+
+**Timeouts e orçamento** — `regras: 8s` · `llm: 200s` · ciclo: `300s` · teto por ciclo `US$ 0,50` · teto diário `US$ 2,00`.
+
+**Efeito medido do `effort`** no Gestor (04/08/2026, mesmo contexto):
+
+| effort | duração | custo | relatório |
+|---|---|---|---|
+| `medium` | 70,8 s | US$ 0,149 | 10.097 caracteres |
+| `high` | 92,5 s | US$ 0,194 | 13.218 caracteres |
+
+O relatório de 9 seções cabe folgado em `medium` — é o padrão da classe `consolidacao`.
+
 ## 11. Universo monitorado (fonte: planilha TradingOpt, Config!B5:B24)
 
 `lib/universe.ts` é a **única** definição. 20 nomes:

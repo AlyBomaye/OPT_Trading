@@ -1,4 +1,5 @@
 import { validarReport, type AgentReport } from "./types";
+import { iniciarCicloDeCusto, gastoDoCicloUsd } from "./gateway";
 import { AGENTS, createStubReport, niveisTopologicos } from "./registry";
 import { buildCarteiraReport, type CarteiraInputContext } from "./tab/carteira";
 import { buildChainReport, type ChainInputContext } from "./tab/chain";
@@ -29,6 +30,10 @@ export interface CycleResult {
   executados: string[];
   relatorioExecutivoText?: string;
   duracaoMs: number;
+  /** WO-31 §4: custo real deste ciclo em USD, somado pelo gateway. */
+  custoCicloUsd?: number;
+  /** WO-31 §5.3: agentes que não concluíram, com a razão — para degradação visível. */
+  agentesAusentes?: { agentId: string; motivo: string }[];
 }
 
 export interface RunState {
@@ -41,11 +46,18 @@ export interface RunState {
   reports: Record<string, AgentReport>;
   modoLLM: boolean;
   performanceSeries?: any[];
+  /** WO-31: markdown do Gestor, custo e degradação — o que a tela precisa mostrar. */
+  relatorioExecutivoText?: string;
+  custoCicloUsd?: number;
+  agentesAusentes?: { agentId: string; motivo: string }[];
   error?: string;
 }
 
 // Armazenamento em memória dos runs assíncronos (P0.3)
 const RUN_STATES = new Map<string, RunState>();
+
+/** WO-31: markdown produzido pelo Gestor no ciclo corrente. */
+let ultimoRelatorioExecutivo = "";
 
 function limparRunsAntigos(): void {
   const agora = Date.now();
@@ -162,6 +174,9 @@ export async function runAgent(id: string, ctx: any): Promise<AgentReport> {
         curatorMemory: adapted.curatorMemory,
         watchlistRows: adapted.watchlistRows,
       });
+      // WO-31: o markdown vem junto do report (fases fundidas) — sem guardar aqui ele se perde
+      // entre o agente e a tela, que foi o que aconteceu na primeira execução completa.
+      ultimoRelatorioExecutivo = res.textoRelatorio ?? "";
       return res.report;
     }
 
@@ -190,11 +205,11 @@ export async function runAgent(id: string, ctx: any): Promise<AgentReport> {
 /**
  * WO-28 A.3: Timeouts por classe de agente.
  * - regras: 8s (8000ms)
- * - llm: 180s (180000ms) para gestor-global e melhoria-continua
+ * - llm: 200s (WO-31: chamada única com structured outputs e effort high)
  * - teto global do ciclo: 300s (300000ms)
  */
 const TIMEOUT_REGRAS_MS = 8000;
-const TIMEOUT_LLM_MS = 180000;
+const TIMEOUT_LLM_MS = 200000;
 const TIMEOUT_GLOBAL_MS = 300000;
 
 export async function runAgentWithTimeout(id: string, ctx: CycleContext, customTimeoutMs?: number): Promise<AgentReport> {
@@ -259,7 +274,9 @@ export async function runCycle(ctx: CycleContext = {}, onAgentCompleted?: (rep: 
   const inicio = Date.now();
   const reports: Record<string, AgentReport> = {};
 
-  // 0. Curador PRÉ
+  // 0. Curador PRÉ + reinício do orçamento do ciclo (WO-31 §4)
+  iniciarCicloDeCusto();
+  ultimoRelatorioExecutivo = "";
   verificarAfirmacoes();
 
   const makeCtx = () => ({ ...ctx, reports });
@@ -331,10 +348,29 @@ export async function runCycle(ctx: CycleContext = {}, onAgentCompleted?: (rep: 
   }
 
   const duracaoMs = Date.now() - inicio;
+
+  // WO-31 §5.3: degradação visível. Um agente que não concluiu não zera o relatório —
+  // ele é nomeado, com a razão, para o Gestor e para a tela.
+  const esperados = [
+    "carteira", "chain", "historico", "noticias", "macro", "cockpit",
+    "watchlist", "scanner", "estrategia", "gestor-global", "melhoria-continua",
+    "curador-memoria", "prompt-gateway",
+  ];
+  const ausentes = esperados
+    .filter((id) => !reports[id])
+    .map((id) => ({ agentId: id, motivo: "não produziu report neste ciclo" }));
+  for (const [id, rep] of Object.entries(reports)) {
+    const lim = (rep.limitacoes ?? []).find((l) => /timeout/i.test(l));
+    if (lim) ausentes.push({ agentId: id, motivo: lim });
+  }
+
   return {
     reports,
     executados: Object.keys(reports),
     duracaoMs,
+    relatorioExecutivoText: ultimoRelatorioExecutivo,
+    custoCicloUsd: gastoDoCicloUsd(),
+    agentesAusentes: ausentes,
   };
 }
 
@@ -370,6 +406,9 @@ export function iniciarRunCycle(ctx: CycleContext = {}): { runId: string } {
       });
       if ((state.status as string) !== "cancelado") {
         state.status = "concluido";
+        state.relatorioExecutivoText = result.relatorioExecutivoText;
+        state.custoCicloUsd = result.custoCicloUsd;
+        state.agentesAusentes = result.agentesAusentes;
         state.duracaoMs = result.duracaoMs;
         state.reports = result.reports;
         state.concluidos = result.executados;

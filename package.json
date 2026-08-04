@@ -8,7 +8,7 @@
     "start": "next start",
     "typecheck": "tsc --noEmit",
     "test:engine": "tsx lib/__tests__/engine.test.ts",
-    "agents:daily": "node scripts/agents-daily.mjs"
+    "agents:dag-smoke": "node scripts/agents-daily.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.115.0",
