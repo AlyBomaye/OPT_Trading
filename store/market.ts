@@ -6,6 +6,7 @@ import { americanGreeks, americanImpliedVol, bsGreeks, impliedVol, type Greeks }
 import { adjustedSpot, effectiveDividends, useDividends } from "@/lib/dividends";
 import { snapshotFromChain, useSnapshots } from "@/lib/snapshots";
 import { sessionInfo, sessionsBetween } from "@/lib/session";
+import { resumirCobertura, spotParaPremio } from "@/lib/provenance";
 import type { DividendEvent } from "@/lib/universe";
 import type { ChainData, ExpiryInfo, Leg, OptionQuote, Position } from "@/lib/types";
 
@@ -75,30 +76,58 @@ export const useChainSnapshot = create<SnapshotState>()(
 // WO-12: memoização do pricing americano por (opTicker, last, spot, r)
 const amCache = new Map<string, { iv: number | null; greeks: Greeks | null }>();
 
-/** Enriquece o chain com IV (Newton-Raphson) e gregas calculadas localmente. */
+/**
+ * Enriquece o chain com IV (Newton-Raphson) e gregas calculadas localmente.
+ *
+ * WO-30 §2.3 — REGRA CENTRAL: a IV de uma série é extraída com o spot da MESMA data do
+ * prêmio. Misturar spot de hoje com prêmio de outro pregão produz uma IV que não existe,
+ * e todo derivado (gregas, smile, skew, IV Rank, GEX, sugestões) herda o erro em silêncio.
+ * Sem fechamento para a data do prêmio, `iv` e as gregas ficam null — a tela mostra `—`.
+ *
+ * @param spot       spot de referência corrente (pode ser override do usuário)
+ * @param spotDate   data à qual `spot` se refere (null quando é override manual)
+ * @param closesByDate fechamentos históricos por data, para casar prêmios antigos
+ */
 function enrich(
   body: ApiBody,
   spot: number,
   r: number,
   divs: DividendEvent[] = [],
-  refSessionDate?: string
+  refSessionDate?: string,
+  spotDate?: string | null,
+  closesByDate: Record<string, number> = {}
 ): ChainData {
   const sess = sessionInfo();
   const refSession = refSessionDate ?? sess.ultimaSessao;
 
-  const spotByExpiry = new Map<string, number>();
-  const spotFor = (expiry: string): number => {
-    let s = spotByExpiry.get(expiry);
+  // Memo por (spotBase, expiry): o ajuste por proventos depende dos dois.
+  const spotByKey = new Map<string, number>();
+  const spotFor = (base: number, expiry: string): number => {
+    const key = `${base}|${expiry}`;
+    let s = spotByKey.get(key);
     if (s == null) {
-      s = divs.length ? adjustedSpot(spot, divs, r, expiry) : spot;
-      spotByExpiry.set(expiry, s);
+      s = divs.length ? adjustedSpot(base, divs, r, expiry) : base;
+      spotByKey.set(key, s);
     }
     return s;
   };
 
+  const cobertura = resumirCobertura(body.options, body.dataEfetiva);
+
   const options: OptionQuote[] = body.options.map((o) => {
     const t = o.du / 252;
-    const sAdj = spotFor(o.expiry);
+    const premiumDate = o.lastTradeAt ? o.lastTradeAt.slice(0, 10) : null;
+
+    // Spot casado com a data do prêmio (WO-30 §2.3)
+    const { spot: spotBase, ivSpotDate } = spotParaPremio({
+      premiumDate,
+      spotDate: spotDate ?? null,
+      spotCorrente: spot,
+      closesByDate,
+    });
+
+    // Para checagens de sanidade (intrínseco) usa-se o spot casado; sem ele, o corrente.
+    const sAdj = spotFor(spotBase ?? spot, o.expiry);
     const intrinsic = o.type === "CALL" ? Math.max(sAdj - o.strike, 0) : Math.max(o.strike - sAdj, 0);
 
     // WO-22: Qualidade da marcação por idade real em sessões (lastTradeAt da B3)
@@ -126,7 +155,12 @@ function enrich(
       vega: number | null = null,
       rho: number | null = null;
 
-    if (o.model === "A" && t > 0 && o.last != null && o.last > 0) {
+    // WO-30 §2.3: sem spot casado com a data do prêmio, não há IV honesta a extrair.
+    const podeCalcular = spotBase != null;
+
+    if (!podeCalcular) {
+      iv = null;
+    } else if (o.model === "A" && t > 0 && o.last != null && o.last > 0) {
       const key = `${o.opTicker}|${o.last}|${sAdj.toFixed(4)}|${r}`;
       let hit = amCache.get(key);
       if (!hit) {
@@ -171,6 +205,8 @@ function enrich(
       trades: o.trades,
       volumeFin: o.volumeFin,
       lastTradeAt: o.lastTradeAt,
+      ivSpotDate,
+      ivSpotUsado: spotBase != null ? sAdj : null,
       tradeAgeSessions,
       expiry: o.expiry,
       du: o.du,
@@ -195,6 +231,8 @@ function enrich(
     expiries: body.expiries,
     options,
     greeksComputedLocally: !body.sourceGreeksAvailable,
+    spotDate: spotDate ?? null,
+    cobertura,
   };
 }
 
@@ -303,37 +341,52 @@ export const useMarket = create<MarketState>()(
           const body: ApiBody = await res.json();
           if (!res.ok || body.error) throw new Error(body.error ?? `HTTP ${res.status}`);
 
-          // WO-22: Buscar fechamento oficial no /api/history se mercado fechado ou chain atrasado
+          // WO-22 + WO-30 §2.3: o histórico agora é sempre carregado, porque além do
+          // fechamento oficial ele fornece o spot de CADA data — necessário para extrair a
+          // IV de prêmios antigos sem misturar datas.
           const sess = sessionInfo();
           let officialSpot: OfficialSpotInfo | null = null;
+          const closesByDate: Record<string, number> = {};
 
-          if (sess.state !== "ABERTO" || (body.dataEfetiva && body.dataEfetiva < sess.ultimaSessao)) {
-            try {
-              const hRes = await fetch(`/api/history?ticker=${encodeURIComponent(target)}&range=5d`);
-              if (hRes.ok) {
-                const hData = await hRes.json();
-                if (hData.candles?.length) {
-                  const lastCandle = hData.candles[hData.candles.length - 1];
-                  officialSpot = { price: lastCandle.close, date: lastCandle.date };
-                }
+          try {
+            const hRes = await fetch(`/api/history?ticker=${encodeURIComponent(target)}`);
+            if (hRes.ok) {
+              const hData = await hRes.json();
+              const candles: Array<{ date: string; close: number }> = hData.candles ?? [];
+              for (const c of candles) {
+                if (c?.date && typeof c.close === "number") closesByDate[c.date] = c.close;
               }
-            } catch {}
-          }
+              const lastCandle = candles[candles.length - 1];
+              if (lastCandle) officialSpot = { price: lastCandle.close, date: lastCandle.date };
+            }
+          } catch {}
 
           // Prioridade de spot: spotOverride > (useOfficialSpot ? officialSpot : null) > body.spot
           let effectiveSpot: number | null = null;
+          let effectiveSpotDate: string | null = null;
           if (isActive && spotOverride != null) {
             effectiveSpot = spotOverride;
+            effectiveSpotDate = null; // override manual não tem data de mercado
           } else if (useOfficialSpot && officialSpot != null) {
             effectiveSpot = officialSpot.price;
+            effectiveSpotDate = officialSpot.date;
           } else {
             effectiveSpot = body.spot;
+            effectiveSpotDate = body.dataEfetiva ?? null;
           }
 
           if (effectiveSpot == null) throw new Error("Não foi possível derivar o spot do chain.");
 
           const divs = effectiveDividends(useDividends.getState().byTicker, target);
-          const chain = enrich(body, effectiveSpot, selic, divs, sess.ultimaSessao);
+          const chain = enrich(
+            body,
+            effectiveSpot,
+            selic,
+            divs,
+            sess.ultimaSessao,
+            effectiveSpotDate,
+            closesByDate
+          );
           const cur = get().selectedExpiry;
           const validExpiry = chain.expiries.some((e) => e.date === cur)
             ? cur
@@ -451,22 +504,45 @@ export interface MarkInfo {
   price: number | null;
   stale: boolean;
   ageMin: number | null;
+  /**
+   * WO-30 §2.5: idade da marca em PREGÕES, medida pela data do último negócio da série —
+   * não pelo relógio do fetch. Antes, uma posição marcada com prêmio de 16/07 aparecia
+   * como "0 min" logo após atualizar a página.
+   */
+  agePregoes: number | null;
+  /** Data do negócio que originou a marca (YYYY-MM-DD). */
+  markDate: string | null;
 }
 
 export function markInfo(pos: Position, chainCache: Record<string, ChainData>): MarkInfo {
   const chain = chainCache[pos.underlying];
+  const refSession = sessionInfo().ultimaSessao;
+
   if (chain) {
     const live = markFromChain(pos, chain);
     if (live != null) {
-      return { price: live, stale: false, ageMin: ageMinutes(chain.updatedAt) };
+      // Idade real = a do último negócio da própria série que originou a marca.
+      const q = chain.options.find((o) => o.opTicker === pos.opTicker);
+      const markDate = q?.lastTradeAt ? q.lastTradeAt.slice(0, 10) : null;
+      const agePregoes = markDate ? sessionsBetween(markDate, refSession) : null;
+      return {
+        price: live,
+        stale: (agePregoes ?? 0) > 1,
+        ageMin: null,
+        agePregoes,
+        markDate,
+      };
     }
   }
   if (pos.lastMark != null) {
-    return { price: pos.lastMark, stale: true, ageMin: pos.lastMarkAt ? ageMinutes(pos.lastMarkAt) : null };
+    const d = pos.lastMarkAt ? pos.lastMarkAt.slice(0, 10) : null;
+    return {
+      price: pos.lastMark,
+      stale: true,
+      ageMin: null,
+      agePregoes: d ? sessionsBetween(d, refSession) : null,
+      markDate: d,
+    };
   }
-  return { price: null, stale: true, ageMin: null };
-}
-
-function ageMinutes(iso: string): number {
-  return Math.max(0, Math.round((Date.now() - new Date(iso).getTime()) / 60000));
+  return { price: null, stale: true, ageMin: null, agePregoes: null, markDate: null };
 }

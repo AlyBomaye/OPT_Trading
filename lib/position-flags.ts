@@ -291,7 +291,13 @@ export function evaluateFlags(
 
     // 10. STALE
     if (mark.stale) {
-      const ageStr = mark.ageMin != null ? `${mark.ageMin} min` : "antiga";
+      // WO-30 §2.5: idade em pregões medida pelo último negócio, não pelo relógio do fetch.
+      const ageStr =
+        mark.agePregoes != null
+          ? `${mark.agePregoes} pregão${mark.agePregoes === 1 ? "" : "s"}${
+              mark.markDate ? `, último negócio em ${mark.markDate}` : ""
+            }`
+          : "sem data de negócio";
       flags.push({
         kind: "STALE",
         severity: "info",

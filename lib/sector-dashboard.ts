@@ -28,16 +28,6 @@ export const useWatchlist = create<WatchState>()(
   )
 );
 
-export {
-  normalizeTitle,
-  dedupeNewsItems,
-  computeBuzzSpikes,
-  buildSectorRows,
-  type WatchRowLike,
-  type SectorRow,
-  type NewsItemLike,
-} from "./sector-analytics";
-
 /** Varredura isolada de um ticker contra /api/opcoes e /api/history para o Watchlist e Setorial. */
 export async function scanTicker(ticker: string, r = 0.15): Promise<WatchRowLike> {
   const base: WatchRowLike = {

@@ -31,6 +31,14 @@ export interface OptionQuote {
   // ---- calculados pelo engine local (fonte anônima vem borrada) ----
   markQuality: MarkQuality;
   iv: number | null;
+  /**
+   * WO-30 §2.3: data do spot usado para extrair a IV. Sempre igual à data do prêmio —
+   * nunca se mistura spot de hoje com prêmio de outro pregão. Null quando não houve
+   * fechamento disponível para a data do prêmio, caso em que `iv` e as gregas são null.
+   */
+  ivSpotDate?: string | null;
+  /** Spot efetivamente usado no cálculo desta série (já ajustado por proventos). */
+  ivSpotUsado?: number | null;
   delta: number | null;
   gamma: number | null;
   theta: number | null;
@@ -58,6 +66,19 @@ export interface ChainData {
   options: OptionQuote[];
   /** true quando gregas/IV da fonte vieram borradas e foram recalculadas localmente */
   greeksComputedLocally: boolean;
+  /**
+   * WO-30 §2.2: cobertura real da grade — quantas séries negociaram na `dataEfetiva`
+   * contra o total listado. Sem isso o trader supõe que a tela inteira é líquida.
+   */
+  cobertura?: {
+    total: number;
+    comPremio: number;
+    negociadasNaDataEfetiva: number;
+    /** Data do negócio mais antigo ainda exibido com prêmio. */
+    premioMaisAntigo: string | null;
+  };
+  /** Data do fechamento usado como spot de referência, quando veio do histórico. */
+  spotDate?: string | null;
 }
 
 export type Side = 1 | -1; // 1 = compra, -1 = venda

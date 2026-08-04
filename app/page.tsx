@@ -9,6 +9,7 @@ import { netGreeks, var95 } from "@/lib/portfolio";
 import { DEFAULT_POZINHO_FILTERS, scanPozinhos, skewInfo, suggestFromSkew } from "@/lib/scanner";
 import { expectedMove } from "@/lib/black-scholes";
 import { fmtBRL, fmtDateBR, fmtNum, fmtPct, pnlColor } from "@/lib/format";
+import { construirProvenance } from "@/lib/provenance";
 import { buildGexProfile, type GexProfile } from "@/lib/gex";
 import { GexProfileChart } from "@/components/GexProfile";
 
@@ -17,6 +18,7 @@ import clsx from "clsx";
 import { sessionInfo } from "@/lib/session";
 import { getIvRank, useSnapshots } from "@/lib/snapshots";
 import { AgentPanel } from "@/components/AgentPanel";
+import { TruthBar } from "@/components/TruthBar";
 
 /** Valores manuais de GEX + carimbo de edição (WO-14), persistidos por ticker. */
 interface GexValues {
@@ -263,6 +265,7 @@ export default function CockpitPage() {
 
   return (
     <>
+      <TruthBar oiFileDate={oiData?.fileDate ?? null} oiUpdatedAt={oiData?.updatedAt} />
       <AgentPanel
         agentId="cockpit"
         title="Agente Especialista do Cockpit"
@@ -312,12 +315,24 @@ export default function CockpitPage() {
                 MANUAL — {gex.editedAt ? new Date(gex.editedAt).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" }) : "editado"}
               </span>
             ) : oiData?.fileDate ? (
-              <span
-                className="tag bg-term-cyan/15 text-term-cyan font-mono"
-                title="Níveis de GEX calculados em tempo real a partir do arquivo de Posição em Aberto oficial da B3."
-              >
-                B3 D-1 · {fmtDateBR(oiData.fileDate)}
-              </span>
+              (() => {
+                // WO-30 §2.6: a defasagem real do arquivo, não o rótulo "D-1" fixo.
+                const idade =
+                  construirProvenance("B3 DerivativesOpenPosition", oiData.fileDate).idadePregoes ?? 0;
+                return (
+                  <span
+                    className={`tag font-mono ${
+                      idade >= 2 ? "bg-term-gold/20 text-term-gold" : "bg-term-cyan/15 text-term-cyan"
+                    }`}
+                    title={`Níveis de GEX calculados a partir do arquivo de Posição em Aberto oficial da B3 de ${fmtDateBR(
+                      oiData.fileDate
+                    )}${idade >= 2 ? ` — ${idade} pregões de defasagem; os níveis podem ter mudado.` : "."}`}
+                  >
+                    OI B3 · {fmtDateBR(oiData.fileDate)}
+                    {idade > 0 ? ` (D-${idade})` : ""}
+                  </span>
+                );
+              })()
             ) : null}
           </div>
           <div className="px-3 pb-3 space-y-1 text-xs font-mono">

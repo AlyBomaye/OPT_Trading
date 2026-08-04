@@ -332,6 +332,26 @@ calendários oficiais (BCB, Fed, IBGE, BLS) no mesmo formato.
 | Quantidade (`qty`) | unidades de opção/ação — **sem multiplicador de lote 100** |
 | Margem estimada de venda | haircut de **20% × strike × qty** (semântica da planilha) |
 
+### 7.1.1 Veracidade do dado (WO-30 — inegociável)
+
+A plataforma consome três fontes com datas diferentes: o histórico chega no dia (D), o
+chain costuma vir de D-1 e o arquivo de posições em aberto da B3 de D-2 ou mais. Exibir as
+três como "agora" é o erro que o WO-30 eliminou.
+
+| Regra | Onde vive |
+|---|---|
+| `buscadoEm` (relógio do fetch) **nunca** é exibido como carimbo do dado; a tela mostra `dataDoDado` | `lib/provenance.ts` |
+| Idade se mede em **pregões**, nunca em minutos | `classificarFrescor()` |
+| IV e gregas usam o spot da **mesma data do prêmio**; sem esse fechamento, `iv = null` e a célula mostra `—` | `spotParaPremio()`, consumido por `enrich()` |
+| A grade declara a **cobertura real** (quantas séries negociaram na `dataEfetiva`) | `resumirCobertura()` |
+| Idade da marca da carteira vem do **último negócio da série**, não de `chain.updatedAt` | `markInfo()` |
+| Taxa de juros cruza fronteira sempre em **fração**; percentual é convertido na entrada | `lib/units.ts` |
+| Arredondamento só na **apresentação** (`fmtPreco`), nunca no cálculo | `lib/provenance.ts` |
+
+Motivo medido em 04/08/2026: das 1.101 séries de PETR4 com prêmio, **486 tinham preço de
+sessões anteriores** (a mais antiga de 13/04). Calcular a IV com o spot do dia contra esses
+prêmios alterava **738 séries**, com divergência mediana de **4,5 pp** e máxima de 129,6 pp.
+
 ### 7.2 `lib/black-scholes.ts`
 
 - `bsPrice(inp, type)` / `bsGreeks(inp, type)` — BSM com `q` (dividend yield contínuo)

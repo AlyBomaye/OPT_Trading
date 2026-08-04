@@ -455,7 +455,7 @@ export default function MacroPage() {
               {/* Tabela de Rates US */}
               <div className="overflow-x-auto">
                 <table className="w-full text-left text-xs font-mono">
-                  <thead>
+                  <thead className="sticky top-0 bg-term-panel z-10 border-b border-term-line">
                     <tr className="border-b border-term-line text-xxs text-term-dim uppercase">
                       <th className="py-1">Tenor</th>
                       <th className="py-1">Taxa (%)</th>
@@ -536,7 +536,7 @@ export default function MacroPage() {
           <div className="p-3 space-y-3 font-mono text-xs">
             <div className="overflow-x-auto">
               <table className="w-full text-left border-collapse">
-                <thead>
+                <thead className="sticky top-0 bg-term-panel z-10 border-b border-term-line">
                   <tr className="border-b border-term-line text-xxs text-term-dim uppercase">
                     <th className="py-1 px-2">Driver Macro</th>
                     <th className="py-1 px-2">Movimento ({selectedWindow})</th>

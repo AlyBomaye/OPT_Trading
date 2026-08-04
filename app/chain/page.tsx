@@ -6,6 +6,7 @@ import { OptionChain } from "@/components/OptionChain";
 import { TermStructure } from "@/components/TermStructure";
 import { VolSmile } from "@/components/VolSmile";
 import { AgentPanel } from "@/components/AgentPanel";
+import { TruthBar } from "@/components/TruthBar";
 
 export default function ChainPage() {
   const chain = useMarket((st) => st.chain);
@@ -18,6 +19,7 @@ export default function ChainPage() {
 
   return (
     <>
+      <TruthBar />
       <AgentPanel
         agentId="chain"
         title="Agente Especialista de Option Chain"

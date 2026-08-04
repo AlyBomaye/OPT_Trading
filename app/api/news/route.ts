@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { companyNames } from "@/lib/universe";
-import { dedupeNewsItems, computeBuzzSpikes, normalizeTitle } from "@/lib/sector-dashboard";
+import { dedupeNewsItems, computeBuzzSpikes, normalizeTitle } from "@/lib/sector-analytics";
 
 export const dynamic = "force-dynamic";
 

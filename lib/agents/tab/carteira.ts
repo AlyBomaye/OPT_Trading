@@ -1,6 +1,7 @@
 import type { AgentReport, Achado, Recomendacao, Severidade } from "../types";
 import type { Position } from "../../types";
 import { alocacaoPorBalde } from "../risk";
+import { link } from "../deeplinks";
 
 export interface CarteiraInputContext {
   positions: Position[];
@@ -17,6 +18,9 @@ export function buildCarteiraReport(ctx: CarteiraInputContext): AgentReport {
   const recomendacoes: Recomendacao[] = [];
   const asOf = new Date().toISOString().slice(0, 10);
   const cap = ctx.capitalTotal > 0 ? ctx.capitalTotal : 100000;
+  const netGreeks = ctx.netGreeks ?? { delta: 0, gamma: 0, vega: 0, theta: 0 };
+  const varGrid = ctx.varGrid ?? { var95: 0, es: 0 };
+  const journalStats = ctx.journalStats ?? { n: 0, winRate: 0, payoffRatio: 0, realizedKelly: 0 };
 
   // 1. Análise dos Baldes de Risco 20 / 50 / 30
   const baldes = alocacaoPorBalde(ctx.positions, cap);
@@ -44,7 +48,7 @@ export function buildCarteiraReport(ctx: CarteiraInputContext): AgentReport {
           asOf,
         },
       ],
-      deepLink: "/carteira#risk-profile",
+      deepLink: link("carteira.risk"),
     });
 
     if (desvioAlto > 10) {
@@ -53,14 +57,14 @@ export function buildCarteiraReport(ctx: CarteiraInputContext): AgentReport {
         justificativa: "A alocação em risco alto acima do alvo de 20% expõe o portfólio a drawdowns severos em surtos de volatilidade.",
         risco: "ALTO",
         horizonte: "hoje",
-        deepLink: "/carteira",
+        deepLink: link("carteira.baldes"),
       });
     }
   }
 
   // 2. Análise do Theta Carry (Passagem do Tempo)
   // Theta é o desgaste financeiro diário do book só pela passagem do tempo.
-  const thetaDiario = ctx.netGreeks.theta;
+  const thetaDiario = netGreeks.theta;
   const thetaPctSemanal = (Math.abs(thetaDiario * 7) / cap) * 100;
   if (thetaDiario < -0.002 * cap) { // perde > 0.2% do capital ao dia em theta
     achados.push({
@@ -76,7 +80,7 @@ export function buildCarteiraReport(ctx: CarteiraInputContext): AgentReport {
           asOf,
         },
       ],
-      deepLink: "/carteira#greeks",
+      deepLink: link("carteira.greeks"),
     });
   }
 
@@ -96,32 +100,32 @@ export function buildCarteiraReport(ctx: CarteiraInputContext): AgentReport {
           asOf,
         },
       ],
-      deepLink: "/carteira#flags",
+      deepLink: link("carteira.flags"),
     });
   }
 
   // 4. Kelly Realizado ≤ 0 com n ≥ 20
-  if (ctx.journalStats.n >= 20 && ctx.journalStats.realizedKelly <= 0) {
+  if (journalStats.n >= 20 && journalStats.realizedKelly <= 0) {
     achados.push({
       id: "cart-kelly-01",
-      titulo: `Kelly realizado negativo (${(ctx.journalStats.realizedKelly * 100).toFixed(1)}%) — sem edge estatístico`,
-      detalhe: `O Critério de Kelly mede a fração ideal de capital a ser arriscada com base na taxa de acerto e no payoff histórico. Com ${ctx.journalStats.n} trades encerrados, seu Kelly realizado está em ${(ctx.journalStats.realizedKelly * 100).toFixed(1)}%, indicando ausência de vantagem estatística no modelo atual.`,
+      titulo: `Kelly realizado negativo (${(journalStats.realizedKelly * 100).toFixed(1)}%) — sem edge estatístico`,
+      detalhe: `O Critério de Kelly mede a fração ideal de capital a ser arriscada com base na taxa de acerto e no payoff histórico. Com ${journalStats.n} trades encerrados, seu Kelly realizado está em ${(journalStats.realizedKelly * 100).toFixed(1)}%, indicando ausência de vantagem estatística no modelo atual.`,
       severidade: "critico",
       evidencias: [
         {
           metrica: "Kelly Realizado",
-          valor: `${(ctx.journalStats.realizedKelly * 100).toFixed(1)}%`,
+          valor: `${(journalStats.realizedKelly * 100).toFixed(1)}%`,
           fonte: "lib/portfolio.ts journalStats",
           asOf,
         },
         {
           metrica: "Trades no Journal",
-          valor: ctx.journalStats.n,
+          valor: journalStats.n,
           fonte: "lib/portfolio.ts journalStats",
           asOf,
         },
       ],
-      deepLink: "/carteira#journal",
+      deepLink: link("carteira.journal"),
     });
 
     recomendacoes.push({
@@ -129,7 +133,7 @@ export function buildCarteiraReport(ctx: CarteiraInputContext): AgentReport {
       justificativa: "Operar com Kelly negativo sem edge comprovado reduz progressivamente a curva de patrimônio.",
       risco: "MEDIO",
       horizonte: "estrutural",
-      deepLink: "/carteira",
+      deepLink: link("carteira.journal"),
     });
   }
 
@@ -148,7 +152,7 @@ export function buildCarteiraReport(ctx: CarteiraInputContext): AgentReport {
           asOf,
         },
       ],
-      deepLink: "/carteira",
+      deepLink: link("carteira.baldes"),
     });
   }
 
@@ -170,10 +174,10 @@ export function buildCarteiraReport(ctx: CarteiraInputContext): AgentReport {
       baldeAltoPct: baldes.mix.alto,
       baldeMedioPct: baldes.mix.medio,
       baldeBaixoPct: baldes.mix.baixo,
-      deltaBook: ctx.netGreeks.delta,
-      thetaBook: ctx.netGreeks.theta,
-      var95: ctx.varGrid.var95,
-      realizedKelly: ctx.journalStats.realizedKelly,
+      deltaBook: netGreeks.delta,
+      thetaBook: netGreeks.theta,
+      var95: varGrid.var95,
+      realizedKelly: journalStats.realizedKelly,
     },
     recomendacoes,
     melhorias: [],

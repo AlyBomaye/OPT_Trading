@@ -156,6 +156,40 @@ function TradeBtns({ o, onAdd }: { o: OptionQuote; onAdd: (o: OptionQuote, s: 1 
   );
 }
 
+/**
+ * WO-30 §2.4 — idade do prêmio visível na própria célula, não só no tooltip.
+ * Sessão corrente não recebe marca (é o normal); D-1 recebe chip discreto;
+ * dois pregões ou mais recebem a data em destaque, porque aquele preço não existe mais.
+ */
+function AgeChip({ o }: { o: OptionQuote }) {
+  const age = o.tradeAgeSessions ?? null;
+  if (o.last == null || age == null || age <= 0) return null;
+  if (age >= 90) return null; // sem negócio algum: o prêmio nulo já diz isso
+  const critico = age >= 2;
+  return (
+    <span
+      className={clsx(
+        "tag ml-1 text-[9px]",
+        critico ? "bg-term-gold/20 text-term-gold" : "bg-term-line/40 text-term-dim"
+      )}
+      title={`Último negócio em ${o.lastTradeAt ? fmtDateBR(o.lastTradeAt) : "data desconhecida"} — ${age} pregão(ões) atrás. Este prêmio não é da sessão corrente.`}
+    >
+      {critico && o.lastTradeAt ? fmtDateBR(o.lastTradeAt) : `D-${age}`}
+    </span>
+  );
+}
+
+/** Tooltip da IV explicitando com qual spot ela foi extraída (WO-30 §2.3). */
+function ivTitle(o: OptionQuote): string {
+  if (o.iv == null) {
+    return o.last == null
+      ? "Sem prêmio negociado — não há IV a extrair."
+      : "Sem fechamento do ativo na data deste prêmio — IV não calculada para não misturar datas.";
+  }
+  const d = o.ivSpotDate ? fmtDateBR(o.ivSpotDate) : "spot manual";
+  return `IV extraída com o fechamento de ${d} (mesma data do prêmio). Engine local.`;
+}
+
 function CallCells({ o, spot, onAdd }: { o: OptionQuote | null; spot: number; onAdd: (o: OptionQuote, s: 1 | -1) => void }) {
   if (!o) return <td className="td text-term-dim text-right" colSpan={7}>—</td>;
   const stale = o.markQuality === "stale";
@@ -172,10 +206,13 @@ function CallCells({ o, spot, onAdd }: { o: OptionQuote | null; spot: number; on
         <span className="text-term-dim">{o.opTicker.replace(o.underlying.slice(0, 4), "")}</span>
         <TradeBtns o={o} onAdd={onAdd} />
       </td>
-      <td className={clsx("td text-right font-semibold", bg)}>{fmtNum(o.last)}</td>
+      <td className={clsx("td text-right font-semibold", bg)}>
+        {fmtNum(o.last)}
+        <AgeChip o={o} />
+      </td>
       <td
         className={clsx("td text-right", bg, stale ? "line-through" : "text-term-gold")}
-        title={ageTitle}
+        title={ageTitle ?? ivTitle(o)}
       >
         {fmtPct(o.iv)}
       </td>
@@ -209,11 +246,14 @@ function PutCells({ o, spot, onAdd }: { o: OptionQuote | null; spot: number; onA
       <td className={clsx("td text-left", bg, !stale && "text-term-cyan")}>{fmtNum(o.delta, 3)}</td>
       <td
         className={clsx("td text-left", bg, stale ? "line-through" : "text-term-gold")}
-        title={ageTitle}
+        title={ageTitle ?? ivTitle(o)}
       >
         {fmtPct(o.iv)}
       </td>
-      <td className={clsx("td text-left font-semibold", bg)}>{fmtNum(o.last)}</td>
+      <td className={clsx("td text-left font-semibold", bg)}>
+        <AgeChip o={o} />
+        {fmtNum(o.last)}
+      </td>
       <td className={clsx("td text-left", bg)}>
         <TradeBtns o={o} onAdd={onAdd} />
         <span className="text-term-dim">{o.opTicker.replace(o.underlying.slice(0, 4), "")}</span>

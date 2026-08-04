@@ -7,7 +7,8 @@ import { RefreshCw, ExternalLink, ArrowUpDown } from "lucide-react";
 import clsx from "clsx";
 import { UNIVERSE, type Sector } from "@/lib/universe";
 import { useMarket } from "@/store/market";
-import { useWatchlist, scanTicker, type WatchRowLike } from "@/lib/sector-dashboard";
+import { useWatchlist, scanTicker } from "@/lib/sector-dashboard";
+import type { WatchRowLike } from "@/lib/sector-analytics";
 
 const SECTOR_COLORS: Record<Sector, string> = {
   "Oil&Gas": "#ef4444",       // vermelho

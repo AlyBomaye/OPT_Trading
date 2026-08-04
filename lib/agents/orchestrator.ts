@@ -14,6 +14,7 @@ import { executarGestorGlobal, fallbackDeterministicoGestorGlobal } from "./seni
 import { verificarAfirmacoes, consolidarMemoria, reportCurador, gravarSnapshotPerformance, lerHistoricoPerformance } from "./curator";
 import { analisarTelemetria } from "./gateway";
 import { realizedPnl } from "../portfolio";
+import { adaptarContexto } from "./context";
 
 export interface CycleContext {
   carteiraCtx?: CarteiraInputContext;
@@ -58,7 +59,7 @@ function limparRunsAntigos(): void {
 /**
  * Executa um único agente pelo seu ID com isolamento de falha.
  */
-export async function runAgent(id: string, ctx: CycleContext): Promise<AgentReport> {
+export async function runAgent(id: string, ctx: any): Promise<AgentReport> {
   const def = AGENTS.find((a) => a.id === id);
   if (!def) {
     return {
@@ -80,29 +81,19 @@ export async function runAgent(id: string, ctx: CycleContext): Promise<AgentRepo
 
   try {
     if (id === "carteira") {
-      if (ctx.carteiraCtx) {
-        return buildCarteiraReport(ctx.carteiraCtx);
-      }
-      return {
-        schemaVersion: 1,
-        agentId: id,
-        agentRole: def.role,
-        generatedAt: new Date().toISOString(),
-        ticker: ctx.ticker ?? null,
-        headline: `Contexto da carteira não fornecido.`,
-        achados: [],
-        metricas: {},
-        recomendacoes: [],
-        melhorias: [],
-        confianca: "baixa",
-        limitacoes: ["contexto da carteira não fornecido nesta execução"],
-        dependencias: def.dependeDe,
+      const carteiraCtx = ctx.carteiraCtx ?? {
+        positions: ctx.positions ?? [],
+        closed: ctx.closed ?? [],
+        capitalTotal: ctx.capitalTotal ?? 100000,
+        selic: ctx.selic ?? 14.25,
       };
+      return buildCarteiraReport(carteiraCtx);
     }
 
     if (id === "chain") {
-      if (ctx.chainCtx) {
-        return buildChainReport(ctx.chainCtx);
+      const chainCtx = ctx.chainCtx ?? (ctx.chain ? { chain: ctx.chain } : null);
+      if (chainCtx) {
+        return buildChainReport(chainCtx);
       }
       return {
         schemaVersion: 1,
@@ -162,11 +153,14 @@ export async function runAgent(id: string, ctx: CycleContext): Promise<AgentRepo
     }
 
     if (id === "gestor-global") {
+      const adapted = adaptarContexto(ctx);
       const res = await executarGestorGlobal({
-        reports: ctx.reports ? Object.values(ctx.reports) : [],
-        positions: ctx.carteiraCtx?.positions ?? [],
-        capitalTotal: ctx.carteiraCtx?.capitalTotal ?? 100000,
-        ticker: ctx.ticker,
+        reports: adapted.reports,
+        positions: adapted.positions,
+        capitalTotal: adapted.capitalTotal,
+        ticker: adapted.ticker,
+        curatorMemory: adapted.curatorMemory,
+        watchlistRows: adapted.watchlistRows,
       });
       return res.report;
     }
@@ -210,6 +204,8 @@ export async function runAgentWithTimeout(id: string, ctx: CycleContext, customT
   const inicio = Date.now();
   console.log(`[ciclo] [${new Date().toISOString()}] início agente (${isLLM ? "LLM" : "regras"}): ${id}`);
   
+  const adaptedCtx = adaptarContexto(ctx);
+
   let timer: NodeJS.Timeout | undefined;
   const timeoutPromise = new Promise<AgentReport>((resolve) => {
     timer = setTimeout(() => {
@@ -220,7 +216,7 @@ export async function runAgentWithTimeout(id: string, ctx: CycleContext, customT
         agentId: id,
         agentRole: def?.role ?? "Desconhecido",
         generatedAt: new Date().toISOString(),
-        ticker: ctx.ticker ?? null,
+        ticker: adaptedCtx.ticker ?? null,
         headline: `Timeout de ${(timeoutMs / 1000).toFixed(0)}s excedido na execução do agente ${id}.`,
         achados: [],
         metricas: { duracaoMs: timeoutMs },
@@ -234,7 +230,7 @@ export async function runAgentWithTimeout(id: string, ctx: CycleContext, customT
   });
 
   try {
-    const report = await Promise.race([runAgent(id, ctx), timeoutPromise]);
+    const report = await Promise.race([runAgent(id, adaptedCtx), timeoutPromise]);
     const duracao = Date.now() - inicio;
     console.log(`[ciclo] [${new Date().toISOString()}] fim agente: ${id} em ${duracao}ms`);
     if (report && report.metricas) {

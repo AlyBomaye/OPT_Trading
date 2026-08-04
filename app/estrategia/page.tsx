@@ -17,6 +17,7 @@ import { PayoffChart } from "@/components/PayoffChart";
 import { SensitivityMatrix } from "@/components/SensitivityMatrix";
 import { PriceHistoryPanel } from "@/components/PriceHistoryPanel";
 import { AgentPanel } from "@/components/AgentPanel";
+import { TruthBar } from "@/components/TruthBar";
 
 /* ============================================================================
  * Workbench de Estratégia — one-stop shop do trader de opções: chain à
@@ -149,6 +150,7 @@ export default function EstrategiaPage() {
 
   return (
     <>
+      <TruthBar />
       <AgentPanel
         agentId="estrategia"
         title="Agente Especialista de Estratégias & Workbench"

@@ -218,7 +218,7 @@ export default function WatchlistPage() {
 
       <div id="watchlist-tabela" className="panel overflow-x-auto">
         <table className="w-full text-xs">
-          <thead>
+          <thead className="sticky top-0 bg-term-panel z-10 border-b border-term-line">
             <tr className="border-b border-term-line">
               {["Ticker", "Setor", "Spot", "Dia", "IV Call ATM", "IV Put ATM", "Skew P/C", "Sinal", "IV−HV21", "IV Rank", ""].map((h) => (
                 <th key={h} className="th text-right first:text-left">{h}</th>

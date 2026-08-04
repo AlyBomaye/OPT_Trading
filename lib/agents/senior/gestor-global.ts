@@ -4,7 +4,7 @@ import { prepararRequest, registrarUso } from "../gateway";
 import { alocacaoPorBalde } from "../risk";
 import type { Position } from "../../types";
 import { getAgentTools } from "../tools";
-import { UNIVERSE, bySector } from "../../universe";
+import { UNIVERSE, bySector, type Sector } from "../../universe";
 
 export interface GestorGlobalInputContext {
   reports: AgentReport[];
@@ -12,6 +12,8 @@ export interface GestorGlobalInputContext {
   capitalTotal: number;
   ticker?: string | null;
   curatorMemory?: string | null;
+  watchlistRows?: Record<string, any> | null;
+  macroSeries?: any;
 }
 
 export function fallbackDeterministicoGestorGlobal(
@@ -25,7 +27,7 @@ export function fallbackDeterministicoGestorGlobal(
   const achadosRaw: Achado[] = [];
   const recomendacoesRaw: Recomendacao[] = [];
 
-  for (const r of ctx.reports) {
+  for (const r of ctx.reports ?? []) {
     if (r && Array.isArray(r.achados)) {
       achadosRaw.push(...r.achados);
     }
@@ -82,12 +84,114 @@ export function fallbackDeterministicoGestorGlobal(
     },
     recomendacoes: recomendacoesConsolidadas,
     melhorias: [],
-    confianca: "media",
+    confianca: ctx.reports && ctx.reports.length > 0 ? "media" : "baixa",
     limitacoes: [motivoFallback],
-    dependencias: ctx.reports.map((r) => r.agentId),
+    dependencias: (ctx.reports ?? []).map((r) => r.agentId),
   };
 
   const todayIso = new Date().toISOString().split("T")[0];
+
+  // 1. Quadro Macro dinâmico (Section 2)
+  const macroReport = ctx.reports?.find((r) => r.agentId === "macro");
+  let macroText = "";
+  if (macroReport && macroReport.achados && macroReport.achados.length > 0) {
+    macroText = macroReport.achados
+      .map((a) => `- **${a.titulo}:** ${a.detalhe} (fonte: ${a.evidencias?.[0]?.fonte ?? "macro local"}, ${a.evidencias?.[0]?.asOf ?? todayIso})`)
+      .join("\n");
+  } else {
+    macroText = "- Quadro macro não apurado nesta execução — rode a aba Macro.";
+  }
+
+  // 2. Agrupamento por Setor (20 ativos do UNIVERSE em 9 setores) - Section 3
+  const sectorGroups = bySector();
+  const sectorLines: string[] = [];
+  const rows = ctx.watchlistRows ?? {};
+
+  let totalScanned = 0;
+  const scannedTickers: Array<{ ticker: string; sector: string; skew: number; ivHv: number }> = [];
+
+  const sectorLabels: Record<Sector, string> = {
+    "Oil&Gas": "Oil&Gas",
+    "Mining/Steel": "Mineração & Siderurgia",
+    "Retail": "Varejo",
+    "Airlines": "Linhas Aéreas",
+    "Financials": "Instituições Financeiras",
+    "Utilities": "Utilidades Públicas",
+    "Industrials": "Bens de Capital & Indústria",
+    "Education": "Educação",
+    "Index": "Índices",
+  };
+
+  for (const [secKey, entries] of Object.entries(sectorGroups) as [Sector, typeof UNIVERSE][]) {
+    const secName = sectorLabels[secKey] ?? secKey;
+    const tickerNames = entries.map((e) => e.ticker);
+    const scannedInSec = entries.filter((e) => rows[e.ticker] && rows[e.ticker].ivAtm != null);
+
+    if (scannedInSec.length > 0) {
+      totalScanned += scannedInSec.length;
+      let sumIv = 0;
+      let sumSkew = 0;
+      let sumIvHv = 0;
+      let countVal = 0;
+
+      for (const e of scannedInSec) {
+        const r = rows[e.ticker];
+        if (r.ivAtm != null) {
+          sumIv += r.ivAtm;
+          sumSkew += r.skewRatio ?? 1.0;
+          const hv = r.hv21 ?? r.ivAtm;
+          const ivHvDiff = r.ivAtm - hv;
+          sumIvHv += ivHvDiff;
+          countVal++;
+          scannedTickers.push({
+            ticker: e.ticker,
+            sector: secName,
+            skew: r.skewRatio ?? 1.0,
+            ivHv: ivHvDiff,
+          });
+        }
+      }
+
+      const avgIv = countVal > 0 ? (sumIv / countVal) * 100 : 0;
+      const avgSkew = countVal > 0 ? sumSkew / countVal : 1.0;
+      const avgIvHvPp = countVal > 0 ? (sumIvHv / countVal) * 100 : 0;
+
+      sectorLines.push(
+        `- **${secName} (${tickerNames.join(", ")}):** IV ATM média ${avgIv.toFixed(1)}% (fechamento ${todayIso}, engine local), Skew P/C ${avgSkew.toFixed(2)}×, IV−HV ${avgIvHvPp >= 0 ? "+" : ""}${avgIvHvPp.toFixed(1)} pp → *Conclusão: Dados medidos em varredura ativa.*`
+      );
+    } else {
+      sectorLines.push(
+        `- **${secName} (${tickerNames.join(", ")}):** — (sem varredura desde ${todayIso})`
+      );
+    }
+  }
+
+  // 3. Destaques (Section 4)
+  let destaquesText = "";
+  if (scannedTickers.length > 0) {
+    scannedTickers.sort((a, b) => Math.abs(b.skew - 1) - Math.abs(a.skew - 1));
+    const top3 = scannedTickers.slice(0, 3);
+    destaquesText = top3
+      .map(
+        (t, i) =>
+          `${i + 1}. **${t.ticker} (${t.sector}):** Skew P/C medido em ${t.skew.toFixed(2)}× (Spread IV-HV: ${(t.ivHv * 100).toFixed(1)} pp). Dislocação em varredura real.`
+      )
+      .join("\n");
+    if (scannedTickers.length < 3) {
+      destaquesText += `\n*(Apenas ${scannedTickers.length} dos 20 ativos do universo foram avaliados com varredura nesta execução.)*`;
+    }
+  } else if (achadosConsolidados.length > 0) {
+    const top3 = achadosConsolidados.slice(0, 3);
+    destaquesText = top3
+      .map(
+        (a, i) =>
+          `${i + 1}. **${a.titulo}:** ${a.detalhe} (severidade: ${a.severidade.toUpperCase()}).`
+      )
+      .join("\n");
+    destaquesText += `\n*(Destaques baseados nos achados dos agentes nesta execução.)*`;
+  } else {
+    destaquesText = "Nenhum destaque apurado — rode a varredura na aba Watchlist para avaliar distorções no universo.";
+  }
 
   const textoRelatorio = `
 # Relatório Executivo da Mesa de Opções — Gestor Global
@@ -100,22 +204,13 @@ export function fallbackDeterministicoGestorGlobal(
 ${headline}
 
 ## 2. Quadro macro e o que ele implica
-- **Drivers Globais (fechamento ${todayIso}, Yahoo Finance D-1):** Petróleo Brent em US$ 78,50 (+0,4% em 5d), Minério de Ferro em US$ 104,20 (−1,2% em 5d), DXY em 104,15 (estável) e VIX em 16,50.
-- **Transmissão para o Universo B3:**
-  - *Oil&Gas (PETR4, PRIO3, RECV3, CSAN3):* Estabilidade no crude favorece prêmios em PETR4 e PRIO3 sem distorções severas de IV.
-  - *Mineração & Siderurgia (VALE3, USIM5, GGBR4, CSNA3):* Pressão de baixa no minério em D-5 reduz demanda por calls e eleva Skew P/C em VALE3.
-  - *Financeiro (ITUB4, BBDC4, SANB11, BBAS3, B3SA3):* Selic mantida em 14,25% a.a. preserva fluxo comprador em bancos de alta qualidade.
+${macroText}
 
 ## 3. Leitura setorial
-- **Oil&Gas:** IV ATM média 29,1% (fechamento ${todayIso}, engine local), Skew P/C 1,12×, IV−HV +2,4 pp → *Conclusão: Volatilidade justa; viés neutro com foco em travas.*
-- **Mineração & Siderurgia:** IV ATM média 31,5% (fechamento ${todayIso}, engine local), Skew P/C 1,35×, IV−HV +4,1 pp → *Conclusão: Puts ricas em VALE3; oportunidade para venda de vol.*
-- **Bancos:** IV ATM média 22,4% (fechamento ${todayIso}, engine local), Skew P/C 0,98×, IV−HV −1,2 pp → *Conclusão: Volatilidade barata; viés positivo para compra de estrutura.*
-- **Varejo (MGLU3, LREN3, VIIA3):** IV ATM média 48,2% (fechamento ${todayIso}, engine local), Skew P/C 1,05× → *Conclusão: Volatilidade elevada; risco de cauda.*
+${sectorLines.join("\n")}
 
 ## 4. Destaques do universo
-1. **VALE3 (Mineração):** Skew P/C em 1,35× indica proteção compradora intensa. Spread IV-HV21 em +4,1 pp favorece venda coberta ou Put Ratio Backspread.
-2. **PETR4 (Oil&Gas):** IV Rank no percentil 42 (histórico 20d). Balanço limpo sem demanda anômala de volatilidade.
-3. **BOVA11 (Índice):** Skew P/C em 1,18×. Proteção institucional moderada para o vencimento vigente.
+${destaquesText}
 
 ## 5. Sua carteira contra esse pano de fundo
 - **Alocação por Baldes de Risco (20/50/30):**
@@ -155,6 +250,7 @@ ${
 export async function executarGestorGlobal(ctx: GestorGlobalInputContext): Promise<{ report: AgentReport; textoRelatorio: string }> {
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) {
+    console.log("[gestor-global] ANTHROPIC_API_KEY ausente. Executando fallback determinístico.");
     return fallbackDeterministicoGestorGlobal(ctx, "ANTHROPIC_API_KEY ausente no arquivo .env.local — executando em modo determinístico sem custo.");
   }
 
@@ -170,138 +266,157 @@ export async function executarGestorGlobal(ctx: GestorGlobalInputContext): Promi
    8. Metodologia e limitações
    9. Termos que usei
 2. Links DEVEM ser estritamente relativos (ex: /chain#skew, /carteira#risk-profile). NUNCA use URLs absolutas como http://localhost.
-3. Analise o universo de 20 nomes organizados por setor (Oil&Gas, Mineração, Bancos, Varejo, Utilidades, Siderurgia, Frigoríficos). Cite pelo menos 5 tickers e 3 setores.
+3. Analise o universo de 20 nomes organizados por setor (Oil&Gas, Mineração, Bancos, Varejo, Utilidades, Siderurgia, Frigoríficos). Cite apenas tickers do UNIVERSE.
 4. Todo número deve vir acompanhado de janela e fonte em parênteses (ex: IV ATM 29,1% (fechamento 29/07, engine local)).
 5. Em 'O que eu faria', se não houver recomendações, escreva 'nenhuma ação recomendada hoje'. Proibido emitir recomendações com jargão de engenharia.
 6. Nunca insira tabelas vazias com todas as células em 'não apurada'.`;
 
-  try {
-    const reportSchema = {
-      type: "object",
-      properties: {
-        schemaVersion: { type: "number" },
-        agentId: { type: "string" },
-        agentRole: { type: "string" },
-        generatedAt: { type: "string" },
-        ticker: { type: "string" },
-        headline: { type: "string" },
-        achados: { type: "array", items: { type: "object" } },
-        metricas: { type: "object" },
-        recomendacoes: { type: "array", items: { type: "object" } },
-        melhorias: { type: "array", items: { type: "object" } },
-        confianca: { type: "string", enum: ["alta", "media", "baixa"] },
-        limitacoes: { type: "array", items: { type: "string" } },
-        dependencias: { type: "array", items: { type: "string" } }
-      },
-      required: ["schemaVersion", "agentId", "agentRole", "generatedAt", "headline", "achados", "metricas", "recomendacoes", "melhorias", "confianca", "limitacoes", "dependencias"]
-    };
+  const timeoutPromise = new Promise<{ report: AgentReport; textoRelatorio: string }>((resolve) => {
+    setTimeout(() => {
+      console.warn("[gestor-global] Timeout interno de 120s atingido na execução com Anthropic. Ativando fallback determinístico.");
+      resolve(fallbackDeterministicoGestorGlobal(ctx, "Timeout interno de 120s atingido na chamada à API LLM. Fallback determinístico acionado."));
+    }, 120000);
+  });
 
-    const tools = getAgentTools(ctx).sort((a, b) => a.name.localeCompare(b.name));
+  const apiPromise = (async () => {
+    try {
+      console.log(`[gestor-global] [${new Date().toISOString()}] Request enviado para Anthropic SDK...`);
+      const reportSchema = {
+        type: "object",
+        properties: {
+          schemaVersion: { type: "number" },
+          agentId: { type: "string" },
+          agentRole: { type: "string" },
+          generatedAt: { type: "string" },
+          ticker: { type: "string" },
+          headline: { type: "string" },
+          achados: { type: "array", items: { type: "object" } },
+          metricas: { type: "object" },
+          recomendacoes: { type: "array", items: { type: "object" } },
+          melhorias: { type: "array", items: { type: "object" } },
+          confianca: { type: "string", enum: ["alta", "media", "baixa"] },
+          limitacoes: { type: "array", items: { type: "string" } },
+          dependencias: { type: "array", items: { type: "string" } }
+        },
+        required: ["schemaVersion", "agentId", "agentRole", "generatedAt", "headline", "achados", "metricas", "recomendacoes", "melhorias", "confianca", "limitacoes", "dependencias"]
+      };
 
-    const plano = prepararRequest({
-      agentId: "gestor-global",
-      classe: "consolidacao",
-      persona,
-      regras,
-      contexto: ctx,
-      tools,
-      tool_choice: { type: "auto" },
-      outputSchema: reportSchema,
-    });
+      const tools = getAgentTools(ctx).sort((a, b) => a.name.localeCompare(b.name));
 
-    if (!plano.orcamento.aprovado) {
-      return fallbackDeterministicoGestorGlobal(ctx, plano.orcamento.motivo ?? "Teto de orçamento excedido no gateway.");
-    }
+      const plano = prepararRequest({
+        agentId: "gestor-global",
+        classe: "consolidacao",
+        persona,
+        regras,
+        contexto: ctx,
+        tools,
+        tool_choice: { type: "auto" },
+        outputSchema: reportSchema,
+      });
 
-    const anthropic = new Anthropic({ apiKey });
-    
-    let resA: any;
-    let currentMessages = plano.messages as any[];
-    let tentativas = 0;
+      if (!plano.orcamento.aprovado) {
+        console.warn("[gestor-global] Orçamento não aprovado no gateway.");
+        return fallbackDeterministicoGestorGlobal(ctx, plano.orcamento.motivo ?? "Teto de orçamento excedido no gateway.");
+      }
 
-    while (tentativas < 5) {
-      const runner = anthropic.beta.messages.toolRunner({
-        model: plano.model,
-        max_tokens: plano.max_tokens,
-        system: plano.system as any,
-        messages: currentMessages,
-        tools: plano.tools as any,
-        tool_choice: plano.tool_choice as any,
-        betas: plano.betas,
+      const anthropic = new Anthropic({ apiKey });
+      
+      console.log(`[gestor-global] [${new Date().toISOString()}] Executando mensagens create/toolRunner com modelo ${plano.model}...`);
+      let resA: any;
+      let currentMessages = plano.messages as any[];
+      let tentativas = 0;
+
+      while (tentativas < 3) {
+        console.log(`[gestor-global] Tentativa ${tentativas + 1}: enviando mensagens (${currentMessages.length} msgs)...`);
+        const runner = anthropic.beta.messages.toolRunner({
+          model: plano.model,
+          max_tokens: plano.max_tokens,
+          system: plano.system as any,
+          messages: currentMessages,
+          tools: plano.tools as any,
+          tool_choice: plano.tool_choice as any,
+          betas: plano.betas,
+        } as any);
+
+        try {
+          resA = await runner.done();
+          console.log(`[gestor-global] Fase A resposta recebida. stop_reason: ${resA?.stop_reason}`);
+        } catch (e: any) {
+          console.error("[gestor-global] Erro na Fase A (tool runner):", e);
+          return fallbackDeterministicoGestorGlobal(ctx, `Erro na Fase A (tool runner): ${e?.message}`);
+        }
+
+        if (resA?.stop_reason === "pause_turn") {
+          currentMessages.push({ role: "assistant", content: resA.content });
+          tentativas++;
+        } else {
+          break;
+        }
+      }
+
+      if (resA && resA.usage) {
+        registrarUso("gestor-global", resA.usage, plano.model);
+      }
+
+      if (!resA || resA.stop_reason === "refusal") {
+        const cat = (resA as any)?.stop_details?.category ?? "não informada";
+        return fallbackDeterministicoGestorGlobal(ctx, `Modelo recusou a solicitação na Fase A (categoria: ${cat}).`);
+      }
+
+      const blockA = resA.content.find((c: any) => c.type === "text") as any;
+      const rawText = blockA?.text ?? "";
+      let report: AgentReport;
+      try {
+        report = JSON.parse(rawText);
+        console.log("[gestor-global] Report da Fase A parseado com sucesso.");
+      } catch {
+        console.warn("[gestor-global] Parse JSON falhou na Fase A. Recorrendo ao fallback.");
+        return fallbackDeterministicoGestorGlobal(ctx, "Parse de JSON falhou na Fase A.");
+      }
+
+      console.log(`[gestor-global] [${new Date().toISOString()}] Solicitando Fase B (redação de relatório)...`);
+      const planoB = prepararRequest({
+        agentId: "gestor-global",
+        classe: "redacao",
+        persona,
+        regras: regras + "\nTransforme a análise obtida num relatório executivo de mesa em markdown didático de 9 seções com links relativos.",
+        contexto: { reportFaseA: report },
+      });
+
+      if (!planoB.orcamento.aprovado) {
+        const det = fallbackDeterministicoGestorGlobal(ctx, planoB.orcamento.motivo ?? "Teto excedido na Fase B.");
+        return { report, textoRelatorio: det.textoRelatorio };
+      }
+
+      const resB = await anthropic.beta.messages.create({
+        model: planoB.model,
+        max_tokens: planoB.max_tokens,
+        output_config: planoB.output_config,
+        system: planoB.system as any,
+        messages: planoB.messages as any,
+        betas: ["server-side-fallback-2026-07-01"],
+        fallbacks: "default",
       } as any);
 
-      try {
-        resA = await runner.done();
-      } catch (e: any) {
-        return fallbackDeterministicoGestorGlobal(ctx, `Erro na Fase A (tool runner): ${e?.message}`);
+      console.log(`[gestor-global] [${new Date().toISOString()}] Fase B concluída com sucesso.`);
+      registrarUso("gestor-global", resB.usage, planoB.model);
+
+      if (resB.stop_reason === "refusal") {
+        const cat = (resB as any).stop_details?.category ?? "não informada";
+        const det = fallbackDeterministicoGestorGlobal(ctx, `Modelo recusou a redação na Fase B (categoria: ${cat}).`);
+        return { report, textoRelatorio: det.textoRelatorio };
       }
 
-      if (resA.stop_reason === "pause_turn") {
-        currentMessages.push({ role: "assistant", content: resA.content });
-        tentativas++;
-      } else {
-        break;
-      }
+      const blockB = resB.content.find((c: any) => c.type === "text") as any;
+      let textoRelatorio = blockB?.text ?? "";
+      textoRelatorio = textoRelatorio.replace(/http:\/\/localhost:3001/g, "").replace(/http:\/\/localhost:\d+/g, "");
+
+      return { report, textoRelatorio };
+    } catch (err: any) {
+      console.error("[gestor-global] Erro na chamada à API Anthropic:", err);
+      return fallbackDeterministicoGestorGlobal(ctx, `Falha na API LLM: ${err?.message ?? "Erro desconhecido"}`);
     }
+  })();
 
-    if (resA && resA.usage) {
-      registrarUso("gestor-global", resA.usage, plano.model);
-    }
-
-    if (resA.stop_reason === "refusal") {
-      const cat = (resA as any).stop_details?.category ?? "não informada";
-      return fallbackDeterministicoGestorGlobal(ctx, `Modelo recusou a solicitação na Fase A (categoria: ${cat}).`);
-    }
-
-    const blockA = resA.content.find((c: any) => c.type === "text") as any;
-    const rawText = blockA?.text ?? "";
-    let report: AgentReport;
-    try {
-      report = JSON.parse(rawText);
-    } catch {
-      const det = fallbackDeterministicoGestorGlobal(ctx, "Sintetizado com Anthropic Claude Opus 5 - Parse falhou na Fase A");
-      return det;
-    }
-
-    const planoB = prepararRequest({
-      agentId: "gestor-global",
-      classe: "redacao",
-      persona,
-      regras: regras + "\nTransforme a análise obtida num relatório executivo de mesa em markdown didático de 9 seções com links relativos.",
-      contexto: { reportFaseA: report },
-    });
-
-    if (!planoB.orcamento.aprovado) {
-      const det = fallbackDeterministicoGestorGlobal(ctx, planoB.orcamento.motivo ?? "Teto excedido na Fase B.");
-      return { report, textoRelatorio: det.textoRelatorio };
-    }
-
-    const resB = await anthropic.beta.messages.create({
-      model: planoB.model,
-      max_tokens: planoB.max_tokens,
-      output_config: planoB.output_config,
-      system: planoB.system as any,
-      messages: planoB.messages as any,
-      betas: ["server-side-fallback-2026-07-01"],
-      fallbacks: "default",
-    } as any);
-
-    registrarUso("gestor-global", resB.usage, planoB.model);
-
-    if (resB.stop_reason === "refusal") {
-      const cat = (resB as any).stop_details?.category ?? "não informada";
-      const det = fallbackDeterministicoGestorGlobal(ctx, `Modelo recusou a redação na Fase B (categoria: ${cat}).`);
-      return { report, textoRelatorio: det.textoRelatorio };
-    }
-
-    const blockB = resB.content.find((c: any) => c.type === "text") as any;
-    let textoRelatorio = blockB?.text ?? "";
-    // Garantir remoção de URLs absolutas http://localhost
-    textoRelatorio = textoRelatorio.replace(/http:\/\/localhost:3001/g, "").replace(/http:\/\/localhost:\d+/g, "");
-
-    return { report, textoRelatorio };
-  } catch (err: any) {
-    console.error("[gestor-global] Erro na chamada à API Anthropic:", err);
-    return fallbackDeterministicoGestorGlobal(ctx, `Falha na API LLM: ${err?.message ?? "Erro desconhecido"}`);
-  }
+  return Promise.race([apiPromise, timeoutPromise]);
 }

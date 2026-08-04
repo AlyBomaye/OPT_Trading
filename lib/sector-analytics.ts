@@ -72,7 +72,7 @@ export function computeBuzzSpikes<T extends NewsItemLike>(items: T[]): Record<st
     if (isNaN(pubMs)) continue;
     const diff = nowMs - pubMs;
 
-    for (const t of item.tickers) {
+    for (const t of item.tickers ?? []) {
       if (diff <= ONE_DAY_MS) {
         count24h[t] = (count24h[t] ?? 0) + 1;
       }

@@ -9,6 +9,7 @@ import { legFromOption } from "@/lib/strategies";
 import { sectorOf } from "@/lib/universe";
 import { fmtBRL, fmtCompact, fmtDateBR, fmtNum, fmtPct } from "@/lib/format";
 import { AgentPanel } from "@/components/AgentPanel";
+import { TruthBar } from "@/components/TruthBar";
 
 export default function ScannerPage() {
   const { chain, ticker, selic, selectedExpiry, addLeg, positions, closed, capitalTotal } = useMarket();
@@ -40,6 +41,7 @@ export default function ScannerPage() {
 
   return (
     <>
+      <TruthBar />
       <AgentPanel
         agentId="scanner"
         title="Agente Especialista de Convexidade & Scanner"

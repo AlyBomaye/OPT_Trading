@@ -16,6 +16,8 @@ import {
 } from "recharts";
 import { buildGexProfile, type GexProfile as GexProfileType } from "@/lib/gex";
 import { fmtBRL, fmtCompact, fmtDateBR, fmtNum, fmtPct } from "@/lib/format";
+import { construirProvenance } from "@/lib/provenance";
+import { sessionInfo } from "@/lib/session";
 import type { ChainData } from "@/lib/types";
 
 interface Props {
@@ -61,14 +63,34 @@ export function GexProfileChart({ chain, series, fileDate, stale, selectedExpiry
         <div className="flex items-center gap-2">
           <BarChart3 size={15} className="text-term-cyan" />
           <span className="font-bold text-term-cyan">Perfil de GEX por Strike (B3 Real)</span>
-          <span className="tag bg-term-cyan/15 text-term-cyan">
-            B3 D-1 · {fmtDateBR(fileDate ?? "")}
-          </span>
-          {stale && (
-            <span className="tag bg-term-gold/20 text-term-gold">
-              ⚠️ Arquivo D-1 desatualizado
-            </span>
-          )}
+          {/* WO-30 §2.6: a defasagem real do arquivo, não um rótulo "D-1" fixo. */}
+          {(() => {
+            const prov = construirProvenance("B3 DerivativesOpenPosition", fileDate, {
+              refSession: sessionInfo().ultimaSessao,
+            });
+            const idade = prov.idadePregoes ?? 0;
+            return (
+              <>
+                <span
+                  className={`tag ${idade >= 2 ? "bg-term-gold/20 text-term-gold" : "bg-term-cyan/15 text-term-cyan"}`}
+                  title={`Posições em aberto do arquivo da B3 de ${fmtDateBR(fileDate ?? "")}${
+                    idade > 0 ? ` — ${idade} pregão(ões) de defasagem` : ""
+                  }`}
+                >
+                  OI B3 · {fmtDateBR(fileDate ?? "")}
+                  {idade > 0 ? ` (D-${idade})` : ""}
+                </span>
+                {(idade >= 2 || stale) && (
+                  <span
+                    className="tag bg-term-down/20 text-term-down"
+                    title="Gamma Flip, Call Wall e Put Wall calculados sobre posição defasada podem apontar níveis que já mudaram."
+                  >
+                    ⚠️ Posição de {idade} pregões atrás — níveis podem ter mudado
+                  </span>
+                )}
+              </>
+            );
+          })()}
           {profile.coverage < 0.5 && (
             <span className="tag bg-term-down/20 text-term-down" title="Muitas séries sem negócios ou sem casamento na B3">
               ⚠️ Cobertura baixa ({fmtPct(profile.coverage)})

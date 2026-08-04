@@ -362,12 +362,12 @@ export function analisarTelemetria(): AgentReport {
     recomendacoes: [],
     melhorias: [
       {
-        id: "gw-opt-01",
-        componente: "prompt-gateway",
-        acao: cacheHitRatio < 50 ? "Estabilizar prefixo de contexto para elevar reaproveitamento de memória de longo prazo" : "Manter política de conservação de memória e monitorar consumo",
-        justificativa: "Reaproveitamento reduz custo de processamento de entrada em até 90%.",
+        titulo: cacheHitRatio < 50 ? "Estabilizar prefixo de contexto para elevar reaproveitamento de memória" : "Manter política de conservação de memória",
+        problema: "Taxa de cache hit abaixo do ideal na entrada de contexto para chamadas LLM.",
+        beneficio: "Reaproveitamento de prefixo reduz custo de processamento de entrada em até 90%.",
         impactoTrader: 3,
         esforco: "S",
+        arquivosProvaveis: ["lib/agents/gateway.ts"],
       },
     ],
     confianca: totalCalls > 0 ? "alta" : "baixa",

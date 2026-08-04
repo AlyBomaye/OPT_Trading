@@ -23,6 +23,7 @@ import { groupTrades, performanceStats } from "@/lib/performance";
 import { ActionFlags } from "@/components/ActionFlags";
 import { PerformanceCharts } from "@/components/PerformanceCharts";
 import { AgentPanel } from "@/components/AgentPanel";
+import { TruthBar } from "@/components/TruthBar";
 
 export default function CarteiraPage() {
   const {
@@ -144,6 +145,7 @@ export default function CarteiraPage() {
 
   return (
     <>
+      <TruthBar />
       <AgentPanel
         agentId="carteira"
         title="Agente Especialista de Carteira"
@@ -303,7 +305,7 @@ export default function CarteiraPage() {
         </div>
         <div className="overflow-x-auto px-2 pb-2">
           <table className="w-full text-xs">
-            <thead>
+            <thead className="sticky top-0 bg-term-panel z-10 border-b border-term-line">
               <tr className="border-b border-term-line">
                 {["Ativo", "Tipo", "K", "Venc", "Lado", "Qtd", "Entrada", "Atual", "P&L", "Flags", "Taxas", "Notas", "Aberta em", ""].map((h) => (
                   <th key={h} className="th text-right first:text-left">{h}</th>
@@ -334,9 +336,15 @@ export default function CarteiraPage() {
                     {mark.stale && cp != null && (
                       <span
                         className="tag bg-term-gold/15 text-term-gold ml-1"
-                        title={`Última marcação conhecida${mark.ageMin != null ? ` há ${mark.ageMin} min` : ""} — clique em Reavaliar tudo`}
+                        title={
+                          mark.markDate
+                            ? `Marca vinda do último negócio em ${fmtDateBR(mark.markDate)}${
+                                mark.agePregoes != null ? ` — ${mark.agePregoes} pregão(ões) atrás` : ""
+                              }. O P&L desta linha é estimativa.`
+                            : "Sem data de negócio para esta série — o P&L desta linha é estimativa."
+                        }
                       >
-                        STALE{mark.ageMin != null ? ` ${mark.ageMin}m` : ""}
+                        {mark.markDate ? `MARCA ${fmtDateBR(mark.markDate)}` : "SEM MARCA"}
                       </span>
                     )}
                   </td>
@@ -487,7 +495,7 @@ export default function CarteiraPage() {
           <div className="panel-title">Histórico (realizadas)</div>
           <div className="overflow-x-auto px-2 pb-2">
             <table className="w-full text-xs">
-              <thead>
+              <thead className="sticky top-0 bg-term-panel z-10 border-b border-term-line">
                 <tr className="border-b border-term-line">
                   {["Ativo", "Lado", "Qtd", "Entrada", "Saída", "P&L", "Encerrada em"].map((h) => (
                     <th key={h} className="th text-right first:text-left">{h}</th>

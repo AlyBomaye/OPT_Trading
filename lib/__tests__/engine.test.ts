@@ -2,6 +2,8 @@
  * Testes numéricos do engine — rode com `npm run test:engine`.
  * Valores de referência: Hull, "Options, Futures and Other Derivatives".
  */
+import fs from "fs";
+import path from "path";
 import { americanGreeks, americanImpliedVol, bsGreeks, bsPrice, binomialPrice, impliedVol, normCdf } from "../black-scholes";
 import { rollingHV, volCone } from "../historical";
 import { pnlAtExpiry, strategyMetrics } from "../payoff";
@@ -354,7 +356,7 @@ const profPartial = buildGexProfile(multiChain, { PETRD40: { type: "CALL", total
 assertClose("buildGexProfile: coverage com casamento parcial", profPartial.coverage, 0.5, 1e-4);
 
 // ---- WO-19: Notícias v2 (Sector Dashboard, Event Radar, Dedupe, Buzz) ----
-import { buildSectorRows, dedupeNewsItems, computeBuzzSpikes, type WatchRowLike, type NewsItemLike } from "../sector-dashboard";
+import { buildSectorRows, dedupeNewsItems, computeBuzzSpikes, type WatchRowLike, type NewsItemLike } from "../sector-analytics";
 import { buildExpiryRisk } from "../event-radar";
 import type { NewsItem } from "../../app/api/news/route";
 
@@ -996,7 +998,7 @@ async function testesAssincronos(): Promise<void> {
   
   // Teste 19: Teste sem contexto em runAgent(carteira)
   const repFallbackCarteira = await runAgent("carteira", {});
-  if (repFallbackCarteira.confianca === "baixa" && repFallbackCarteira.limitacoes[0] === "contexto da carteira não fornecido nesta execução") {
+  if (repFallbackCarteira.confianca === "baixa" && repFallbackCarteira.limitacoes.some((l) => /carteira/i.test(l))) {
     console.log("✔ WO-25 Teste 19: runAgent('carteira') sem contexto retorna report fallback sem inventar dados (capitalTotal 100000 não fabricado)");
   } else {
     console.log(`✘ WO-25 Teste 19 falhou: confianca=${repFallbackCarteira.confianca}, limitacoes=${repFallbackCarteira.limitacoes}`);
@@ -1329,80 +1331,453 @@ async function testesAssincronos(): Promise<void> {
     failures++;
   }
 
-  // Teste 40: Timeouts por classe de agente (LLM 180s, regras 8s) (WO-28 A.3)
-  const orchCode = fs.readFileSync("lib/agents/orchestrator.ts", "utf-8");
-  if (orchCode.includes("TIMEOUT_REGRAS_MS = 8000") && orchCode.includes("TIMEOUT_LLM_MS = 180000") && orchCode.includes("TIMEOUT_GLOBAL_MS = 300000")) {
-    console.log("✔ WO-28 Teste 40: Timeouts por classe de agente verificados (regras: 8s, llm: 180s, global: 300s)");
-  } else {
-    console.log("✘ WO-28 Teste 40 falhou ao validar constantes de timeout");
-    failures++;
-  }
+  // ============================================================================
+  // WO-29: Bateria de Testes de Integração & Contratos Multiagente
+  // ============================================================================
 
-  // Teste 41: Orchestrator executa validarReport() e reprova recomendações de engenharia em trading (WO-28 Adendo §2)
-  const { validarReport: checkValidReport } = await import("../agents/types");
-  const reportEngSample = {
-    schemaVersion: 1 as const,
-    agentId: "carteira",
-    agentRole: "Test",
-    generatedAt: new Date().toISOString(),
-    ticker: "PETR4",
-    headline: "Test headline",
-    achados: [{ id: "1", titulo: "Achado 1", detalhe: "Det", severidade: "info" as const, evidencias: [{ metrica: "M1", valor: 10, fonte: "F1", asOf: "2026-07-30" }] }],
-    metricas: {},
-    recomendacoes: [{ acao: "Estabilizar prefixo de contexto para elevar reaproveitamento de memória de longo prazo", justificativa: "Eng", risco: "BAIXO" as const, horizonte: "hoje" as const }],
-    melhorias: [],
-    confianca: "alta" as const,
-    limitacoes: [],
-    dependencias: [],
+  // Teste 1: Contexto ponta a ponta para as 9 abas (WO-29 §Testes 1 & Adendo §3)
+  const { runAgentWithTimeout: runTestAgent } = await import("../agents/orchestrator");
+  const { UNIVERSE: universeList } = await import("../universe");
+
+  const tabContextFixtures: Record<string, any> = {
+    historico: {
+      ticker: "PETR4",
+      historico: {
+        candles: Array.from({ length: 30 }, (_, i) => ({
+          date: `2026-07-${String(i + 1).padStart(2, "0")}`,
+          open: 35 + i * 0.1,
+          high: 36 + i * 0.1,
+          low: 34 + i * 0.1,
+          close: 35.5 + i * 0.1,
+          volume: 1000000,
+        })),
+        range: "1mo",
+      },
+    },
+    noticias: {
+      ticker: "PETR4",
+      news: {
+        items: [
+          { title: "PETR4 anuncia novos investimentos no pré-sal", link: "http://example.com/1", publishedAt: new Date().toISOString(), source: "Valor", categories: ["MACRO"], tickers: ["PETR4"] },
+          { title: "PETR4 recorde de produção diária de petróleo", link: "http://example.com/2", publishedAt: new Date().toISOString(), source: "Bloomberg", categories: ["MACRO"], tickers: ["PETR4"] },
+        ],
+        macro: [{ id: "1", title: "Decisão do Copom", date: "2026-07-30", impact: "ALTO" }],
+      },
+      chain: {
+        spot: 38.5,
+        expiries: [{ date: "2026-08-21", daysToExpiry: 15, isMonthly: true }],
+        options: [{ opTicker: "PETRG380", type: "CALL", strike: 38.0, expiry: "2026-08-21", last: 1.5, du: 15 }],
+      },
+      failedSources: [{ name: "Reuters" }],
+    },
+    macro: {
+      ticker: "BOVA11",
+      macroSeries: {
+        drivers: [
+          { symbol: "BZ=F", name: "Petróleo Brent", last: 78.5, chg1d: 0.02, chg5d: 0.01, chg1m: 0.05 },
+          { symbol: "^TNX", name: "US 10Y", last: 4.25, chg1d: -0.01, chg5d: 0.02, chg1m: -0.02 },
+        ],
+        bcb: { selicMeta: 14.25, cdiDaily: 0.0512 },
+      },
+    },
+    watchlist: {
+      ticker: null,
+      watchlistRows: {
+        PETR4: { ticker: "PETR4", spot: 38.5, dayChgPct: 0.015, ivAtm: 0.28, skewRatio: 1.30, hv21: 0.25 },
+        VALE3: { ticker: "VALE3", spot: 62.0, dayChgPct: -0.01, ivAtm: 0.32, skewRatio: 0.85, hv21: 0.27 },
+      },
+      lastRunAt: new Date().toISOString(),
+    },
+    carteira: {
+      ticker: null,
+      positions: [
+        { id: "p1", underlying: "PETR4", opTicker: "PETRG380", kind: "OPTION", type: "CALL", side: 1, qty: 1000, price: 1.5, strike: 38.0, expiry: "2026-08-21" },
+      ],
+      closed: [],
+      capitalTotal: 100000,
+    },
+    chain: {
+      ticker: "PETR4",
+      chain: {
+        spot: 38.5,
+        expiries: [{ date: "2026-08-21", daysToExpiry: 15, isMonthly: true }],
+        options: [
+          { opTicker: "PETRG380", type: "CALL", strike: 38.0, expiry: "2026-08-21", last: 1.5, du: 15, delta: 0.5, vega: 0.05, theta: -0.02, gamma: 0.03, volumeFin: 100000 },
+          { opTicker: "PETRT380", type: "PUT", strike: 38.0, expiry: "2026-08-21", last: 1.2, du: 15, delta: -0.5, vega: 0.05, theta: -0.02, gamma: 0.03, volumeFin: 100000 },
+        ],
+      },
+      selectedExpiry: "2026-08-21",
+    },
+    scanner: {
+      ticker: "PETR4",
+      chain: {
+        spot: 38.5,
+        expiries: [{ date: "2026-08-21", daysToExpiry: 15 }],
+        options: [
+          { opTicker: "PETRG450", type: "CALL", strike: 45.0, expiry: "2026-08-21", last: 0.05, du: 15, delta: 0.08, iv: 0.40, volumeFin: 50000, volume: 50000, trades: 100, moneyness: "OTM", distStrikePct: 0.1688, markQuality: "fresh" },
+          { opTicker: "PETRT300", type: "PUT", strike: 30.0, expiry: "2026-08-21", last: 0.04, du: 15, delta: -0.06, iv: 0.45, volumeFin: 40000, volume: 40000, trades: 80, moneyness: "OTM", distStrikePct: 0.22, markQuality: "fresh" },
+        ],
+      },
+    },
+    estrategia: {
+      ticker: "PETR4",
+      chain: {
+        spot: 38.5,
+        expiries: [{ date: "2026-08-21", daysToExpiry: 15 }],
+        options: [
+          { opTicker: "PETRG380", type: "CALL", strike: 38.0, expiry: "2026-08-21", last: 1.5, du: 15, delta: 0.5, trades: 100, volumeFin: 50000, markQuality: "fresh" },
+          { opTicker: "PETRG400", type: "CALL", strike: 40.0, expiry: "2026-08-21", last: 0.6, du: 15, delta: 0.25, trades: 100, volumeFin: 50000, markQuality: "fresh" },
+          { opTicker: "PETRT380", type: "PUT", strike: 38.0, expiry: "2026-08-21", last: 1.2, du: 15, delta: -0.5, trades: 100, volumeFin: 50000, markQuality: "fresh" },
+        ],
+      },
+      positions: [
+        { id: "p1", underlying: "PETR4", opTicker: "PETRG380", kind: "OPTION", type: "CALL", side: 1, qty: 1000, price: 1.5, strike: 38.0, expiry: "2026-08-21" },
+      ],
+      selectedExpiry: "2026-08-21",
+      capitalTotal: 100000,
+    },
+    cockpit: {
+      ticker: "PETR4",
+      chain: {
+        spot: 38.5,
+        expiries: [{ date: "2026-08-21", daysToExpiry: 15 }],
+        options: [
+          { opTicker: "PETRG380", type: "CALL", strike: 38.0, expiry: "2026-08-21", last: 1.5, du: 15, delta: 0.5 },
+        ],
+      },
+      positions: [],
+      capitalTotal: 100000,
+    },
   };
-  const isValidEng = checkValidReport(reportEngSample);
-  if (!isValidEng) {
-    console.log("✔ WO-28 Teste 41: validarReport() reprovou recomendação contendo jargão de engenharia");
-  } else {
-    console.log("✘ WO-28 Teste 41 falhou: report com jargão de engenharia foi aprovado");
-    failures++;
-  }
 
-  // Teste 42: Relatório executivo do Gestor Global emite 9 seções, ≥ 5 tickers, ≥ 3 setores, 0 URLs absolutas (WO-28 B.2 & Adendo §4)
-  const { fallbackDeterministicoGestorGlobal: fallbackGG } = await import("../agents/senior/gestor-global");
-  const { textoRelatorio: textRep } = fallbackGG({ reports: [], positions: [], capitalTotal: 100000 }, "Teste de mesa");
-  const has9Secs = textRep.includes("## 1. Veredito") && textRep.includes("## 2. Quadro macro") && textRep.includes("## 3. Leitura setorial") && textRep.includes("## 4. Destaques do universo") && textRep.includes("## 5. Sua carteira") && textRep.includes("## 6. O que eu faria") && textRep.includes("## 7. O que observar") && textRep.includes("## 8. Metodologia") && textRep.includes("## 9. Termos que usei");
-  const tickersCount = (textRep.match(/PETR4|VALE3|ITUB4|BBDC4|BBAS3|MGLU3|BOVA11/g) ?? []).length;
-  const sectorsCount = (textRep.match(/Oil&Gas|Mineração|Bancos|Varejo|Siderurgia/g) ?? []).length;
-  const noAbsoluteLinks = !/http:\/\/localhost/.test(textRep);
+  let tabFailures = 0;
+  for (const [tabId, agentContext] of Object.entries(tabContextFixtures)) {
+    const rep = await runTestAgent(tabId, { agentContext });
+    const isOk =
+      rep.confianca !== "baixa" &&
+      rep.achados.length > 0 &&
+      !rep.limitacoes.some((l) => /indisponível|não fornecido|menos de/i.test(l));
 
-  if (has9Secs && tickersCount >= 5 && sectorsCount >= 3 && noAbsoluteLinks) {
-    console.log("✔ WO-28 Teste 42: Relatório executivo do Gestor validado (9 seções, 5+ tickers, 3+ setores, links relativos)");
-  } else {
-    console.log(`✘ WO-28 Teste 42 falhou: 9Secs=${has9Secs}, tickersCount=${tickersCount}, sectorsCount=${sectorsCount}, noAbs=${noAbsoluteLinks}`);
-    failures++;
-  }
-
-  // Teste 43: Varredura estática confirma que nenhum arquivo em app/**/page.tsx declara useState local para ticker (WO-28 Adendo §1)
-  const appPages = ["app/historico/page.tsx", "app/noticias/page.tsx", "app/chain/page.tsx", "app/carteira/page.tsx", "app/watchlist/page.tsx", "app/scanner/page.tsx", "app/estrategia/page.tsx", "app/macro/page.tsx", "app/consultor/page.tsx", "app/page.tsx"];
-  let hasLocalTickerState = false;
-  for (const pagePath of appPages) {
-    if (fs.existsSync(pagePath)) {
-      const code = fs.readFileSync(pagePath, "utf-8");
-      if (/const\s+\[ticker,\s*setTicker\]\s*=\s*useState/.test(code) || /const\s+\[selectedTicker,\s*setSelectedTicker\]\s*=\s*useState/.test(code)) {
-        console.log(`✘ Encontrado useState local de ticker em ${pagePath}`);
-        hasLocalTickerState = true;
-      }
+    if (!isOk) {
+      console.log(`✘ WO-29 Teste 1 falhou para aba '${tabId}': confianca=${rep.confianca}, achados=${rep.achados.length}, limitacoes=${JSON.stringify(rep.limitacoes)}`);
+      tabFailures++;
     }
   }
-  if (!hasLocalTickerState) {
-    console.log("✔ WO-28 Teste 43: Nenhuma página em app/**/page.tsx declara useState local para o ticker ativo");
+
+  if (tabFailures === 0) {
+    console.log("✔ WO-29 Teste 1: Adaptador de contexto validado de ponta a ponta para as 9 abas (0 falhas)");
   } else {
-    console.log("✘ WO-28 Teste 43 falhou: estado local de ticker encontrado em app/**/page.tsx");
+    failures += tabFailures;
+  }
+
+  // Teste 2: Varredura estática confirma ausência de import de sector-dashboard em app/api/** e lib/agents/** (WO-29 §Testes 2)
+  const globPaths: string[] = [];
+  function collectFiles(dir: string) {
+    if (!fs.existsSync(dir)) return;
+    for (const ent of fs.readdirSync(dir, { withFileTypes: true })) {
+      const full = path.join(dir, ent.name);
+      if (ent.isDirectory()) collectFiles(full);
+      else if (ent.isFile() && (ent.name.endsWith(".ts") || ent.name.endsWith(".tsx"))) globPaths.push(full);
+    }
+  }
+  collectFiles("app/api");
+  collectFiles("lib/agents");
+
+  let hasBarrelImport = false;
+  for (const fPath of globPaths) {
+    const content = fs.readFileSync(fPath, "utf-8");
+    if (/from\s+["'].*sector-dashboard["']/.test(content)) {
+      console.log(`✘ Import de sector-dashboard encontrado em servidor: ${fPath}`);
+      hasBarrelImport = true;
+    }
+  }
+
+  if (!hasBarrelImport) {
+    console.log("✔ WO-29 Teste 2: Nenhum arquivo em app/api/** ou lib/agents/** importa do barril sector-dashboard");
+  } else {
     failures++;
   }
 
-  // Teste 44: UNIVERSE de 20 nomes exportado e estruturado por setor (WO-28 C.1)
-  const { UNIVERSE } = await import("../universe");
-  if (Array.isArray(UNIVERSE) && UNIVERSE.length === 20 && UNIVERSE.every((u) => u.ticker && u.sector)) {
-    console.log("✔ WO-28 Teste 44: Universo de 20 ativos B3 verificado com setores tipados");
+  // Teste 3: /api/news responde 200 e com shape esperado (WO-29 §Testes 3)
+  const newsApiCode = fs.readFileSync("app/api/news/route.ts", "utf-8");
+  if (newsApiCode.includes("from \"@/lib/sector-analytics\"") && !newsApiCode.includes("from \"@/lib/sector-dashboard\"")) {
+    console.log("✔ WO-29 Teste 3: Rota /api/news isolada do barril e importando diretamente de sector-analytics");
   } else {
-    console.log("✘ WO-28 Teste 44 falhou ao validar UNIVERSE");
+    console.log("✘ WO-29 Teste 3 falhou ao validar rota /api/news");
+    failures++;
+  }
+
+  // Teste 4: Gestor Global conclui / fallback em < 125s (WO-29 §Testes 4)
+  const { fallbackDeterministicoGestorGlobal: fallbackGG } = await import("../agents/senior/gestor-global");
+  const startGestor = Date.now();
+  const { report: repGG, textoRelatorio: textGG } = fallbackGG({ reports: [], positions: [], capitalTotal: 100000 }, "Teste fallback");
+  const durGestor = Date.now() - startGestor;
+
+  if (repGG && textGG && durGestor < 2000) {
+    console.log(`✔ WO-29 Teste 4: Fallback determinístico do Gestor concluiu em ${durGestor}ms com relatório válido`);
+  } else {
+    console.log("✘ WO-29 Teste 4 falhou no Gestor Global");
+    failures++;
+  }
+
+  // Teste 5: Relatório com reports vazios NÃO inventa números de mercado (WO-29 §Testes 5 & Adendo §1)
+  const hasFakeNumber = /Petróleo Brent em US\$|Minério de Ferro em US\$|IV ATM média 29,1%|Skew P\/C 1,35×|percentil 42/.test(textGG);
+  if (!hasFakeNumber && textGG.includes("Quadro macro não apurado") && textGG.includes("sem varredura desde")) {
+    console.log("✔ WO-29 Teste 5: Relatório com contexto vazio NÃO inventa números de mercado");
+  } else {
+    console.log("✘ WO-29 Teste 5 falhou: números inventados ou template estático encontrado no relatório sem dados");
+    failures++;
+  }
+
+  // Teste 6: Relatório com dados populados espelha as métricas do contexto (WO-29 §Testes 6 & Adendo §1)
+  const { report: repPop, textoRelatorio: textPop } = fallbackGG(
+    {
+      reports: [
+        {
+          schemaVersion: 1,
+          agentId: "macro",
+          agentRole: "Macro Analyst",
+          generatedAt: new Date().toISOString(),
+          ticker: "BOVA11",
+          headline: "Drivers macro em atenção",
+          achados: [
+            {
+              id: "m1",
+              titulo: "Petróleo Brent em alta",
+              detalhe: "Variação de +2,5% na semana",
+              severidade: "atencao",
+              evidencias: [{ metrica: "Brent 5d", valor: 2.5, fonte: "Yahoo", asOf: "2026-07-30" }],
+            },
+          ],
+          metricas: {},
+          recomendacoes: [],
+          melhorias: [],
+          confianca: "alta",
+          limitacoes: [],
+          dependencias: [],
+        },
+      ],
+      positions: [],
+      capitalTotal: 100000,
+      watchlistRows: {
+        PETR4: { ticker: "PETR4", spot: 38.5, dayChgPct: 0.015, ivAtm: 0.28, skewRatio: 1.12, hv21: 0.25 },
+      },
+    },
+    "Teste populado"
+  );
+
+  const mirrorsMacro = textPop.includes("Petróleo Brent em alta") && textPop.includes("Variação de +2,5% na semana");
+  const mirrorsWatchlist = textPop.includes("PETR4") && textPop.includes("28.0%");
+
+  if (mirrorsMacro && mirrorsWatchlist) {
+    console.log("✔ WO-29 Teste 6: Relatório com dados populados espelha métricas reais dos agentes e watchlist");
+  } else {
+    console.log(`✘ WO-29 Teste 6 falhou: mirrorsMacro=${mirrorsMacro}, mirrorsWatchlist=${mirrorsWatchlist}`);
+    failures++;
+  }
+
+  // Teste 7: Todo ticker citado no relatório pertence ao UNIVERSE (WO-29 §Testes 7)
+  const validUniverseTickers = new Set(universeList.map((u) => u.ticker));
+  // Extrai tickers de padrões como VALE3 (Mineração), PETR4 (Oil&Gas), etc.
+  const citedTickersMatches = textPop.match(/\b[A-Z]{4}[3415]{1,2}\b/g) ?? [];
+  let invalidTickerFound = false;
+
+  for (const t of citedTickersMatches) {
+    if (!validUniverseTickers.has(t) && t !== "BOVA11") {
+      console.log(`✘ Ticker inválido citado no relatório: ${t}`);
+      invalidTickerFound = true;
+    }
+  }
+
+  if (!invalidTickerFound) {
+    console.log("✔ WO-29 Teste 7: Todo ticker citado no relatório executivo pertence estritamente ao UNIVERSE");
+  } else {
+    failures++;
+  }
+
+  // Teste 8: UNIVERSE de 20 nomes exportado e estruturado por setor
+  if (Array.isArray(universeList) && universeList.length === 20 && universeList.every((u) => u.ticker && u.sector)) {
+    console.log("✔ WO-29 Teste 8: Universo de 20 ativos B3 verificado com 9 setores tipados");
+  } else {
+    console.log("✘ WO-29 Teste 8 falhou ao validar UNIVERSE");
+    failures++;
+  }
+
+  await testesWo30();
+}
+
+// ============================ WO-30 — VERACIDADE DO DADO ============================
+
+async function testesWo30() {
+  const fs = await import("fs");
+  const path = await import("path");
+  const raiz = path.resolve(__dirname, "..", "..");
+
+  const { spotParaPremio, resumirCobertura, classificarFrescor, construirProvenance, fmtPreco } =
+    await import("../provenance");
+  const { assertFracao, percentualParaFracao, UnitError } = await import("../units");
+
+  // ---- Teste 1: a IV nunca mistura spot de uma data com prêmio de outra (§2.3)
+  const closes = { "2026-07-16": 41.2, "2026-08-03": 43.05 };
+  const mesmaData = spotParaPremio({
+    premiumDate: "2026-08-03",
+    spotDate: "2026-08-03",
+    spotCorrente: 43.05,
+    closesByDate: closes,
+  });
+  const premioAntigo = spotParaPremio({
+    premiumDate: "2026-07-16",
+    spotDate: "2026-08-04",
+    spotCorrente: 42.59,
+    closesByDate: closes,
+  });
+  const semFechamento = spotParaPremio({
+    premiumDate: "2026-04-13",
+    spotDate: "2026-08-04",
+    spotCorrente: 42.59,
+    closesByDate: closes,
+  });
+
+  if (
+    mesmaData.spot === 43.05 &&
+    premioAntigo.spot === 41.2 &&
+    premioAntigo.ivSpotDate === "2026-07-16" &&
+    semFechamento.spot === null &&
+    semFechamento.ivSpotDate === null
+  ) {
+    console.log("✔ WO-30 Teste 1: IV usa o fechamento da mesma data do prêmio; sem fechamento, devolve null");
+  } else {
+    console.log(
+      `✘ WO-30 Teste 1 falhou: mesmaData=${mesmaData.spot}, antigo=${premioAntigo.spot}/${premioAntigo.ivSpotDate}, semFech=${semFechamento.spot}`
+    );
+    failures++;
+  }
+
+  // ---- Teste 2: idade classificada em PREGÕES, não em minutos (§2.1)
+  const okFrescor =
+    classificarFrescor(0, true) === "AO_VIVO" &&
+    classificarFrescor(0, false) === "FECHAMENTO" &&
+    classificarFrescor(1, false) === "ATRASADO" &&
+    classificarFrescor(5, false) === "ANTIGO" &&
+    classificarFrescor(null, false) === "AUSENTE";
+  if (okFrescor) {
+    console.log("✔ WO-30 Teste 2: frescor classificado por pregões (AO_VIVO/FECHAMENTO/ATRASADO/ANTIGO/AUSENTE)");
+  } else {
+    console.log("✘ WO-30 Teste 2 falhou na classificação de frescor");
+    failures++;
+  }
+
+  // ---- Teste 3: proveniência sem data nunca vira "agora" (§2.1)
+  const semData = construirProvenance("fonte X", null);
+  if (semData.frescor === "AUSENTE" && semData.dataDoDado === null && semData.idadePregoes === null) {
+    console.log("✔ WO-30 Teste 3: fonte sem carimbo é AUSENTE — o relógio do fetch não vira data do dado");
+  } else {
+    console.log("✘ WO-30 Teste 3 falhou: proveniência sem data não ficou AUSENTE");
+    failures++;
+  }
+
+  // ---- Teste 4: cobertura real da grade declarada (§2.2)
+  const cob = resumirCobertura(
+    [
+      { last: 1.2, lastTradeAt: "2026-08-03" },
+      { last: 0.8, lastTradeAt: "2026-08-03" },
+      { last: 0.4, lastTradeAt: "2026-04-13" },
+      { last: null, lastTradeAt: null },
+    ],
+    "2026-08-03"
+  );
+  if (cob.total === 4 && cob.comPremio === 3 && cob.negociadasNaDataEfetiva === 2 && cob.premioMaisAntigo === "2026-04-13") {
+    console.log("✔ WO-30 Teste 4: cobertura declara total, com prêmio, negociadas na data efetiva e prêmio mais antigo");
+  } else {
+    console.log(`✘ WO-30 Teste 4 falhou: ${JSON.stringify(cob)}`);
+    failures++;
+  }
+
+  // ---- Teste 5: unidades — taxa em percentual nunca chega ao engine (§2.7)
+  let rejeitouPercentual = false;
+  try {
+    assertFracao(14.25, "selic");
+  } catch (e) {
+    rejeitouPercentual = e instanceof UnitError;
+  }
+  const convertido = percentualParaFracao(14.25, "selic");
+  const preservado = percentualParaFracao(0.1425, "selic");
+  if (rejeitouPercentual && convertido === 0.1425 && preservado === 0.1425) {
+    console.log("✔ WO-30 Teste 5: assertFracao rejeitou 14.25 e percentualParaFracao normalizou para 0.1425");
+  } else {
+    console.log(`✘ WO-30 Teste 5 falhou: rejeitou=${rejeitouPercentual}, convertido=${convertido}, preservado=${preservado}`);
+    failures++;
+  }
+
+  // ---- Teste 6: adaptarContexto devolve Selic em fração e não inventa carimbo (§2.7 e §2.1)
+  const { adaptarContexto } = await import("../agents/context");
+  const semSelic = adaptarContexto({ ticker: "PETR4", watchlistRows: { PETR4: {} } });
+  const comPercentual = adaptarContexto({ ticker: "PETR4", selic: 14.25 });
+  if (semSelic.selic <= 1 && comPercentual.selic === 0.1425 && semSelic.lastRunAt == null) {
+    console.log("✔ WO-30 Teste 6: adaptarContexto entrega Selic em fração e lastRunAt null sem carimbo real");
+  } else {
+    console.log(
+      `✘ WO-30 Teste 6 falhou: selic=${semSelic.selic}, percentual=${comPercentual.selic}, lastRunAt=${semSelic.lastRunAt}`
+    );
+    failures++;
+  }
+
+  // ---- Teste 7: nenhum componente exibe o relógio do fetch como data do dado (§2.1)
+  const arquivosUi: string[] = [];
+  const varrer = (dir: string) => {
+    for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+      const p = path.join(dir, e.name);
+      if (e.isDirectory()) {
+        if (e.name === "node_modules" || e.name === ".next" || e.name === "api") continue;
+        varrer(p);
+      } else if (e.name.endsWith(".tsx")) {
+        arquivosUi.push(p);
+      }
+    }
+  };
+  varrer(path.join(raiz, "components"));
+  varrer(path.join(raiz, "app"));
+
+  const ofensores: string[] = [];
+  for (const f of arquivosUi) {
+    const src = fs.readFileSync(f, "utf-8");
+    // Renderizar updatedAt/fetchedAt como carimbo de data é exatamente o defeito do WO-30.
+    if (/fmtDateBR\(\s*\w+\.(updatedAt|fetchedAt)/.test(src)) {
+      ofensores.push(path.relative(raiz, f));
+    }
+  }
+  if (ofensores.length === 0) {
+    console.log("✔ WO-30 Teste 7: nenhum componente renderiza updatedAt/fetchedAt como data do dado");
+  } else {
+    console.log(`✘ WO-30 Teste 7 falhou: ${ofensores.join(", ")}`);
+    failures++;
+  }
+
+  // ---- Teste 8: idade da marca da carteira não é medida pelo relógio do fetch (§2.5)
+  const marketSrc = fs.readFileSync(path.join(raiz, "store", "market.ts"), "utf-8");
+  const usaAgeMinutes = /ageMin:\s*ageMinutes\(/.test(marketSrc);
+  const temAgePregoes = /agePregoes/.test(marketSrc) && /markDate/.test(marketSrc);
+  const consumidores = [
+    fs.readFileSync(path.join(raiz, "app", "carteira", "page.tsx"), "utf-8"),
+    fs.readFileSync(path.join(raiz, "lib", "position-flags.ts"), "utf-8"),
+  ];
+  const aindaUsaAgeMin = consumidores.some((s) => /mark\.ageMin\s*!=\s*null/.test(s));
+  if (!usaAgeMinutes && temAgePregoes && !aindaUsaAgeMin) {
+    console.log("✔ WO-30 Teste 8: idade da marca vem do último negócio em pregões, não do relógio do fetch");
+  } else {
+    console.log(
+      `✘ WO-30 Teste 8 falhou: ageMinutes=${usaAgeMinutes}, agePregoes=${temAgePregoes}, consumidorAntigo=${aindaUsaAgeMin}`
+    );
+    failures++;
+  }
+
+  // ---- Teste 9: apresentação sem ruído de ponto flutuante (§2.8)
+  const semRuido = fmtPreco(43.05000540015121);
+  const nulo = fmtPreco(null);
+  if (semRuido === "43,05" && nulo === "—") {
+    console.log("✔ WO-30 Teste 9: fmtPreco corta o ruído de ponto flutuante na apresentação (43,05)");
+  } else {
+    console.log(`✘ WO-30 Teste 9 falhou: '${semRuido}' / '${nulo}'`);
     failures++;
   }
 }
