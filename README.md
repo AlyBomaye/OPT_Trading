@@ -45,7 +45,7 @@ Testes numéricos (valores de referência de Hull): `npm run test:engine`. Type-
 Para habilitar sínteses em linguagem natural do Gestor Global no Consultor, crie o arquivo `.env.local` na raiz do projeto:
 
 ```env
-ANTHROPIC_API_KEY=sk-ant-api03-...
+ANTHROPIC_API_KEY=<cole-aqui-a-chave-gerada-em-console.anthropic.com>
 ```
 
 *Nota: Se a chave não for configurada ou o teto de orçamento for atingido, a plataforma operará em modo determinístico com custo zero.*

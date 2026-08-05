@@ -64,15 +64,15 @@ const PRECO_SAIDA_MTOK = 25.0;
 const AGENT_IDS = new Set(AGENTS.map((a) => a.id));
 
 /** Order keys recursively for deterministic JSON stringification */
-export function stringifyDeterminístico(obj: unknown): string {
+export function stringifyDeterministico(obj: unknown): string {
   if (obj === null || typeof obj !== "object") {
     return JSON.stringify(obj);
   }
   if (Array.isArray(obj)) {
-    return "[" + obj.map((item) => stringifyDeterminístico(item)).join(",") + "]";
+    return "[" + obj.map((item) => stringifyDeterministico(item)).join(",") + "]";
   }
   const keys = Object.keys(obj as Record<string, unknown>).sort();
-  const pairs = keys.map((k) => JSON.stringify(k) + ":" + stringifyDeterminístico((obj as Record<string, unknown>)[k]));
+  const pairs = keys.map((k) => JSON.stringify(k) + ":" + stringifyDeterministico((obj as Record<string, unknown>)[k]));
   return "{" + pairs.join(",") + "}";
 }
 
@@ -221,7 +221,7 @@ export function prepararRequest(input: {
 
   // 4. Poda e serialização determinística do contexto volátil
   const contextoPodado = podarContexto(input.contexto);
-  const jsonContexto = stringifyDeterminístico(contextoPodado);
+  const jsonContexto = stringifyDeterministico(contextoPodado);
   decisoes.push("Contexto podado para no máximo 8 achados prioritários e serializado deterministicamente com chaves ordenadas.");
 
   const messages: Anthropic.Beta.BetaMessageParam[] = [

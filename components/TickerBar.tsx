@@ -12,6 +12,7 @@ import { getIvRank, snapshotCount, useSnapshots } from "@/lib/snapshots";
 import { UNIVERSE } from "@/lib/universe";
 
 import { TickerQuickSwitch } from "@/components/TickerQuickSwitch";
+import { useSkewAtm } from "@/lib/hooks/useSkewAtm";
 
 export function TickerBar() {
   const {
@@ -87,8 +88,7 @@ export function TickerBar() {
     return () => window.removeEventListener("keydown", onKey);
   }, [refresh]);
 
-  const skew = chain && selectedExpiry ? skewInfo(chain, selectedExpiry) : null;
-  const atmIv = skew?.ivCallAtm && skew?.ivPutAtm ? (skew.ivCallAtm + skew.ivPutAtm) / 2 : null;
+  const { skew, atmIv } = useSkewAtm();
 
   const snapshots = useSnapshots((st) => st.snapshots);
   const ivRank = atmIv != null ? getIvRank(snapshots, ticker, atmIv) : null;

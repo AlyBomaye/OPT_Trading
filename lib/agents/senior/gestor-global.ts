@@ -276,7 +276,13 @@ export async function executarGestorGlobal(ctx: GestorGlobalInputContext): Promi
    valores presentes no contexto. Campo com valor null significa 'não apurado' — diga isso em uma
    linha explicando o que falta, em vez de preencher com um número plausível.
 9. Cite apenas tickers presentes no contexto (são os 20 do UNIVERSE). Setor sem varredura aparece
-   na leitura setorial com '—' e a nota de cobertura; não o omita.`;
+   na leitura setorial com '—' e a nota de cobertura; não o omita.
+10. LINGUAGEM (WO-34): escreva para quem ainda está construindo repertório técnico. Nenhum
+   parágrafo abre com sigla; a primeira frase de cada seção diz a conclusão em português simples.
+   Ao usar um termo técnico pela primeira vez, explique-o em meia linha entre travessões — e só
+   na primeira vez. Sempre que possível, feche o raciocínio com um exemplo numérico usando os
+   números do contexto, mostrando a conta. Nunca invente número para o exemplo: sem dado, não
+   há exemplo.`;
 
   const timeoutPromise = new Promise<{ report: AgentReport; textoRelatorio: string }>((resolve) => {
     setTimeout(() => {

@@ -2,6 +2,7 @@ import type { AgentReport, Achado, Recomendacao, Severidade } from "../types";
 import type { Position } from "../../types";
 import { alocacaoPorBalde } from "../risk";
 import { link } from "../deeplinks";
+import { montarAchado } from "../didatica";
 
 export interface CarteiraInputContext {
   positions: Position[];
@@ -29,10 +30,12 @@ export function buildCarteiraReport(ctx: CarteiraInputContext): AgentReport {
   
   if (Math.abs(desvioAlto) > 10 || Math.abs(desvioMedio) > 15) {
     const sev: Severidade = desvioAlto > 15 ? "critico" : "atencao";
-    achados.push({
+    achados.push(montarAchado({
       id: "cart-risk-01",
-      titulo: `Desvio nos baldes de risco (Alto: ${baldes.mix.alto}% vs alvo 20%)`,
-      detalhe: `Os baldes de risco medem a distribuição de capital entre posições de Risco ALTO (pernas secas/ilimitadas), MÉDIO (travas/estruturas compostas) e BAIXO (coberturas/ações). A carteira atual está com ${baldes.mix.alto}% em Risco ALTO (desvio de ${desvioAlto > 0 ? "+" : ""}${desvioAlto} pp do alvo de 20%).`,
+      titulo: `Sua carteira está ${desvioAlto > 0 ? "mais agressiva" : "mais defensiva"} do que você planejou`,
+      leitura: `Você definiu que 20% do capital ficaria em operações de risco alto — aquelas em que a perda não tem teto. Hoje está em ${baldes.mix.alto}%, ${Math.abs(desvioAlto)} pontos ${desvioAlto > 0 ? "acima" : "abaixo"} do alvo.`,
+      porQueImporta: `O tamanho do balde alto é o que define quanto um dia ruim consegue tirar de você. ${desvioAlto > 0 ? "Acima do alvo, um movimento contrário machuca mais do que o plano previa — e a decisão de reduzir é melhor tomada agora que no meio do movimento." : "Abaixo do alvo, você está deixando retorno na mesa: o risco que se propôs a correr não está sendo usado."}`,
+      exemplo: `Distribuição de hoje: ${baldes.mix.alto}% em risco alto (alvo 20%), ${baldes.mix.medio}% em travas e estruturas de risco definido (alvo 50%), ${baldes.mix.baixo}% em coberturas e renda (alvo 30%). Para voltar ao alvo, ${desvioAlto > 0 ? "converter uma ponta seca em trava já resolve boa parte" : "abrir uma ponta direcional pequena aproxima do plano"}.`,
       severidade: sev,
       evidencias: [
         {
@@ -49,7 +52,7 @@ export function buildCarteiraReport(ctx: CarteiraInputContext): AgentReport {
         },
       ],
       deepLink: link("carteira.risk"),
-    });
+    }));
 
     if (desvioAlto > 10) {
       recomendacoes.push({
@@ -67,10 +70,12 @@ export function buildCarteiraReport(ctx: CarteiraInputContext): AgentReport {
   const thetaDiario = netGreeks.theta;
   const thetaPctSemanal = (Math.abs(thetaDiario * 7) / cap) * 100;
   if (thetaDiario < -0.002 * cap) { // perde > 0.2% do capital ao dia em theta
-    achados.push({
+    achados.push(montarAchado({
       id: "cart-theta-01",
-      titulo: `Theta carry elevado (perda de R$ ${Math.abs(thetaDiario).toFixed(2)}/dia)`,
-      detalhe: `Theta é a taxa de decaimento temporal — o quanto a posição perde por dia unicamente pela passagem do tempo. O book atual perde R$ ${Math.abs(thetaDiario).toFixed(2)}/dia, o que representa aproximadamente ${thetaPctSemanal.toFixed(2)}% do capital total por semana.`,
+      titulo: `Sua carteira perde R$ ${Math.abs(thetaDiario).toFixed(2)} por dia mesmo se nada acontecer`,
+      leitura: `Só pela passagem do tempo, sem o preço andar, o book encolhe R$ ${Math.abs(thetaDiario).toFixed(2)} a cada dia. Isso é theta.`,
+      porQueImporta: `Esse é o aluguel que você paga por estar posicionado. Quanto maior, mais rápido o mercado precisa se mexer a seu favor para compensar — e mais caro fica errar o tempo, não só a direção.`,
+      exemplo: `São ${thetaPctSemanal.toFixed(2)}% do seu capital por semana. Mantendo a posição por um mês sem movimento no ativo, a conta chega a aproximadamente ${(thetaPctSemanal * 4).toFixed(1)}% do capital — o ativo precisa andar pelo menos isso a seu favor só para empatar.`,
       severidade: thetaPctSemanal > 2.0 ? "critico" : "atencao",
       evidencias: [
         {
@@ -81,16 +86,18 @@ export function buildCarteiraReport(ctx: CarteiraInputContext): AgentReport {
         },
       ],
       deepLink: link("carteira.greeks"),
-    });
+    }));
   }
 
   // 3. Flags urgentes abertas
   const flagsUrgentes = ctx.flags?.filter((f) => f.severity === "urgente") ?? [];
   if (flagsUrgentes.length > 0) {
-    achados.push({
+    achados.push(montarAchado({
       id: "cart-flags-01",
-      titulo: `${flagsUrgentes.length} alerta(s) urgente(s) de posição exigindo ação`,
-      detalhe: `Flags de posição identificam desvios como atingimento de stop-loss, take-profit ou risco de exercício antecipado por proventos. Existem ${flagsUrgentes.length} posições que exigem atenção imediata do trader.`,
+      titulo: `${flagsUrgentes.length} posição(ões) pedindo decisão hoje`,
+      leitura: `${flagsUrgentes.length} das suas posições cruzaram um limite que você mesmo definiu — stop, alvo de lucro, ou risco de a opção vendida ser exercida antes do vencimento por causa de dividendo.`,
+      porQueImporta: `São os casos em que não decidir também é decidir. Um stop ultrapassado que fica aberto vira perda maior; uma call vendida sobre ação que vai pagar provento pode ser exercida contra você da noite para o dia.`,
+      exemplo: `Abra o painel Ação do Dia na Carteira: cada linha traz o motivo do alerta e a posição envolvida, com o número que disparou o gatilho.`,
       severidade: "critico",
       evidencias: [
         {
@@ -101,15 +108,17 @@ export function buildCarteiraReport(ctx: CarteiraInputContext): AgentReport {
         },
       ],
       deepLink: link("carteira.flags"),
-    });
+    }));
   }
 
   // 4. Kelly Realizado ≤ 0 com n ≥ 20
   if (journalStats.n >= 20 && journalStats.realizedKelly <= 0) {
-    achados.push({
+    achados.push(montarAchado({
       id: "cart-kelly-01",
-      titulo: `Kelly realizado negativo (${(journalStats.realizedKelly * 100).toFixed(1)}%) — sem edge estatístico`,
-      detalhe: `O Critério de Kelly mede a fração ideal de capital a ser arriscada com base na taxa de acerto e no payoff histórico. Com ${journalStats.n} trades encerrados, seu Kelly realizado está em ${(journalStats.realizedKelly * 100).toFixed(1)}%, indicando ausência de vantagem estatística no modelo atual.`,
+      titulo: `Seu histórico de trades ainda não mostra vantagem`,
+      leitura: `Somando os ${journalStats.n} trades que você já encerrou, a combinação entre taxa de acerto e tamanho médio de ganho contra perda dá resultado negativo.`,
+      porQueImporta: `Enquanto esse número não vira positivo, aumentar o tamanho das posições amplia a perda esperada, não o lucro. É o sinal para reduzir tamanho e revisar o critério de entrada — não para operar mais.`,
+      exemplo: `Com ${journalStats.n} operações registradas, o resultado é de ${(journalStats.realizedKelly * 100).toFixed(1)}%. Um valor positivo indicaria a fração de capital que valeria a pena arriscar por operação; negativo indica que a estratégia, como está, perde dinheiro no longo prazo.`,
       severidade: "critico",
       evidencias: [
         {
@@ -126,7 +135,7 @@ export function buildCarteiraReport(ctx: CarteiraInputContext): AgentReport {
         },
       ],
       deepLink: link("carteira.journal"),
-    });
+    }));
 
     recomendacoes.push({
       acao: "Reduzir o tamanho médio dos lotes em 50% até restaurar o win rate ou payoff ratio",
@@ -139,10 +148,12 @@ export function buildCarteiraReport(ctx: CarteiraInputContext): AgentReport {
 
   // Fallback de achado padronizado se nada crítico for disparado
   if (achados.length === 0) {
-    achados.push({
+    achados.push(montarAchado({
       id: "cart-info-01",
-      titulo: "Carteira sem alertas graves de risco",
-      detalhe: `O book possui ${ctx.positions.length} posições abertas. A distribuição por baldes de risco está em ${baldes.mix.alto}% ALTO, ${baldes.mix.medio}% MÉDIO e ${baldes.mix.baixo}% BAIXO.`,
+      titulo: "Carteira dentro dos parâmetros que você definiu",
+      leitura: `As ${ctx.positions.length} posições abertas estão distribuídas dentro das faixas de risco planejadas. Nenhum limite foi cruzado.`,
+      porQueImporta: `Sem desvio, a decisão certa costuma ser não fazer nada. O custo de mexer numa carteira equilibrada é real: spread, corretagem e o risco de trocar uma posição boa por uma pior.`,
+      exemplo: `Hoje: ${baldes.mix.alto}% em risco alto, ${baldes.mix.medio}% em risco médio e ${baldes.mix.baixo}% em risco baixo.`,
       severidade: "info",
       evidencias: [
         {
@@ -153,7 +164,7 @@ export function buildCarteiraReport(ctx: CarteiraInputContext): AgentReport {
         },
       ],
       deepLink: link("carteira.baldes"),
-    });
+    }));
   }
 
   const headline = flagsUrgentes.length > 0

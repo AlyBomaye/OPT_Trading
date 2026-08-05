@@ -12,7 +12,13 @@ export interface Evidencia {
 export interface Achado {
   id: string;
   titulo: string;                     // ≤ 80 chars
-  detalhe: string;                    // 1–3 frases, pt-BR
+  detalhe: string;
+  /**
+   * WO-34 §B: camadas didáticas. Opcionais para não invalidar reports já persistidos.
+   * `detalhe` carrega a LEITURA; estes dois completam o "por que importa" e o exemplo.
+   */
+  porQueImporta?: string;
+  exemplo?: string;                    // 1–3 frases, pt-BR
   severidade: Severidade;
   evidencias: Evidencia[];            // NUNCA vazio
   deepLink?: string;                  // "/carteira#flags"

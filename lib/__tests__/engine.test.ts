@@ -483,7 +483,7 @@ if (csNormal.label === "NORMAL" && Math.abs((csNormal.slope ?? 0) - 0.84) < 1e-4
 }
 
 // ---- WO-22: Verdade temporal dos dados (sessionInfo, sessionsBetween, markQuality) ----
-import { sessionInfo, sessionsBetween, ageLabel } from "../session";
+import { sessionInfo, sessionsBetween } from "../session";
 
 // 1. sessionInfo com datas fixas
 const datePre = new Date("2026-07-28T12:30:00.000Z"); // 09:30 BRT
@@ -1029,23 +1029,7 @@ async function testesAssincronos(): Promise<void> {
     AGENTS.find(a => a.id === "cockpit")!.dependeDe = ["macro", "noticias", "carteira"];
   }
 
-  // Teste 21: Teste unitário de tool em tools.ts (price_structure lança erro sem r)
-  const { getAgentTools } = await import("../agents/tools");
-  const ctxTools = { reports: [], positions: [], capitalTotal: 100000 };
-  const toolsList = getAgentTools(ctxTools);
-  const psTool = toolsList.find(t => t.name === "price_structure");
-  try {
-    await psTool!.run({ legs: [], spot: 10 });
-    console.log("✘ WO-25 Teste 21 falhou: price_structure não exigiu 'r'.");
-    failures++;
-  } catch (e: any) {
-    if (e.message.includes("Obrigatório") || e.message.includes("obrigatório") || e.message.includes("r")) {
-      console.log("✔ WO-25 Teste 21: price_structure ferramenta exigiu o parâmetro 'r' (P0.5)");
-    } else {
-      console.log(`✘ WO-25 Teste 21 falhou com outro erro: ${e.message}`);
-      failures++;
-    }
-  }
+  // Teste 21 removido no WO-34: exercitava lib/agents/tools.ts, morto desde o WO-31.
 
   // Teste 22: markdown-lite
   const { MarkdownLite } = await import("../markdown-lite");
@@ -1113,32 +1097,7 @@ async function testesAssincronos(): Promise<void> {
     failures++;
   }
 
-  // Teste 26: Ferramentas get_chain_summary e get_performance_series chamam engine e caminho correto
-  const toolCtx: any = {
-    reports: [],
-    positions: [],
-    capitalTotal: 100000,
-    chainCtx: {
-      chain: {
-        spot: 30,
-        options: [
-          { opTicker: "PETRH30", type: "CALL", expiry: "2026-08-21", strike: 30, du: 20, iv: 0.30, markQuality: "fresh", last: 1.5, volumeFin: 10000 },
-          { opTicker: "PETRT30", type: "PUT", expiry: "2026-08-21", strike: 30, du: 20, iv: 0.33, markQuality: "fresh", last: 1.2, volumeFin: 10000 },
-        ],
-      },
-    },
-  };
-  const tools = getAgentTools(toolCtx);
-  const chainTool = tools.find((t) => t.name === "get_chain_summary");
-  const perfTool = tools.find((t) => t.name === "get_performance_series");
-  const chainRes: any = await chainTool!.run({ ticker: "PETR4", expiry: "2026-08-21" });
-  const perfRes: any = await perfTool!.run({});
-  if (chainRes.status === "success" && chainRes.skewRatio != null && (perfRes.status === "success" || perfRes.status === "sem_dado")) {
-    console.log("✔ WO-26 Teste 26: Ferramentas get_chain_summary e get_performance_series chamaram o engine real");
-  } else {
-    console.log(`✘ WO-26 Teste 26 falhou: chainRes=${JSON.stringify(chainRes)} perfRes=${JSON.stringify(perfRes)}`);
-    failures++;
-  }
+  // Teste 26 removido no WO-34: exercitava as ferramentas do toolRunner, removidas.
 
   // Teste 27: markdown-lite com 5 casos
   const mdText = "**bold**\n- item 1\n[link](/carteira)\n| tabela |\n<script>alert(1)</script>";
@@ -2236,6 +2195,182 @@ async function testesWo33() {
     console.log("✔ WO-33 Teste 8: fmtBps devolve — para null; zero significaria 'não mudou', que é uma afirmação");
   } else {
     console.log("✘ WO-33 Teste 8 falhou: LinhaRates pode renderizar null como número");
+    failures++;
+  }
+
+  await testesWo34();
+}
+
+// ============ WO-34 — DIDÁTICA, DIAGNÓSTICO E LIMPEZA ============
+
+async function testesWo34() {
+  const fs = await import("fs");
+  const path = await import("path");
+  const raiz = path.resolve(__dirname, "..", "..");
+  const ler = (rel: string) => fs.readFileSync(path.join(raiz, rel), "utf-8");
+
+  const { EXPLICACOES, comGlossario, montarAchado, definir } = await import("../agents/didatica");
+  const { GLOSSARIO } = await import("../manual-content");
+
+  // ---- Teste 1: toda explicação curta aponta para um verbete real do GLOSSARIO
+  const verbetes = new Set(GLOSSARIO.map((t) => t.termo));
+  const orfas = EXPLICACOES.filter((e) => !verbetes.has(e.verbete)).map((e) => e.verbete);
+  if (orfas.length === 0) {
+    console.log(`✔ WO-34 Teste 1: as ${EXPLICACOES.length} explicações curtas apontam para verbetes reais do Manual`);
+  } else {
+    console.log(`✘ WO-34 Teste 1 falhou — verbetes inexistentes: ${orfas.join(", ")}`);
+    failures++;
+  }
+
+  // ---- Teste 2: o termo é explicado na PRIMEIRA ocorrência e só nela
+  const texto = "A volatilidade implícita subiu. Depois a volatilidade implícita caiu.";
+  const saida = comGlossario(texto, new Set());
+  const ocorrencias = (saida.match(/o preço da incerteza embutido na opção/g) ?? []).length;
+  if (ocorrencias === 1) {
+    console.log("✔ WO-34 Teste 2: definição inserida uma única vez, na primeira ocorrência do termo");
+  } else {
+    console.log(`✘ WO-34 Teste 2 falhou: ${ocorrencias} inserções (esperado 1)`);
+    failures++;
+  }
+
+  // ---- Teste 3: o travessão de fechamento não colide com pontuação
+  const comPonto = comGlossario("O papel tem volatilidade implícita.", new Set());
+  if (!/\s—[.,;:!?]/.test(comPonto) && comPonto.trim().endsWith(".")) {
+    console.log("✔ WO-34 Teste 3: travessão de fechamento absorvido pela pontuação seguinte");
+  } else {
+    console.log(`✘ WO-34 Teste 3 falhou: "${comPonto}"`);
+    failures++;
+  }
+
+  // ---- Teste 4: montarAchado devolve as três camadas e compartilha o glossário entre elas
+  const a = montarAchado({
+    id: "t", titulo: "t",
+    leitura: "A volatilidade implícita está alta.",
+    porQueImporta: "A volatilidade implícita alta encarece a compra.",
+    exemplo: "Com volatilidade implícita de 30%, o prêmio sobe.",
+    severidade: "info", evidencias: [{ metrica: "m", valor: 1, fonte: "f", asOf: "2026-08-05" }],
+  });
+  const totalDefs =
+    ((a.detalhe ?? "") + (a.porQueImporta ?? "") + (a.exemplo ?? "")).match(/o preço da incerteza/g)?.length ?? 0;
+  if (a.porQueImporta && a.exemplo && totalDefs === 1) {
+    console.log("✔ WO-34 Teste 4: três camadas montadas, com o termo definido uma vez entre elas");
+  } else {
+    console.log(`✘ WO-34 Teste 4 falhou: porQue=${!!a.porQueImporta}, exemplo=${!!a.exemplo}, defs=${totalDefs}`);
+    failures++;
+  }
+
+  // ---- Teste 4b: número em notação brasileira, sem estragar milhar já agrupado nem ticker
+  const { formatarNumerosBr } = await import("../agents/didatica");
+  const casos: Array<[string, string]> = [
+    ["O petróleo caiu 2.10% hoje", "O petróleo caiu 2,10% hoje"],
+    ["R$ 10.000 parados rendem R$ 1125", "R$ 10.000 parados rendem R$ 1.125"],
+    ["VIX em 18.40 e PETR4 a 38.5", "VIX em 18,40 e PETR4 a 38,5"],
+    ["asOf 2026-08-05 sem mexer", "asOf 2026-08-05 sem mexer"],
+  ];
+  const erradas = casos.filter(([entrada, esperado]) => formatarNumerosBr(entrada) !== esperado);
+  if (erradas.length === 0) {
+    console.log("✔ WO-34 Teste 4b: decimal com vírgula e milhar com ponto; ticker e data ISO intactos");
+  } else {
+    console.log(`✘ WO-34 Teste 4b falhou: ${erradas.map(([e]) => `"${formatarNumerosBr(e)}"`).join(" · ")}`);
+    failures++;
+  }
+
+  // ---- Teste 5: nenhum achado convertido abre a leitura com sigla em caixa alta
+  const convertidos = ["chain", "historico", "carteira", "cockpit", "macro", "noticias", "watchlist", "scanner", "estrategia"];
+  const abrindoComSigla: string[] = [];
+  for (const ag of convertidos) {
+    const src = ler(`lib/agents/tab/${ag}.ts`);
+    const re = /leitura:[^`]{0,60}?`([^`$]{0,30})/g;
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(src)) !== null) {
+      const inicio = (m[1] ?? "").trimStart();
+      if (/^[A-ZÁÉÍÓÚ]{2,}\b/.test(inicio)) abrindoComSigla.push(`${ag}: "${inicio}"`);
+    }
+  }
+  if (abrindoComSigla.length === 0) {
+    console.log(`✔ WO-34 Teste 5: nenhuma leitura dos agentes ${convertidos.join(", ")} abre com sigla`);
+  } else {
+    console.log(`✘ WO-34 Teste 5 falhou: ${abrindoComSigla.join(" · ")}`);
+    failures++;
+  }
+
+  // ---- Teste 5b: nenhum agente de aba ainda monta achado cru (sem as três camadas)
+  const crus = convertidos.filter((ag) => /achados\.push\(\{/.test(ler(`lib/agents/tab/${ag}.ts`)));
+  if (crus.length === 0) {
+    console.log("✔ WO-34 Teste 5b: os 9 agentes de aba passam por montarAchado — três camadas sempre");
+  } else {
+    console.log(`✘ WO-34 Teste 5b falhou: ainda empurram achado cru — ${crus.join(", ")}`);
+    failures++;
+  }
+
+  // ---- Teste 6: o AgentPanel formata a evidência (o 2.846767416333916 da tela)
+  const srcPanel = ler("components/AgentPanel.tsx");
+  const formata = /fmtValorEvidencia\(ev\.valor\)/.test(srcPanel) && /fmtNum\(v, 2\)/.test(srcPanel);
+  const cru = /\{ev\.valor \?\? "N\/A"\}/.test(srcPanel);
+  if (formata && !cru) {
+    console.log("✔ WO-34 Teste 6: evidência passa por fmtNum — fim do float cru na tela dos agentes");
+  } else {
+    console.log(`✘ WO-34 Teste 6 falhou: formata=${formata}, aindaCru=${cru}`);
+    failures++;
+  }
+
+  // ---- Teste 7: diagnóstico por causa, não por confiança
+  const srcGrid = ler("components/agents/CoverageGrid.tsx");
+  const semRegraAntiga = !/confianca === "baixa"\) return "sem contexto"/.test(srcGrid);
+  const temNota = /return "nota"/.test(srcGrid) && /nota: "NOTA"/.test(srcGrid);
+  const temCausas = /exceç\|erro\|timeout\|falha/.test(srcGrid) && /indispon/.test(srcGrid);
+  if (semRegraAntiga && temNota && temCausas) {
+    console.log("✔ WO-34 Teste 7: CoverageGrid classifica pela causa; limitação informativa vira NOTA");
+  } else {
+    console.log(`✘ WO-34 Teste 7 falhou: semAntiga=${semRegraAntiga}, nota=${temNota}, causas=${temCausas}`);
+    failures++;
+  }
+
+  // ---- Teste 8: código morto removido e ninguém o importa
+  const existe = (rel: string) => fs.existsSync(path.join(raiz, rel));
+  const arquivosVivos = existe("lib/agents/tools.ts") || existe("lib/agents/run-daily-cli.ts");
+  let importaMorto = false;
+  const varrer = (dir: string) => {
+    for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+      const pp = path.join(dir, e.name);
+      if (e.isDirectory()) {
+        // O próprio arquivo de teste cita os nomes removidos; sem esta exclusão a varredura
+        // se autodetecta e o teste nunca passa.
+        if (e.name === "node_modules" || e.name === ".next" || e.name === "__tests__") continue;
+        varrer(pp);
+      } else if (/\.tsx?$/.test(e.name)) {
+        const src = fs.readFileSync(pp, "utf-8");
+        if (/from ["'][^"']*agents\/tools["']|run-daily-cli/.test(src)) importaMorto = true;
+      }
+    }
+  };
+  for (const d of ["app", "lib", "components", "store"]) varrer(path.join(raiz, d));
+  if (!arquivosVivos && !importaMorto) {
+    console.log("✔ WO-34 Teste 8: lib/agents/tools.ts e run-daily-cli.ts removidos, sem importadores");
+  } else {
+    console.log(`✘ WO-34 Teste 8 falhou: aindaExistem=${arquivosVivos}, aindaImportado=${importaMorto}`);
+    failures++;
+  }
+
+  // ---- Teste 9: derivação de skew centralizada no hook
+  const paginas = ["app/carteira/page.tsx", "app/chain/page.tsx", "app/estrategia/page.tsx", "app/page.tsx", "components/TickerBar.tsx"];
+  const aindaDuplica = paginas.filter((f) => /skewInfo\(chain/.test(ler(f)));
+  if (aindaDuplica.length === 0) {
+    console.log("✔ WO-34 Teste 9: skewInfo não é mais chamado direto nas páginas — tudo via useSkewAtm");
+  } else {
+    console.log(`✘ WO-34 Teste 9 falhou: ainda duplicam — ${aindaDuplica.join(", ")}`);
+    failures++;
+  }
+
+  // ---- Teste 10: grade da Macro com Pré e Treasuries em painel único
+  const srcMacro = ler("app/macro/page.tsx");
+  const srcLinhaRates = ler("components/macro/LinhaRates.tsx");
+  const temModo = /modo\?: "duplo" \| "somenteVariacao"/.test(srcLinhaRates);
+  const usaModo = /slice\(0, 2\)[\s\S]{0,200}modo="somenteVariacao"/.test(srcMacro);
+  if (temModo && usaModo) {
+    console.log("✔ WO-34 Teste 10: Pré e Treasuries em painel único na mesma linha; demais em modo duplo");
+  } else {
+    console.log(`✘ WO-34 Teste 10 falhou: temModo=${temModo}, usaModo=${usaModo}`);
     failures++;
   }
 }

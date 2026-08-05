@@ -49,6 +49,12 @@ interface Props {
   /** Tabela sob o painel direito. */
   tabela: { colunas: ColunaTabela[]; linhas: any[] };
   vazio?: string;
+  /**
+   * WO-34 §A: `somenteVariacao` renderiza só o painel da direita (overlay + tabela de deltas).
+   * Para Pré e Treasuries o nível já se lê na coluna TAXA da tabela — o painel de estrutura a
+   * termo gastava metade da largura sem acrescentar informação.
+   */
+  modo?: "duplo" | "somenteVariacao";
 }
 
 /** Δ em pontos percentuais → bps na tela. `null` vira "—": zero afirmaria "não mudou". */
@@ -122,7 +128,8 @@ function Grafico({
   );
 }
 
-export function LinhaRates({ titulo, fonte, dataDoDado, estimado, nota, nivel, variacao, tabela, vazio }: Props) {
+export function LinhaRates({ titulo, fonte, dataDoDado, estimado, nota, nivel, variacao, tabela, vazio, modo = "duplo" }: Props) {
+  const soVariacao = modo === "somenteVariacao";
   const sess = sessionInfo();
   const prov = construirProvenance(fonte, dataDoDado);
   const carimbo = dataDoDado
@@ -159,12 +166,14 @@ export function LinhaRates({ titulo, fonte, dataDoDado, estimado, nota, nivel, v
       {semDados ? (
         <div className="px-3 py-8 text-center text-xxs text-term-dim">{vazio ?? "Sem dados nesta execução."}</div>
       ) : (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 p-3">
-          {/* ESQUERDA — estrutura a termo */}
-          <div>
-            <div className="text-xxs text-term-dim uppercase tracking-wider mb-1">Estrutura a termo</div>
-            <Grafico dados={nivel.dados} xKey={nivel.xKey} series={nivel.series} unidade={nivel.unidade} altura={200} />
-          </div>
+        <div className={clsx("gap-3 p-3", soVariacao ? "block" : "grid grid-cols-1 lg:grid-cols-2")}>
+          {/* ESQUERDA — estrutura a termo (omitida no modo somenteVariacao) */}
+          {!soVariacao && (
+            <div>
+              <div className="text-xxs text-term-dim uppercase tracking-wider mb-1">Estrutura a termo</div>
+              <Grafico dados={nivel.dados} xKey={nivel.xKey} series={nivel.series} unidade={nivel.unidade} altura={200} />
+            </div>
+          )}
 
           {/* DIREITA — variações */}
           <div>

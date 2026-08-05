@@ -18,6 +18,7 @@ import { SensitivityMatrix } from "@/components/SensitivityMatrix";
 import { PriceHistoryPanel } from "@/components/PriceHistoryPanel";
 import { AgentPanel } from "@/components/AgentPanel";
 import { TruthBar } from "@/components/TruthBar";
+import { useSkewAtm } from "@/lib/hooks/useSkewAtm";
 
 /* ============================================================================
  * Workbench de Estratégia — one-stop shop do trader de opções: chain à
@@ -85,7 +86,7 @@ export default function EstrategiaPage() {
 
   const detected = useMemo(() => detectStrategy(legs), [legs]);
 
-  const skew = chain && selectedExpiry ? skewInfo(chain, selectedExpiry) : null;
+  const { skew } = useSkewAtm();
   const suggestion = skew ? suggestFromSkew(skew) : null;
 
   // Kelly ¼ com base na PoP e razão ganho/perda da estrutura

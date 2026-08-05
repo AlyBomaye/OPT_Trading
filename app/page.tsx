@@ -19,6 +19,7 @@ import { sessionInfo } from "@/lib/session";
 import { getIvRank, useSnapshots } from "@/lib/snapshots";
 import { AgentPanel } from "@/components/AgentPanel";
 import { TruthBar } from "@/components/TruthBar";
+import { useSkewAtm } from "@/lib/hooks/useSkewAtm";
 
 /** Valores manuais de GEX + carimbo de edição (WO-14), persistidos por ticker. */
 interface GexValues {
@@ -67,8 +68,7 @@ function PreMarketPanel() {
   const [calEvents, setCalEvents] = useState<any[]>([]);
 
   const snapshots = useSnapshots((st) => st.snapshots);
-  const skew = chain && chain.expiries[0] ? skewInfo(chain, chain.expiries[0].date) : null;
-  const atmIv = skew?.ivCallAtm && skew?.ivPutAtm ? (skew.ivCallAtm + skew.ivPutAtm) / 2 : null;
+  const { skew, atmIv } = useSkewAtm(chain?.expiries[0]?.date ?? null);
   const ivRank = atmIv != null ? getIvRank(snapshots, ticker, atmIv) : null;
 
   const greeks = useMemo(() => netGreeks(positions, chain, selic), [positions, chain, selic]);
@@ -234,9 +234,8 @@ export default function CockpitPage() {
   const gex = byTicker[ticker] ?? EMPTY_GEX;
   const setGexField = (k: keyof Omit<GexValues, "editedAt">, v: string) => patchFor(ticker, { [k]: v });
 
-  const skew = chain && selectedExpiry ? skewInfo(chain, selectedExpiry) : null;
+  const { skew, atmIv } = useSkewAtm();
   const suggestion = skew ? suggestFromSkew(skew) : null;
-  const atmIv = skew?.ivCallAtm && skew?.ivPutAtm ? (skew.ivCallAtm + skew.ivPutAtm) / 2 : null;
   const greeks = useMemo(() => netGreeks(positions, chain, selic), [positions, chain, selic]);
   const risk = chain ? var95(positions, chain, selic, atmIv) : null;
   const pozinhos = useMemo(() => (chain ? scanPozinhos(chain, DEFAULT_POZINHO_FILTERS).slice(0, 6) : []), [chain]);

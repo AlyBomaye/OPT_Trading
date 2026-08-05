@@ -156,11 +156,3 @@ export function sessionsBetween(dateIso: string, refIso: string): number {
   return businessDays;
 }
 
-/**
- * Formata a idade em pregões de forma amigável em pt-BR.
- */
-export function ageLabel(sessions: number): string {
-  if (sessions <= 0) return "hoje";
-  if (sessions === 1) return "1 pregão";
-  return `${sessions} pregões`;
-}

@@ -823,7 +823,15 @@ export default function MacroPage() {
 
         {ratesOpen && (
           <div className="p-3 space-y-3">
-            {linhasRates.map((l) => (
+            {/* WO-34 §A: Pré e Treasuries dividem a primeira linha, cada um só com o painel de
+                variações — o nível já se lê na coluna TAXA da tabela. As demais seguem em
+                largura inteira com os dois painéis. */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+              {linhasRates.slice(0, 2).map((l) => (
+                <LinhaRates key={l.titulo} {...l} modo="somenteVariacao" />
+              ))}
+            </div>
+            {linhasRates.slice(2).map((l) => (
               <LinhaRates key={l.titulo} {...l} />
             ))}
           </div>

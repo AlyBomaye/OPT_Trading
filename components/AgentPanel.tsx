@@ -5,6 +5,7 @@ import { Bot, ChevronDown, ChevronUp, AlertTriangle, Info, CheckCircle2, Shield,
 import clsx from "clsx";
 import Link from "next/link";
 import type { AgentReport, AgentContext, Risco } from "@/lib/agents/types";
+import { fmtNum } from "@/lib/format";
 
 interface AgentPanelProps {
   agentId: string;
@@ -13,6 +14,16 @@ interface AgentPanelProps {
   carteiraCtx?: any;
   chainCtx?: any;
   agentContext?: AgentContext;
+}
+
+/**
+ * WO-34 §B: a evidência era renderizada crua — daí o `2.846767416333916` que apareceu na tela.
+ * O WO-30 corrigiu o ruído de ponto flutuante para preços; esta superfície ficou de fora.
+ */
+function fmtValorEvidencia(v: unknown): string {
+  if (v == null) return "—";
+  if (typeof v === "number") return Number.isFinite(v) ? fmtNum(v, 2) : "—";
+  return String(v);
 }
 
 export function AgentPanel({ agentId, title, ticker, carteiraCtx, chainCtx, agentContext }: AgentPanelProps) {
@@ -147,14 +158,29 @@ export function AgentPanel({ agentId, title, ticker, carteiraCtx, chainCtx, agen
                             </Link>
                           )}
                         </div>
+                        {/* WO-34 §B: leitura → por que importa → exemplo, com hierarquia visual */}
                         <p className="text-xxs text-term-text/90 leading-relaxed mb-1.5">{a.detalhe}</p>
+
+                        {a.porQueImporta && (
+                          <p className="text-xxs text-term-text/75 leading-relaxed mb-1.5">
+                            <span className="text-term-cyan font-semibold">Por que importa: </span>
+                            {a.porQueImporta}
+                          </p>
+                        )}
+
+                        {a.exemplo && (
+                          <p className="text-xxs text-term-dim leading-relaxed mb-1.5 pl-2 border-l-2 border-term-line/60">
+                            <span className="text-term-gold font-semibold">Exemplo: </span>
+                            {a.exemplo}
+                          </p>
+                        )}
 
                         {/* Evidências */}
                         {a.evidencias.length > 0 && (
                           <div className="flex flex-wrap gap-1.5 mt-1 pt-1 border-t border-term-line/40">
                             {a.evidencias.map((ev, i) => (
                               <span key={i} className="text-xxs font-mono bg-term-panel border border-term-line px-1.5 py-0.5 rounded text-term-dim" title={`Fonte: ${ev.fonte} (asOf: ${ev.asOf})`}>
-                                {ev.metrica}: <strong className="text-term-text">{ev.valor ?? "N/A"}</strong>
+                                {ev.metrica}: <strong className="text-term-text">{fmtValorEvidencia(ev.valor)}</strong>
                               </span>
                             ))}
                           </div>

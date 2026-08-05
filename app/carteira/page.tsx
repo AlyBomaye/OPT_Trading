@@ -24,6 +24,7 @@ import { ActionFlags } from "@/components/ActionFlags";
 import { PerformanceCharts } from "@/components/PerformanceCharts";
 import { AgentPanel } from "@/components/AgentPanel";
 import { TruthBar } from "@/components/TruthBar";
+import { useSkewAtm } from "@/lib/hooks/useSkewAtm";
 
 export default function CarteiraPage() {
   const {
@@ -72,8 +73,7 @@ export default function CarteiraPage() {
   );
 
   const greeks = useMemo(() => netGreeks(positions, chain, selic), [positions, chain, selic]);
-  const skew = chain && selectedExpiry ? skewInfo(chain, selectedExpiry) : null;
-  const atmIv = skew?.ivCallAtm && skew?.ivPutAtm ? (skew.ivCallAtm + skew.ivPutAtm) / 2 : null;
+  const { skew, atmIv } = useSkewAtm();
   const risk = chain && positions.length ? varGrid(positions, chain, selic, atmIv) : null;
   const stress = chain && positions.length ? stressBook(positions, chain, selic) : [];
 

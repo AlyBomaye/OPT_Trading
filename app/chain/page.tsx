@@ -7,6 +7,7 @@ import { TermStructure } from "@/components/TermStructure";
 import { VolSmile } from "@/components/VolSmile";
 import { AgentPanel } from "@/components/AgentPanel";
 import { TruthBar } from "@/components/TruthBar";
+import { useSkewAtm } from "@/lib/hooks/useSkewAtm";
 
 export default function ChainPage() {
   const chain = useMarket((st) => st.chain);
@@ -14,7 +15,7 @@ export default function ChainPage() {
   const selectedExpiry = useMarket((st) => st.selectedExpiry);
   const selic = useMarket((st) => st.selic);
 
-  const skew = chain && selectedExpiry ? skewInfo(chain, selectedExpiry) : null;
+  const { skew } = useSkewAtm();
   const atmIv = chain && selectedExpiry ? atmIvNearest(chain, selectedExpiry) : null;
 
   return (

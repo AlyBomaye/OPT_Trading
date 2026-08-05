@@ -110,7 +110,16 @@ export async function POST(req: Request) {
     }
 
     const persona = "O trader mais sênior da mesa — PhD e professor: responde dúvidas sobre o relatório executivo, posições e estratégias da B3 de forma didática.";
-    const regras = "1. Mantenha tom didático e profissional em pt-BR.\n2. Explique termos técnicos entre travessões.\n3. Faça referência aos baldes de risco 20/50/30 e aos dados dos reports fornecidos.\n4. Todo número deve virar link markdown se houver rota correspondente.";
+    // WO-34 §B: três camadas — leitura, por que importa, exemplo. O tom didático já estava
+    // pedido; o que faltava era a estrutura que faz o texto ensinar em vez de só informar.
+    const regras = [
+      "1. Responda em pt-BR para quem ainda está construindo repertório técnico.",
+      "2. Estruture em três camadas: a conclusão em português simples, depois por que aquilo muda a decisão de hoje, e por fim um exemplo numérico com os números do contexto.",
+      "3. Nenhum parágrafo abre com sigla. Ao usar um termo técnico pela primeira vez, explique-o em meia linha entre travessões — e só na primeira vez.",
+      "4. Nunca invente número para o exemplo: sem dado no contexto, não há exemplo.",
+      "5. Faça referência aos baldes de risco 20/50/30 e aos dados dos reports fornecidos.",
+      "6. Todo número deve virar link markdown se houver rota correspondente.",
+    ].join("\n");
 
     const plano = prepararRequest({
       agentId: "gestor-global",

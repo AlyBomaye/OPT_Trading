@@ -580,6 +580,7 @@ export default function ConsultorPage() {
               reports={cycleResult?.reports ?? {}}
               executados={cycleResult?.executados ?? []}
               isCycleRunning={loading}
+              custoCicloUsd={(cycleResult as any)?.custoCicloUsd}
             />
           </div>
 

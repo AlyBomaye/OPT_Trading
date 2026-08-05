@@ -1,5 +1,6 @@
 import type { AgentReport, Achado, Recomendacao } from "../types";
 import { link } from "../deeplinks";
+import { montarAchado } from "../didatica";
 import { volSeries, returnStats, volCone, parkinsonVol } from "@/lib/historical";
 
 export async function runHistorico(ctx: unknown): Promise<AgentReport> {
@@ -32,14 +33,24 @@ export async function runHistorico(ctx: unknown): Promise<AgentReport> {
       const isRich = pctl >= 0.75;
       const isCheap = pctl <= 0.25;
 
-      achados.push({
+      achados.push(montarAchado({
         id: "historico-cone-vol",
-        titulo: `HV21 em ${c21.window}d na posição ${(pctl * 100).toFixed(0)}% do Cone de Vol`,
-        detalhe: isRich
-          ? `A volatilidade histórica de 21d (HV21: ${(c21.current * 100).toFixed(1)}%) está no topo do range histórico (percentil ${(pctl * 100).toFixed(0)}%). Volatilidades tendem a reverter à média.`
+        titulo: isRich
+          ? `${ticker} está oscilando muito mais que o normal`
           : isCheap
-          ? `HV21 em ${(c21.current * 100).toFixed(1)}% está no fundo do range (percentil ${(pctl * 100).toFixed(0)}%). Volatilidade barata favorece compra de opções OTM.`
-          : `HV21 em ${(c21.current * 100).toFixed(1)}% encontra-se em patamar intermediário do histórico.`,
+          ? `${ticker} está oscilando muito menos que o normal`
+          : `${ticker} está oscilando dentro do normal`,
+        leitura: isRich
+          ? `Nos últimos 21 pregões ${ticker} balançou ${(c21.current * 100).toFixed(1)}% ao ano — mais do que em ${(pctl * 100).toFixed(0)}% de toda a sua história recente.`
+          : isCheap
+          ? `Nos últimos 21 pregões ${ticker} balançou só ${(c21.current * 100).toFixed(1)}% ao ano — menos do que em ${(100 - pctl * 100).toFixed(0)}% de toda a sua história recente.`
+          : `Nos últimos 21 pregões ${ticker} balançou ${(c21.current * 100).toFixed(1)}% ao ano, em linha com o seu próprio histórico.`,
+        porQueImporta: isRich
+          ? `Agitação costuma voltar ao normal com o tempo. Como o preço das opções acompanha essa agitação, quem vende prêmio agora tende a receber caro por um risco que provavelmente vai diminuir. O contrário vale para quem compra.`
+          : isCheap
+          ? `Quando o ativo está parado, as opções ficam baratas — e é justamente aí que comprar opção custa pouco caso o movimento volte. O risco é o ativo continuar parado e o prêmio derreter pelo tempo.`
+          : `Sem extremo de um lado nem do outro, a decisão de comprar ou vender volatilidade não encontra aqui um argumento forte. Olhe o spread contra a volatilidade implícita antes de escolher o lado.`,
+        exemplo: `O cone de volatilidade mostra que, na janela de ${c21.window} pregões, ${ticker} já andou de ${(c21.min * 100).toFixed(1)}% a ${(c21.max * 100).toFixed(1)}% ao ano. Hoje está em ${(c21.current * 100).toFixed(1)}% — ${isRich ? "perto do teto" : isCheap ? "perto do piso" : "no meio da faixa"}.`,
         severidade: isRich || isCheap ? "critico" : "info",
         evidencias: [
           {
@@ -50,7 +61,7 @@ export async function runHistorico(ctx: unknown): Promise<AgentReport> {
           },
         ],
         deepLink: link("historico.cone"),
-      });
+      }));
     }
   }
 
@@ -58,12 +69,18 @@ export async function runHistorico(ctx: unknown): Promise<AgentReport> {
   if (liveAtmIv != null && lastHv21 != null) {
     const ivHvSpread = liveAtmIv - lastHv21;
     const isIvRich = ivHvSpread > 0.03;
-    achados.push({
+    achados.push(montarAchado({
       id: "historico-iv-hv-spread",
-      titulo: `Spread IV ATM vs HV21: ${(ivHvSpread * 100).toFixed(1)} bps em ${ticker}`,
-      detalhe: isIvRich
-        ? `IV ATM live (${(liveAtmIv * 100).toFixed(1)}%) está ${(ivHvSpread * 100).toFixed(1)}% acima da HV21 (${(lastHv21 * 100).toFixed(1)}%). O mercado paga prêmio por risco; favorece estratégias de venda de volatilidade.`
-        : `IV ATM live (${(liveAtmIv * 100).toFixed(1)}%) está em desconto em relação à HV21 (${(lastHv21 * 100).toFixed(1)}%).`,
+      titulo: isIvRich
+        ? `Opção de ${ticker} está mais cara do que o ativo tem andado`
+        : `Opção de ${ticker} está mais barata do que o ativo tem andado`,
+      leitura: isIvRich
+        ? `O mercado está cobrando ${(liveAtmIv * 100).toFixed(1)}% de volatilidade implícita nas opções de ${ticker}, enquanto o papel de fato oscilou ${(lastHv21 * 100).toFixed(1)}% nos últimos 21 pregões. São ${(ivHvSpread * 100).toFixed(1)} pontos de diferença, a favor de quem vende.`
+        : `O mercado está cobrando ${(liveAtmIv * 100).toFixed(1)}% nas opções de ${ticker}, abaixo dos ${(lastHv21 * 100).toFixed(1)}% que o papel de fato oscilou nos últimos 21 pregões.`,
+      porQueImporta: isIvRich
+        ? `Você está sendo pago acima do que o histórico recente justifica. Vender prêmio — lançar opção e receber por isso — tende a compensar; comprar opção agora significa pagar por uma agitação que ainda não apareceu.`
+        : `A opção está barata frente ao que o papel vem fazendo. Comprar convexidade custa pouco aqui; vender prêmio rende menos do que o risco assumido.`,
+      exemplo: `Na prática: se ${ticker} continuar oscilando como nos últimos 21 pregões, quem ${isIvRich ? "vendeu" : "comprou"} a opção no dinheiro embolsa a diferença de ${Math.abs(ivHvSpread * 100).toFixed(1)} pontos de volatilidade. É essa a aposta.`,
       severidade: isIvRich ? "atencao" : "info",
       evidencias: [
         {
@@ -74,17 +91,19 @@ export async function runHistorico(ctx: unknown): Promise<AgentReport> {
         },
       ],
       deepLink: link("historico.iv-vs-hv"),
-    });
+    }));
   }
 
   // 3. Divergência HV21 Close-to-Close vs Parkinson (Intraday Gap / Saltos)
   if (lastHv21 != null && lastParkinson != null) {
     const diff = Math.abs(lastHv21 - lastParkinson);
     if (diff > 0.04) {
-      achados.push({
+      achados.push(montarAchado({
         id: "historico-divergencia-parkinson",
-        titulo: `Divergência entre HV Close-to-Close (${(lastHv21 * 100).toFixed(1)}%) e Parkinson (${(lastParkinson * 100).toFixed(1)}%)`,
-        detalhe: `Divergência expressiva de ${(diff * 100).toFixed(1)}% indica ocorrência frequente de gaps de abertura ou variações intradiárias atípicas.`,
+        titulo: `${ticker} está se movendo dentro do dia mais do que o fechamento revela`,
+        leitura: `Medindo só de fechamento a fechamento, ${ticker} oscilou ${(lastHv21 * 100).toFixed(1)}%. Medindo pela máxima e mínima de cada dia, ${(lastParkinson * 100).toFixed(1)}%. A diferença de ${(diff * 100).toFixed(1)} pontos indica movimento intradiário que some no fechamento.`,
+        porQueImporta: `Estratégias que dependem do preço no fim do dia — como travas mantidas até o vencimento — enxergam menos risco do que existe de verdade. Se você opera com stop intradiário, esse é o número que importa: o papel encosta em preços que o gráfico de fechamento não mostra.`,
+        exemplo: `Um stop colocado com base na oscilação de fechamento (${(lastHv21 * 100).toFixed(1)}%) tem chance real de ser acionado por um movimento intradiário, já que o papel percorre o equivalente a ${(lastParkinson * 100).toFixed(1)}% ao ano dentro dos próprios pregões.`,
         severidade: "atencao",
         evidencias: [
           {
@@ -95,7 +114,7 @@ export async function runHistorico(ctx: unknown): Promise<AgentReport> {
           },
         ],
         deepLink: link("historico.iv-vs-hv"),
-      });
+      }));
     }
   }
 

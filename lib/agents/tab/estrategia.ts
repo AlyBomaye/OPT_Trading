@@ -3,6 +3,7 @@ import { link } from "../deeplinks";
 import { alocacaoPorBalde } from "../risk";
 import { suggestStructures } from "@/lib/suggest";
 import { atmIvNearest } from "@/lib/scanner";
+import { montarAchado } from "../didatica";
 
 export async function runEstrategia(ctx: unknown): Promise<AgentReport> {
   const asOf = new Date().toISOString();
@@ -26,10 +27,12 @@ export async function runEstrategia(ctx: unknown): Promise<AgentReport> {
   const desvioAlto = alocacao.desvio?.alto ?? 0;
 
   if (desvioAlto > 5) {
-    achados.push({
+    achados.push(montarAchado({
       id: "estrategia-balde-desviado",
-      titulo: `Balde ALTO desanimadoramente elevado em ${(pctAlto * 100).toFixed(1)}% (Alvo: 20%)`,
-      detalhe: `Sua carteira está com excesso de exposição em operações de risco ALTO (${(pctAlto * 100).toFixed(1)}% vs 20% alvo). Priorize Travas de Alta/Baixa ou Lançamento Coberto para enquadrar no balde MÉDIO ou BAIXO.`,
+      titulo: `Antes de montar mais nada: você já está ${desvioAlto.toFixed(0)} pontos acima do limite de risco alto`,
+      leitura: `Sua carteira tem ${(pctAlto * 100).toFixed(1)}% em operações de risco alto — aquelas em que a perda não tem teto — contra os 20% que você definiu como limite.`,
+      porQueImporta: `Isso muda que tipo de estrutura faz sentido montar agora. Uma nova ponta seca aprofunda o desvio; uma trava, que é a mesma tese com um strike comprado limitando a perda, entra no balde de risco médio e não piora o enquadramento. É a diferença entre expressar a visão e concentrar risco.`,
+      exemplo: `Para voltar aos 20%, precisa reduzir ${(desvioAlto / 100 * capitalTotal).toFixed(0)} reais de exposição de risco alto. Comprar a opção de strike acima contra uma call que você tenha vendida — ou vice-versa — converte a posição em trava sem sair da tese.`,
       severidade: desvioAlto > 15 ? "critico" : "atencao",
       evidencias: [
         {
@@ -40,7 +43,7 @@ export async function runEstrategia(ctx: unknown): Promise<AgentReport> {
         },
       ],
       deepLink: link("estrategia.workbench"),
-    });
+    }));
   }
 
   // 2. Melhores Estruturas Ranqueadas por EV Ajustado a Risco
@@ -53,10 +56,17 @@ export async function runEstrategia(ctx: unknown): Promise<AgentReport> {
 
   if (candidates.length > 0) {
     const top = candidates[0];
-    achados.push({
+    const popPct = top.metrics.pop != null ? top.metrics.pop * 100 : null;
+    const perdaMax = top.metrics.maxLoss;
+
+    achados.push(montarAchado({
       id: "estrategia-top-candidata",
-      titulo: `Melhor estrutura por EV/Risco: ${top.label} (Score ${top.score.toFixed(2)}×)`,
-      detalhe: `Estratégia ${top.label} apresenta EV esperado de R$ ${top.ev.toFixed(2)}, com PoP de ${top.metrics.pop != null ? (top.metrics.pop * 100).toFixed(1) : "—"}% e relação EV/máxPerda de ${top.score.toFixed(2)}×.`,
+      titulo: `A estrutura com melhor relação entre retorno e risco agora é ${top.label}`,
+      leitura: `Entre as candidatas testadas para o vencimento ${selectedExpiry}, ${top.label} é a que paga mais por unidade de risco assumido. O retorno médio esperado é de R$ ${top.ev.toFixed(2)}${popPct != null ? `, com ${popPct.toFixed(0)}% de chance de terminar no lucro` : ""}.`,
+      porQueImporta: `Retorno esperado sozinho não decide nada — uma estrutura pode ter retorno alto e ainda assim ser ruim se a perda possível for desproporcional. O número que importa é a razão entre os dois: aqui, ${top.score.toFixed(2)} de retorno esperado para cada real${perdaMax != null ? ` dos R$ ${Math.abs(perdaMax).toFixed(2)} que se pode perder` : " de risco"}. Acima de 1 já compensa; muito acima costuma indicar que algum preço da grade está desatualizado — vale conferir.`,
+      exemplo: popPct != null
+        ? `Repetindo essa mesma operação 10 vezes, o modelo espera ${Math.round(popPct / 10)} ganhos e ${10 - Math.round(popPct / 10)} perdas, com saldo médio positivo de R$ ${(top.ev * 10).toFixed(2)}. É um número de longo prazo: em qualquer operação isolada, o resultado é ganhar ou perder, não a média.`
+        : `A chance de lucro não pôde ser estimada para essa estrutura — sem ela, use o retorno esperado de R$ ${top.ev.toFixed(2)} apenas como ordenação relativa entre as candidatas, não como expectativa de resultado.`,
       severidade: "critico",
       evidencias: [
         {
@@ -73,7 +83,7 @@ export async function runEstrategia(ctx: unknown): Promise<AgentReport> {
         },
       ],
       deepLink: link("estrategia.payoff"),
-    });
+    }));
 
     // Se o balde ALTO estiver estourado, priorizar recomendação de balde MÉDIO
     candidates.forEach((cand: any, idx: number) => {
