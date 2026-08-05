@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { usePersistedState } from "@/lib/use-persisted-state";
 import {
   Bar,
   CartesianGrid,
@@ -34,25 +35,14 @@ interface Props {
 }
 
 export function PriceHistoryPanel({ ticker, chain, selectedExpiry, legs, breakevens }: Props) {
-  const [isOpen, setIsOpen] = useState<boolean>(() => {
-    if (typeof window === "undefined") return true;
-    const saved = localStorage.getItem("wb-history-open");
-    return saved !== null ? saved === "true" : true;
-  });
+  // Ver comentário em lib/use-persisted-state.ts: ler storage no useState quebra a hidratação.
+  const [isOpen, setIsOpen] = usePersistedState<boolean>("wb-history-open", true);
   const [range, setRange] = useState<string>("6mo");
   const [candles, setCandles] = useState<Candle[]>([]);
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
 
-  const toggleOpen = () => {
-    setIsOpen((prev) => {
-      const next = !prev;
-      if (typeof window !== "undefined") {
-        localStorage.setItem("wb-history-open", String(next));
-      }
-      return next;
-    });
-  };
+  const toggleOpen = () => setIsOpen((prev) => !prev);
 
   const fetchHistory = useCallback(async (t: string, r: string) => {
     setLoading(true);

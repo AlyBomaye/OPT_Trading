@@ -1,5 +1,6 @@
 "use client";
 
+import { usePersistedState } from "@/lib/use-persisted-state";
 import { useState } from "react";
 import { AlertCircle, AlertTriangle, ChevronDown, ChevronUp, Info, RotateCcw, Settings, ShieldAlert } from "lucide-react";
 import { evaluateFlags, useFlagSettings, type PositionFlag, type FlagThresholds } from "@/lib/position-flags";
@@ -21,24 +22,14 @@ export function ActionFlags({
   capitalTotal,
   onSelectPosition,
 }: ActionFlagsProps) {
-  const [isOpen, setIsOpen] = useState<boolean>(() => {
-    if (typeof window === "undefined") return true;
-    const saved = localStorage.getItem("carteira-flags-open");
-    return saved !== null ? saved === "true" : true;
-  });
+  // Leitura do storage após a montagem: no inicializador do useState o primeiro render do
+  // cliente divergia do servidor e quebrava a hidratação.
+  const [isOpen, setIsOpen] = usePersistedState<boolean>("carteira-flags-open", true);
   const [showSettings, setShowSettings] = useState(false);
 
   const { thresholds, setThreshold, reset } = useFlagSettings();
 
-  const toggleOpen = () => {
-    setIsOpen((prev) => {
-      const next = !prev;
-      if (typeof window !== "undefined") {
-        localStorage.setItem("carteira-flags-open", String(next));
-      }
-      return next;
-    });
-  };
+  const toggleOpen = () => setIsOpen((prev) => !prev);
 
   const flags = evaluateFlags(positions, chainCache, divsByTicker, capitalTotal, thresholds);
 

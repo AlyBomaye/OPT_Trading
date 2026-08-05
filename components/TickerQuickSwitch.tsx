@@ -5,6 +5,7 @@ import { Search, Command, Check } from "lucide-react";
 import clsx from "clsx";
 import { UNIVERSE } from "@/lib/universe";
 import { useMarket } from "@/store/market";
+import { usePersistedState, useHidratado } from "@/lib/use-persisted-state";
 
 const LS_RECENT_KEY = "ticker-recent-list";
 
@@ -15,15 +16,12 @@ export function TickerQuickSwitch() {
   const [query, setQuery] = useState("");
   const [open, setOpen] = useState(false);
   const [selectedIndex, setSelectedIndex] = useState(0);
-  const [recents, setRecents] = useState<string[]>(() => {
-    if (typeof window === "undefined") return ["PETR4", "VALE3", "BOVA11", "ITUB4", "BBDC4"];
-    try {
-      const saved = localStorage.getItem(LS_RECENT_KEY);
-      return saved ? JSON.parse(saved) : ["PETR4", "VALE3", "BOVA11", "ITUB4", "BBDC4"];
-    } catch {
-      return ["PETR4", "VALE3", "BOVA11", "ITUB4", "BBDC4"];
-    }
-  });
+  // A leitura do localStorage acontece APÓS a montagem — ler no inicializador do useState fazia
+  // o primeiro render do cliente divergir do servidor e quebrava a hidratação.
+  const [recents, setRecents] = usePersistedState<string[]>(LS_RECENT_KEY, [
+    "PETR4", "VALE3", "BOVA11", "ITUB4", "BBDC4",
+  ]);
+  const hidratado = useHidratado();
 
   const inputRef = useRef<HTMLInputElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -69,14 +67,8 @@ export function TickerQuickSwitch() {
     setQuery("");
     setOpen(false);
 
-    // Salva nos últimos 5 consultados
-    setRecents((prev) => {
-      const next = [selectedTicker, ...prev.filter((t) => t !== selectedTicker)].slice(0, 5);
-      try {
-        localStorage.setItem(LS_RECENT_KEY, JSON.stringify(next));
-      } catch {}
-      return next;
-    });
+    // Salva nos últimos 5 consultados (o hook persiste sozinho)
+    setRecents((prev) => [selectedTicker, ...prev.filter((t) => t !== selectedTicker)].slice(0, 5));
   };
 
   const handleInputKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
@@ -116,7 +108,7 @@ export function TickerQuickSwitch() {
             }}
             onFocus={() => setOpen(true)}
             onKeyDown={handleInputKeyDown}
-            placeholder={`Ativo: ${ticker ?? "PETR4"} (Atalho T)`}
+            placeholder={hidratado ? `Ativo: ${ticker ?? "PETR4"} (Atalho T)` : "Ativo (Atalho T)"}
             className="bg-transparent font-mono text-xs text-term-text placeholder-term-dim focus:outline-none w-32 uppercase"
           />
           <kbd className="text-[9px] bg-term-panel2 border border-term-line rounded px-1 text-term-dim ml-1 font-mono">T</kbd>
@@ -144,7 +136,7 @@ export function TickerQuickSwitch() {
                     <span>{item.ticker}</span>
                     <span className="text-[10px] text-term-dim font-sans">{item.sector}</span>
                   </div>
-                  {item.ticker === ticker && <Check size={12} className="text-term-cyan" />}
+                  {hidratado && item.ticker === ticker && <Check size={12} className="text-term-cyan" />}
                 </button>
               ))
             )}
@@ -161,7 +153,7 @@ export function TickerQuickSwitch() {
             onClick={() => handleSelect(t)}
             className={clsx(
               "px-2 py-0.5 text-xxs font-mono rounded border transition-colors",
-              t === ticker
+              hidratado && t === ticker
                 ? "bg-term-cyan/20 text-term-cyan border-term-cyan/50 font-bold"
                 : "bg-term-panel2 border-term-line text-term-dim hover:text-term-text hover:border-term-line/80"
             )}

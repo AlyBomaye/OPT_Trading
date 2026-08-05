@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import { Bot, X, Send, Trash2 } from "lucide-react";
 import clsx from "clsx";
 import { useMarket } from "@/store/market";
+import { usePersistedState } from "@/lib/use-persisted-state";
 import { MarkdownLite } from "@/lib/markdown-lite";
 
 interface ChatMessage {
@@ -62,13 +63,8 @@ export function GestorDock() {
   const [open, setOpen] = useState(false);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
-  const [messages, setMessages] = useState<ChatMessage[]>(() => {
-    if (typeof window === "undefined") return [];
-    try {
-      const saved = localStorage.getItem(LS_KEY);
-      return saved ? JSON.parse(saved) : [];
-    } catch { return []; }
-  });
+  // Ver lib/use-persisted-state.ts: ler o storage no inicializador quebra a hidratação.
+  const [messages, setMessages] = usePersistedState<ChatMessage[]>(LS_KEY, []);
 
   const pathname = usePathname();
   const ticker = useMarket((st) => st.ticker);
@@ -76,13 +72,10 @@ export function GestorDock() {
   const capitalTotal = useMarket((st) => st.capitalTotal);
   const scrollRef = useRef<HTMLDivElement>(null);
 
-  // Persist last 10 messages
+  // A persistência é do usePersistedState; aqui só limitamos o histórico guardado.
   useEffect(() => {
-    try {
-      const trimmed = messages.slice(-20);
-      localStorage.setItem(LS_KEY, JSON.stringify(trimmed));
-    } catch {}
-  }, [messages]);
+    if (messages.length > 20) setMessages((prev) => prev.slice(-20));
+  }, [messages, setMessages]);
 
   // Scroll to bottom
   useEffect(() => {

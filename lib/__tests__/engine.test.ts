@@ -2060,6 +2060,39 @@ async function testesWo32() {
     console.log(`✘ WO-32 Teste 7 falhou: semColSpan=${semColSpan}, altura420=${alturaMaior}`);
     failures++;
   }
+
+  // ---- Teste 8: nenhum componente lê localStorage no inicializador do useState
+  // Esse padrão parece seguro por causa da guarda `typeof window === "undefined"`, mas faz o
+  // PRIMEIRO render do cliente divergir do servidor e quebra a hidratação. Foi o erro real
+  // "Server: PETR4 / Client: VALE3" na fileira de tickers recentes.
+  const arquivos: string[] = [];
+  const varrerTsx = (dir: string) => {
+    for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+      const p = path.join(dir, e.name);
+      if (e.isDirectory()) {
+        if (e.name === "node_modules" || e.name === ".next") continue;
+        varrerTsx(p);
+      } else if (e.name.endsWith(".tsx")) {
+        arquivos.push(p);
+      }
+    }
+  };
+  varrerTsx(path.join(raiz, "app"));
+  varrerTsx(path.join(raiz, "components"));
+
+  const ofensores: string[] = [];
+  for (const f of arquivos) {
+    const src = fs.readFileSync(f, "utf-8");
+    // useState(() => { ... localStorage ... }) — leitura durante o primeiro render
+    const re = /useState[^(]*\(\s*\(\s*\)\s*=>\s*\{[\s\S]{0,400}?localStorage\.getItem/g;
+    if (re.test(src)) ofensores.push(path.relative(raiz, f));
+  }
+  if (ofensores.length === 0) {
+    console.log(`✔ WO-32 Teste 8: nenhum dos ${arquivos.length} componentes lê localStorage no useState (hidratação preservada)`);
+  } else {
+    console.log(`✘ WO-32 Teste 8 falhou — use usePersistedState em: ${ofensores.join(", ")}`);
+    failures++;
+  }
 }
 
 // ============ WO-28 — TESTES RESTAURADOS (apagados durante o WO-29) ============
