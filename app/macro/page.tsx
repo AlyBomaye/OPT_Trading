@@ -36,7 +36,7 @@ import { construirProvenance } from "@/lib/provenance";
 import { curveSlope, sessionStatus } from "@/lib/macro";
 import { Sparkline } from "@/components/Sparkline";
 import { AgentPanel } from "@/components/AgentPanel";
-import { CurvaBox } from "@/components/macro/CurvaBox";
+import { LinhaRates, type ColunaTabela } from "@/components/macro/LinhaRates";
 import { calcularCupomCambial, type VerticeCurva } from "@/lib/curvas";
 import type { CurvasBrBody } from "@/app/api/curvas-br/route";
 
@@ -264,6 +264,242 @@ export default function MacroPage() {
     [data, activeField]
   );
 
+  // ===================== WO-33: as seis linhas do Rates & FX =====================
+  // Cada linha traz o nível à esquerda e as variações à direita, na ordem pedida:
+  // Pré · Treasuries · Cupom cambial · BRL/USD · NTN-B · IPCA & IGP-M.
+  const linhasRates = useMemo(() => {
+    const HIST = [
+      { chave: "d1", nome: "1D atrás", cor: "#94a3b8", op: 0.9 },
+      { chave: "d5", nome: "5D atrás", cor: "#64748b", op: 0.8 },
+      { chave: "d21", nome: "1M atrás", cor: "#fbbf24", op: 0.8 },
+      { chave: "d63", nome: "3M atrás", cor: "#6b7689", op: 0.7 },
+    ] as const;
+
+    const colunasCurva: ColunaTabela[] = [
+      { chave: "vertice", rotulo: "VÉRTICE", tipo: "texto" },
+      { chave: "taxa", rotulo: "TAXA", tipo: "taxa" },
+      { chave: "d1", rotulo: "Δ 1D", tipo: "bps" },
+      { chave: "d5", rotulo: "Δ 5D", tipo: "bps" },
+      { chave: "d21", rotulo: "Δ 1M", tipo: "bps" },
+      { chave: "d63", rotulo: "Δ 3M", tipo: "bps" },
+    ];
+
+    const rot = (v: string) => v.slice(0, 7);
+
+    /** Monta os dois gráficos de uma curva do Tesouro a partir do payload da rota. */
+    const daCurvaTesouro = (vertices: any[], hist: any, titulo: string, cor: string, nota: string) => {
+      const variacaoDados = vertices.map((v) => {
+        const linha: any = { x: rot(v.vencimento), hoje: v.taxa };
+        for (const h of HIST) {
+          const anterior = (hist?.[h.chave] ?? []).find((a: any) => a.vencimento === v.vencimento);
+          linha[h.chave] = anterior ? anterior.taxa : null;
+        }
+        return linha;
+      });
+      return {
+        titulo,
+        nota,
+        nivel: {
+          dados: vertices.map((v) => ({ x: rot(v.vencimento), hoje: v.taxa })),
+          xKey: "x",
+          series: [{ chave: "hoje", nome: "Hoje", cor }],
+        },
+        variacao: {
+          dados: variacaoDados,
+          xKey: "x",
+          series: [
+            { chave: "hoje", nome: "Hoje", cor },
+            ...HIST.map((h) => ({ chave: h.chave, nome: h.nome, cor: h.cor, tracejada: true, opacidade: h.op })),
+          ],
+        },
+        tabela: {
+          colunas: colunasCurva,
+          linhas: vertices.map((v) => ({
+            vertice: rot(v.vencimento), taxa: v.taxa, d1: v.d1, d5: v.d5, d21: v.d21, d63: v.d63,
+          })),
+        },
+      };
+    };
+
+    const out: any[] = [];
+
+    // 1 — Pré (Tesouro)
+    out.push({
+      ...daCurvaTesouro(
+        curvas?.pre ?? [], curvas?.historico?.pre, "Pré (Tesouro) — curva nominal BR", "#fbbf24",
+        "Curva dos títulos prefixados do Tesouro (LTN/NTN-F). Não é a curva de futuros DI1 da B3."
+      ),
+      fonte: "Tesouro Transparente",
+      dataDoDado: curvas?.dataBase ?? null,
+      vazio: "Curva do Tesouro indisponível nesta execução.",
+    });
+
+    // 2 — Treasuries US: as curvas passadas são reconstruídas de `hoje − variação`, que é o
+    // método que este painel já usava para desenhar "1M atrás".
+    const tenores: [string, string][] = [["^IRX", "3M"], ["^FVX", "5Y"], ["^TNX", "10Y"], ["^TYX", "30Y"]];
+    const us = tenores.map(([sym, rotulo]) => {
+      const s = data?.series.find((x) => x.symbol === sym);
+      const hoje = s?.last ?? null;
+      const volta = (chg: number | null | undefined) => (hoje != null && chg != null ? hoje - chg / 100 : null);
+      // O grupo JURO já entrega as variações em bps; a tabela padronizada trabalha em pp.
+      const pp = (chg: number | null | undefined) => (chg != null ? chg / 100 : null);
+      return {
+        x: rotulo, hoje,
+        d1: volta(s?.chg1d), d5: volta(s?.chg5d), d21: volta(s?.chg1m), d63: volta(s?.chg3m),
+        vd1: pp(s?.chg1d), vd5: pp(s?.chg5d), vd21: pp(s?.chg1m), vd63: pp(s?.chg3m),
+      };
+    });
+    out.push({
+      titulo: "Treasuries US — curva nominal",
+      fonte: "Yahoo Finance",
+      dataDoDado: data?.series.find((x) => x.symbol === "^TNX")?.dataDoDado ?? null,
+      nota: usYieldCurve?.slopeInfo.slope != null
+        ? `Curva ${usYieldCurve.slopeInfo.label} (10Y−3M: ${usYieldCurve.slopeInfo.slope.toFixed(2)}%).`
+        : undefined,
+      nivel: {
+        dados: us.map((u) => ({ x: u.x, hoje: u.hoje })),
+        xKey: "x",
+        series: [{ chave: "hoje", nome: "Hoje", cor: "#22d3ee" }],
+      },
+      variacao: {
+        dados: us, xKey: "x",
+        series: [
+          { chave: "hoje", nome: "Hoje", cor: "#22d3ee" },
+          ...HIST.map((h) => ({ chave: h.chave, nome: h.nome, cor: h.cor, tracejada: true, opacidade: h.op })),
+        ],
+      },
+      tabela: {
+        colunas: colunasCurva,
+        linhas: us.map((u) => ({ vertice: u.x, taxa: u.hoje, d1: u.vd1, d5: u.vd5, d21: u.vd21, d63: u.vd63 })),
+      },
+      vazio: "Séries de Treasuries indisponíveis.",
+    });
+
+    // 3 — Cupom cambial: derivado nas duas pontas, por isso EST.
+    out.push({
+      titulo: "Cupom cambial — diferencial BR × US",
+      fonte: "derivado (pré × Treasuries)",
+      dataDoDado: curvas?.dataBase ?? null,
+      estimado: true,
+      nota: "Derivado: (1+pré)/(1+US)−1, com a curva US interpolada para o prazo de cada vértice brasileiro. Fora do intervalo dos Treasuries o vértice fica em —.",
+      nivel: {
+        dados: cupomCambial.map((c) => ({ x: rot(c.vencimento), hoje: c.cupom })),
+        xKey: "x",
+        series: [{ chave: "hoje", nome: "Cupom", cor: "#a78bfa" }],
+      },
+      variacao: {
+        dados: cupomCambial.map((c) => ({ x: rot(c.vencimento), hoje: c.cupom, taxaBr: c.taxaBr, taxaUs: c.taxaUs })),
+        xKey: "x",
+        series: [
+          { chave: "hoje", nome: "Cupom", cor: "#a78bfa" },
+          { chave: "taxaBr", nome: "Pré BR", cor: "#fbbf24", tracejada: true, opacidade: 0.7 },
+          { chave: "taxaUs", nome: "US interp.", cor: "#22d3ee", tracejada: true, opacidade: 0.7 },
+        ],
+      },
+      tabela: {
+        colunas: [
+          { chave: "vertice", rotulo: "VÉRTICE", tipo: "texto" },
+          { chave: "taxaBr", rotulo: "PRÉ BR", tipo: "taxa" },
+          { chave: "taxaUs", rotulo: "US", tipo: "taxa" },
+          { chave: "taxa", rotulo: "CUPOM", tipo: "taxa" },
+        ] as ColunaTabela[],
+        linhas: cupomCambial.map((c) => ({ vertice: rot(c.vencimento), taxaBr: c.taxaBr, taxaUs: c.taxaUs, taxa: c.cupom })),
+      },
+      vazio: "Precisa da curva pré e dos Treasuries para calcular.",
+    });
+
+    // 4 — BRL/USD: não é curva. Preço à esquerda, variação por janela à direita.
+    out.push({
+      titulo: "BRL/USD — preço e variações",
+      fonte: "Yahoo Finance",
+      dataDoDado: usdBrlSerie?.dataDoDado ?? null,
+      nota: "Esquerda: preço nos últimos pregões. Direita: variação acumulada por janela.",
+      nivel: {
+        dados: (usdBrlSerie?.serie ?? []).map((p) => ({ x: p.rotulo, hoje: p.valor })),
+        xKey: "x",
+        series: [{ chave: "hoje", nome: "USD/BRL", cor: "#f87171" }],
+        unidade: "",
+      },
+      variacao: {
+        dados: (usdBrlSerie?.janelas ?? []).map((j) => ({ x: j.rotulo, hoje: j.valor })),
+        xKey: "x",
+        series: [{ chave: "hoje", nome: "Variação", cor: "#f87171" }],
+        unidade: "%",
+      },
+      tabela: {
+        colunas: [
+          { chave: "vertice", rotulo: "JANELA", tipo: "texto" },
+          { chave: "variacao", rotulo: "VARIAÇÃO", tipo: "pct" },
+        ] as ColunaTabela[],
+        linhas: (usdBrlSerie?.janelas ?? []).map((j) => ({ vertice: j.rotulo, variacao: j.valor })),
+      },
+      vazio: "Série USD/BRL indisponível nesta execução.",
+    });
+
+    // 5 — NTN-B
+    out.push({
+      ...daCurvaTesouro(
+        curvas?.ntnb ?? [], curvas?.historico?.ntnb, "NTN-B — curva real BR", "#34d399",
+        "Taxa real (acima do IPCA) dos títulos Tesouro IPCA+."
+      ),
+      fonte: "Tesouro Transparente",
+      dataDoDado: curvas?.dataBase ?? null,
+      vazio: "Curva NTN-B indisponível nesta execução.",
+    });
+
+    // 6 — IPCA & IGP-M: série mensal e acumulados COMPOSTOS.
+    const acum = (serie: { valor: number }[] | undefined, n: number): number | null => {
+      if (!serie || serie.length < n) return null;
+      // Π(1+i) − 1. Somar as variações mensais dá outro número e seria errado.
+      const janela = serie.slice(-n);
+      return Number(((janela.reduce((a, x) => a * (1 + x.valor / 100), 1) - 1) * 100).toFixed(2));
+    };
+    const ipcaS = data?.brasil.ipcaMensalSeries ?? [];
+    const igpmS = data?.brasil.igpmSeries ?? [];
+    const serieInflacao = ipcaS.map((x, i) => ({
+      x: (x.data ?? "").slice(3),
+      ipca: x.valor,
+      igpm: igpmS[i]?.valor ?? null,
+    }));
+    const ultimo = (s: { valor: number }[]) => (s.length ? s[s.length - 1].valor : null);
+    const seriesInflacao = [
+      { chave: "ipca", nome: "IPCA m/m", cor: "#22d3ee" },
+      { chave: "igpm", nome: "IGP-M m/m", cor: "#fbbf24" },
+    ];
+    out.push({
+      titulo: "IPCA & IGP-M — inflação",
+      fonte: "BCB SGS",
+      dataDoDado: null,
+      nota: "Acumulados compostos: Π(1+i)−1, não soma das variações mensais.",
+      // Esquerda: a leitura mensal. Direita: o acumulado em 12 meses ao longo do tempo — é a
+      // série que mostra tendência, e repetir o mesmo gráfico nos dois lados não informaria nada.
+      nivel: { dados: serieInflacao, xKey: "x", series: seriesInflacao },
+      variacao: {
+        dados: (data?.brasil.ipca12mSeries ?? []).map((x) => ({ x: (x.data ?? "").slice(3), acum12: x.valor })),
+        xKey: "x",
+        series: [{ chave: "acum12", nome: "IPCA 12m", cor: "#22d3ee" }],
+      },
+      tabela: {
+        colunas: [
+          { chave: "vertice", rotulo: "ÍNDICE", tipo: "texto" },
+          { chave: "mes", rotulo: "MÊS", tipo: "pct" },
+          { chave: "m3", rotulo: "3M", tipo: "pct" },
+          { chave: "m6", rotulo: "6M", tipo: "pct" },
+          { chave: "m12", rotulo: "12M", tipo: "pct" },
+        ] as ColunaTabela[],
+        linhas: [
+          { vertice: "IPCA", mes: ultimo(ipcaS), m3: acum(ipcaS, 3), m6: acum(ipcaS, 6), m12: data?.brasil.ipca12m ?? acum(ipcaS, 12) },
+          { vertice: "IGP-M", mes: ultimo(igpmS), m3: acum(igpmS, 3), m6: acum(igpmS, 6), m12: acum(igpmS, 12) },
+          { vertice: "IPCA-15", mes: data?.brasil.ipca15 ?? null, m3: null, m6: null, m12: null },
+          { vertice: "INPC", mes: data?.brasil.inpc ?? null, m3: null, m6: null, m12: null },
+        ],
+      },
+      vazio: "Séries de inflação indisponíveis.",
+    });
+
+    return out;
+  }, [curvas, data, cupomCambial, usdBrlSerie, usYieldCurve]);
+
   return (
     <div className="p-4 space-y-4 max-w-7xl mx-auto font-mono">
       <AgentPanel
@@ -483,153 +719,7 @@ export default function MacroPage() {
         )}
       </div>
 
-      {/* 3. CURVA DE JUROS EUA + RATES & INFLAÇÃO BRASIL */}
-      <div id="curva-juros" className="panel">
-        <div
-          onClick={() => {
-            const next = !ratesOpen;
-            setRatesOpen(next);
-            localStorage.setItem("macro-rates-open", String(next));
-          }}
-          className="panel-title flex items-center justify-between cursor-pointer select-none"
-        >
-          <div className="flex items-center gap-2">
-            {ratesOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-            <LineChartIcon size={14} className="text-term-up" />
-            <span className="font-bold">[3] Rates &amp; FX</span>
-          </div>
-        </div>
-
-        {ratesOpen && (
-          <div className="p-3 grid lg:grid-cols-2 gap-4">
-            {/* Bloco EUA (Treasuries) */}
-            <div className="space-y-3 p-3 bg-term-panel rounded border border-term-line/60">
-              <div className="flex items-center justify-between border-b border-term-line/40 pb-2">
-                <span className="font-bold text-xs text-term-cyan">Treasuries US (Juros em % • Variação em bps)</span>
-                {usYieldCurve?.slopeInfo.slope != null && (
-                  <span
-                    className={clsx(
-                      "tag font-bold",
-                      usYieldCurve.slopeInfo.label === "INVERTIDA"
-                        ? "bg-term-down/20 text-term-down"
-                        : "bg-term-up/20 text-term-up"
-                    )}
-                  >
-                    Curva {usYieldCurve.slopeInfo.label} (10Y−3M: {usYieldCurve.slopeInfo.slope.toFixed(2)}%)
-                  </span>
-                )}
-              </div>
-
-              {/* Tabela de Rates US */}
-              <div className="overflow-x-auto">
-                <table className="w-full text-left text-xs font-mono">
-                  <thead className="sticky top-0 bg-term-panel z-10 border-b border-term-line">
-                    <tr className="border-b border-term-line text-xxs text-term-dim uppercase">
-                      <th className="py-1">Tenor</th>
-                      <th className="py-1">Taxa (%)</th>
-                      <th className="py-1">Δ 1D (bps)</th>
-                      <th className="py-1">Δ 5D (bps)</th>
-                      <th className="py-1">Δ 1M (bps)</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {getSortedSeries("JURO").map((s) => (
-                      <tr key={s.symbol} className="border-b border-term-line/20">
-                        <td className="py-1.5 font-bold text-term-text">{s.nome}</td>
-                        <td className="py-1.5 text-term-cyan font-semibold">{s.last != null ? `${s.last.toFixed(2)}%` : "—"}</td>
-                        <td className="py-1.5"><BpsCell val={s.chg1d} /></td>
-                        <td className="py-1.5"><BpsCell val={s.chg5d} /></td>
-                        <td className="py-1.5"><BpsCell val={s.chg1m} /></td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-
-              {/* Gráfico Recharts da Curva US */}
-              <div className="h-44 w-full pt-2">
-                <ResponsiveContainer width="100%" height="100%">
-                  <LineChart data={usYieldCurve?.chartData ?? []} margin={{ top: 5, right: 10, left: -20, bottom: 0 }}>
-                    <CartesianGrid stroke="#232a38" strokeDasharray="3 3" />
-                    <XAxis dataKey="tenor" stroke="#6b7689" fontSize={9} />
-                    <YAxis stroke="#6b7689" fontSize={9} tickFormatter={(v) => `${v}%`} />
-                    <Tooltip contentStyle={{ background: "#151922", border: "1px solid #232a38", fontSize: 11 }} />
-                    <Legend wrapperStyle={{ fontSize: 10, fontFamily: "monospace" }} />
-                    <Line type="monotone" dataKey="hoje" name="Hoje" stroke="#22d3ee" strokeWidth={2} dot={{ r: 3 }} />
-                    <Line type="monotone" dataKey="h1m" name="1M atrás" stroke="#fbbf24" strokeWidth={1.5} strokeDasharray="3 3" dot={false} />
-                    <Line type="monotone" dataKey="h3m" name="3M atrás" stroke="#6b7689" strokeWidth={1} strokeDasharray="2 2" dot={false} />
-                  </LineChart>
-                </ResponsiveContainer>
-              </div>
-            </div>
-
-            {/* WO-32: curvas brasileiras e câmbio — quatro boxes do mesmo tamanho do Treasuries */}
-            <CurvaBox
-              titulo="Pré (Tesouro) — curva nominal BR"
-              fonte="Tesouro Transparente"
-              dataDoDado={curvas?.dataBase ?? null}
-              pontos={(curvas?.pre ?? []).map((v) => ({ rotulo: v.vencimento.slice(0, 7), anos: v.anos, valor: v.taxa }))}
-              cor="#fbbf24"
-              nota="Curva dos títulos prefixados do Tesouro (LTN/NTN-F). Não é a curva de futuros DI1 da B3."
-              vazio="Curva do Tesouro indisponível nesta execução."
-            />
-            <CurvaBox
-              titulo="NTN-B — curva real BR"
-              fonte="Tesouro Transparente"
-              dataDoDado={curvas?.dataBase ?? null}
-              pontos={(curvas?.ntnb ?? []).map((v) => ({ rotulo: v.vencimento.slice(0, 7), anos: v.anos, valor: v.taxa }))}
-              cor="#34d399"
-              nota="Taxa real (acima do IPCA) dos títulos Tesouro IPCA+."
-              vazio="Curva NTN-B indisponível nesta execução."
-            />
-            <CurvaBox
-              titulo="BRL/USD — série e janelas"
-              fonte="Yahoo Finance"
-              dataDoDado={usdBrlSerie?.dataDoDado ?? null}
-              serie={usdBrlSerie?.serie ?? []}
-              pontos={usdBrlSerie?.janelas ?? []}
-              unidade="%"
-              cor="#f87171"
-              nota="Gráfico: preço nos últimos pregões. Tabela: variação por janela."
-              vazio="Série USD/BRL indisponível nesta execução."
-              tipoTabela="janelas"
-            />
-            <CurvaBox
-              titulo="Cupom cambial — diferencial BR × US"
-              fonte="derivado (pré × Treasuries)"
-              dataDoDado={curvas?.dataBase ?? null}
-              pontos={cupomCambial.map((c) => ({ rotulo: c.vencimento.slice(0, 7), anos: c.anos, valor: c.cupom }))}
-              estimado
-              cor="#a78bfa"
-              nota="Derivado: (1+pré)/(1+US)−1, com a curva US interpolada para o prazo de cada vértice brasileiro. Fora do intervalo dos Treasuries o vértice fica em —."
-              vazio="Precisa da curva pré e dos Treasuries para calcular."
-            />
-          </div>
-        )}
-
-        {/* Rates & Inflação Brasil em faixa de largura total */}
-        {ratesOpen && (
-          <div className="px-3 pb-3">
-            <div className="space-y-3 p-3 bg-term-panel rounded border border-term-line/60">
-              <div className="flex items-center justify-between border-b border-term-line/40 pb-2">
-                <span className="font-bold text-xs text-term-gold">Rates & Inflação Brasil (BCB SGS)</span>
-                <span className="text-xxs text-term-dim">Séries históricas (últimos 13m)</span>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3 text-xs font-mono">
-                <MacroCard title="Selic Meta" val={data?.brasil.selicMeta != null ? `${data.brasil.selicMeta.toFixed(2)}% a.a.` : "—"} />
-                <MacroCard title="CDI Diário" val={data?.brasil.cdiDaily != null ? `${data.brasil.cdiDaily.toFixed(4)}% a.d.` : "—"} />
-                <MacroCard title="IPCA 12 Meses" val={data?.brasil.ipca12m != null ? `${data.brasil.ipca12m.toFixed(2)}%` : "—"} series={data?.brasil.ipca12mSeries.map((s) => s.valor)} />
-                <MacroCard title="IPCA Mensal" val={data?.brasil.ipcaMensalSeries.length ? `${data.brasil.ipcaMensalSeries[data.brasil.ipcaMensalSeries.length - 1].valor.toFixed(2)}%` : "—"} series={data?.brasil.ipcaMensalSeries.map((s) => s.valor)} />
-                <MacroCard title="IPCA-15" val={data?.brasil.ipca15 != null ? `${data.brasil.ipca15.toFixed(2)}%` : "—"} />
-                <MacroCard title="IGP-M" val={data?.brasil.igpmSeries.length ? `${data.brasil.igpmSeries[data.brasil.igpmSeries.length - 1].valor.toFixed(2)}%` : "—"} series={data?.brasil.igpmSeries.map((s) => s.valor)} />
-              </div>
-            </div>
-          </div>
-        )}
-      </div>
-
-      {/* 4. IMPACTO NO MEU UNIVERSO */}
+      {/* 3. IMPACTO NO MEU UNIVERSO — sobe para logo depois dos painéis de mercado (WO-33 §2) */}
       <div id="impacto-universo" className="panel">
         <div
           onClick={() => {
@@ -642,7 +732,7 @@ export default function MacroPage() {
           <div className="flex items-center gap-2">
             {impactoOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
             <Zap size={14} className="text-term-gold" />
-            <span className="font-bold">[4] Impacto no Meu Universo — Driver → Tickers Afetados</span>
+            <span className="font-bold">[3] Impacto no Meu Universo — Driver → Tickers Afetados</span>
           </div>
         </div>
 
@@ -703,6 +793,42 @@ export default function MacroPage() {
             </div>
           </div>
         )}
+      </div>
+
+      {/* 4. RATES & FX */}
+      <div id="curva-juros" className="panel">
+        <div
+          onClick={() => {
+            const next = !ratesOpen;
+            setRatesOpen(next);
+            localStorage.setItem("macro-rates-open", String(next));
+          }}
+          className="panel-title flex items-center justify-between cursor-pointer select-none"
+        >
+          <div className="flex items-center gap-2">
+            {ratesOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+            <LineChartIcon size={14} className="text-term-up" />
+            <span className="font-bold">[4] Rates &amp; FX</span>
+          </div>
+        </div>
+
+        {/* Cartões de referência de curto prazo: contra eles se lê a ponta curta das curvas */}
+        {ratesOpen && (
+          <div className="px-3 pt-3 grid grid-cols-3 gap-2">
+            <MacroCard title="Selic Meta" val={data?.brasil.selicMeta != null ? `${data.brasil.selicMeta.toFixed(2)}% a.a.` : "—"} />
+            <MacroCard title="Selic Efetiva" val={data?.brasil.selicEfetiva != null ? `${data.brasil.selicEfetiva.toFixed(2)}% a.a.` : "—"} />
+            <MacroCard title="CDI Diário" val={data?.brasil.cdiDaily != null ? `${data.brasil.cdiDaily.toFixed(4)}% a.d.` : "—"} />
+          </div>
+        )}
+
+        {ratesOpen && (
+          <div className="p-3 space-y-3">
+            {linhasRates.map((l) => (
+              <LinhaRates key={l.titulo} {...l} />
+            ))}
+          </div>
+        )}
+
       </div>
     </div>
   );

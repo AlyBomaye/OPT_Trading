@@ -17,14 +17,54 @@ export interface VerticeCurva {
   anos: number;
   /** Taxa a.a. em percentual (13.55 = 13,55% a.a.). */
   taxa: number;
+  /**
+   * Variação em PONTOS PERCENTUAIS contra a data-base correspondente (-0.05 = −5 bps).
+   * `null` quando o vértice não existia naquela data — a tela mostra `—`, nunca zero:
+   * zero significaria "não mudou", que é uma afirmação sobre o mercado.
+   */
+  d1?: number | null;
+  d5?: number | null;
+  d21?: number | null;
+  d63?: number | null;
 }
+
+export type Horizonte = "d1" | "d5" | "d21" | "d63";
+
+/** Deslocamento em DIAS ÚTEIS PRESENTES NO ARQUIVO, não em calendário. */
+export const HORIZONTES: { chave: Horizonte; offset: number; rotulo: string }[] = [
+  { chave: "d1", offset: 1, rotulo: "1D atrás" },
+  { chave: "d5", offset: 5, rotulo: "5D atrás" },
+  { chave: "d21", offset: 21, rotulo: "1M atrás" },
+  { chave: "d63", offset: 63, rotulo: "3M atrás" },
+];
+
+export type CurvaHistorica = Record<Horizonte, { vencimento: string; taxa: number }[]>;
 
 export interface CurvasBr {
   /** Data do PREGÃO a que as taxas se referem — não a do fetch. */
   dataBase: string | null;
+  /** Datas-base efetivamente encontradas no arquivo para cada horizonte. */
+  datasComparacao: Record<Horizonte, string | null>;
   pre: VerticeCurva[];
   ntnb: VerticeCurva[];
+  /** Curvas anteriores completas, para o overlay do painel de variações. */
+  historico: { pre: CurvaHistorica; ntnb: CurvaHistorica };
   falhas: string[];
+}
+
+function historicoVazio(): CurvaHistorica {
+  return { d1: [], d5: [], d21: [], d63: [] };
+}
+
+function curvasVazias(falhas: string[]): CurvasBr {
+  return {
+    dataBase: null,
+    datasComparacao: { d1: null, d5: null, d21: null, d63: null },
+    pre: [],
+    ntnb: [],
+    historico: { pre: historicoVazio(), ntnb: historicoVazio() },
+    falhas,
+  };
 }
 
 /** Vértices a menos disto do vencimento distorcem a ponta curta e são descartados. */
@@ -54,17 +94,19 @@ function anosEntre(deIso: string, ateIso: string): number {
 }
 
 /**
- * Faz o parsing do CSV do Tesouro Transparente e devolve as curvas da data-base mais recente.
+ * Faz o parsing do CSV do Tesouro Transparente e devolve a curva mais recente com as variações
+ * contra D-1, D-5, D-21 e D-63.
  *
  * ATENÇÃO: o arquivo NÃO está em ordem cronológica. Varrer só o final devolve datas de 2016 —
  * foi o erro cometido na primeira medição desta fonte. A varredura tem de ser integral.
+ *
+ * Os horizontes são contados em DIAS ÚTEIS PRESENTES NO ARQUIVO, não em calendário: só existem
+ * datas-base de pregão, então feriado e fim de semana saem resolvidos por construção.
  */
 export function parseCurvasTesouro(csv: string): CurvasBr {
   const falhas: string[] = [];
-  const linhas = (csv ?? "").split("\n");
-  if (linhas.length < 2) {
-    return { dataBase: null, pre: [], ntnb: [], falhas: ["CSV vazio ou ilegível."] };
-  }
+  const linhas = (csv ?? "").split(/\r?\n/);
+  if (linhas.length < 2) return curvasVazias(["CSV vazio ou ilegível."]);
 
   const cab = linhas[0].split(";").map((s) => s.trim());
   const iTipo = cab.indexOf("Tipo Titulo");
@@ -72,64 +114,114 @@ export function parseCurvasTesouro(csv: string): CurvasBr {
   const iBase = cab.indexOf("Data Base");
   const iTaxa = cab.indexOf("Taxa Compra Manha");
   if (iTipo < 0 || iVenc < 0 || iBase < 0 || iTaxa < 0) {
-    return { dataBase: null, pre: [], ntnb: [], falhas: [`Cabeçalho inesperado: ${cab.join("|")}`] };
+    return curvasVazias([`Cabeçalho inesperado: ${cab.join("|")}`]);
   }
 
-  // 1ª passada: a data-base máxima do arquivo INTEIRO.
-  let dataBase = "";
+  // 1ª passada: todas as datas-base do arquivo INTEIRO, para escolher os cinco instantâneos.
+  const datas = new Set<string>();
   for (let i = 1; i < linhas.length; i++) {
     const c = linhas[i].split(";");
     if (c.length <= iBase) continue;
     const d = dataBrParaIso(c[iBase]);
-    if (d && d > dataBase) dataBase = d;
+    if (d) datas.add(d);
   }
-  if (!dataBase) {
-    return { dataBase: null, pre: [], ntnb: [], falhas: ["Nenhuma data-base reconhecida no arquivo."] };
+  if (datas.size === 0) return curvasVazias(["Nenhuma data-base reconhecida no arquivo."]);
+
+  const ordenadas = Array.from(datas).sort();
+  const dataBase = ordenadas[ordenadas.length - 1];
+
+  const datasComparacao: Record<Horizonte, string | null> = { d1: null, d5: null, d21: null, d63: null };
+  for (const h of HORIZONTES) {
+    const idx = ordenadas.length - 1 - h.offset;
+    datasComparacao[h.chave] = idx >= 0 ? ordenadas[idx] : null;
   }
 
-  // 2ª passada: só as linhas dessa data.
-  const preMap = new Map<string, VerticeCurva>();
-  const ntnbMap = new Map<string, VerticeCurva>();
+  const alvo = new Set<string>([dataBase, ...Object.values(datasComparacao).filter((d): d is string => !!d)]);
+
+  // 2ª passada: só as linhas das datas que interessam.
+  // Estrutura: data -> grupo -> vencimento -> { taxa, zeroCupom }
+  const porData = new Map<string, { pre: Map<string, { taxa: number; zeroCupom: boolean }>; ntnb: Map<string, { taxa: number; zeroCupom: boolean }> }>();
   let descartadosCurtos = 0;
 
   for (let i = 1; i < linhas.length; i++) {
     const c = linhas[i].split(";");
     if (c.length <= iTaxa) continue;
-    if (dataBrParaIso(c[iBase]) !== dataBase) continue;
+    const base = dataBrParaIso(c[iBase]);
+    if (!alvo.has(base)) continue;
 
     const tipo = c[iTipo].trim();
+    const ehPre = /^Tesouro Prefixado/i.test(tipo);
+    const ehNtnb = /^Tesouro IPCA\+/i.test(tipo);
+    if (!ehPre && !ehNtnb) continue;
+
     const venc = dataBrParaIso(c[iVenc]);
     const taxa = taxaBrParaNumero(c[iTaxa]);
     if (!venc || taxa == null || taxa <= 0) continue; // taxa 0 = Tesouro Selic, não é curva
 
-    const anos = anosEntre(dataBase, venc);
-    if (anos < MIN_ANOS) {
-      descartadosCurtos++;
+    // O descarte de ponta curta é medido contra a própria data-base da linha.
+    if (anosEntre(base, venc) < MIN_ANOS) {
+      if (base === dataBase) descartadosCurtos++;
       continue;
     }
 
-    const vertice: VerticeCurva = { vencimento: venc, anos: Number(anos.toFixed(2)), taxa };
-    // "com Juros Semestrais" e a versão zero-cupom convivem no mesmo vencimento; a zero-cupom
-    // é a mais líquida, então ela ganha e a outra só entra se o vencimento estiver livre.
+    if (!porData.has(base)) porData.set(base, { pre: new Map(), ntnb: new Map() });
+    const grupo = ehPre ? porData.get(base)!.pre : porData.get(base)!.ntnb;
     const zeroCupom = !/Juros Semestrais/i.test(tipo);
-
-    if (/^Tesouro Prefixado/i.test(tipo)) {
-      const atual = preMap.get(venc);
-      if (!atual || zeroCupom) preMap.set(venc, vertice);
-    } else if (/^Tesouro IPCA\+/i.test(tipo)) {
-      const atual = ntnbMap.get(venc);
-      if (!atual || zeroCupom) ntnbMap.set(venc, vertice);
-    }
+    const atual = grupo.get(venc);
+    // A zero-cupom é a mais líquida: ela prevalece quando o mesmo vencimento aparece nas duas séries.
+    if (!atual || (zeroCupom && !atual.zeroCupom)) grupo.set(venc, { taxa, zeroCupom });
   }
 
   if (descartadosCurtos > 0) {
     falhas.push(`${descartadosCurtos} vértice(s) a menos de 3 meses do vencimento descartado(s) — distorcem a ponta curta.`);
   }
 
-  const ordenar = (m: Map<string, VerticeCurva>) =>
-    Array.from(m.values()).sort((a, b) => (a.vencimento < b.vencimento ? -1 : 1));
+  const hoje = porData.get(dataBase);
+  if (!hoje) return curvasVazias([`Sem linhas utilizáveis para a data-base ${dataBase}.`]);
 
-  return { dataBase, pre: ordenar(preMap), ntnb: ordenar(ntnbMap), falhas };
+  /** Monta os vértices de hoje com os deltas casados POR VENCIMENTO (não por posição). */
+  const montar = (qual: "pre" | "ntnb"): VerticeCurva[] => {
+    const atual = hoje[qual];
+    const vencimentos = Array.from(atual.keys()).sort();
+    return vencimentos.map((venc) => {
+      const taxa = atual.get(venc)!.taxa;
+      const v: VerticeCurva = {
+        vencimento: venc,
+        anos: Number(anosEntre(dataBase, venc).toFixed(2)),
+        taxa,
+        d1: null, d5: null, d21: null, d63: null,
+      };
+      for (const h of HORIZONTES) {
+        const dataAnterior = datasComparacao[h.chave];
+        const anterior = dataAnterior ? porData.get(dataAnterior)?.[qual].get(venc) : undefined;
+        // Vértice ausente na data de comparação fica null — a tela mostra "—", nunca zero.
+        v[h.chave] = anterior ? Number((taxa - anterior.taxa).toFixed(4)) : null;
+      }
+      return v;
+    });
+  };
+
+  const montarHistorico = (qual: "pre" | "ntnb"): CurvaHistorica => {
+    const out = historicoVazio();
+    for (const h of HORIZONTES) {
+      const dataAnterior = datasComparacao[h.chave];
+      const mapa = dataAnterior ? porData.get(dataAnterior)?.[qual] : undefined;
+      if (!mapa) continue;
+      out[h.chave] = Array.from(mapa.entries())
+        .sort((a, b) => (a[0] < b[0] ? -1 : 1))
+        .map(([vencimento, x]) => ({ vencimento, taxa: x.taxa }));
+    }
+    return out;
+  };
+
+  return {
+    dataBase,
+    datasComparacao,
+    pre: montar("pre"),
+    ntnb: montar("ntnb"),
+    historico: { pre: montarHistorico("pre"), ntnb: montarHistorico("ntnb") },
+    falhas,
+  };
 }
 
 /**

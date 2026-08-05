@@ -58,8 +58,13 @@ export async function GET() {
     }
     return NextResponse.json({
       dataBase: null,
+      datasComparacao: { d1: null, d5: null, d21: null, d63: null },
       pre: [],
       ntnb: [],
+      historico: {
+        pre: { d1: [], d5: [], d21: [], d63: [] },
+        ntnb: { d1: [], d5: [], d21: [], d63: [] },
+      },
       falhas: [`Falha ao obter curvas do Tesouro: ${err?.message ?? "erro desconhecido"}`],
       buscadoEm: new Date().toISOString(),
     } satisfies CurvasBrBody);

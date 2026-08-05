@@ -2035,11 +2035,11 @@ async function testesWo32() {
   }
 
   // ---- Teste 6: nenhum box da Macro exibe o relógio do fetch como data do dado
-  const srcCurvaBox = fs.readFileSync(path.join(raiz, "components", "macro", "CurvaBox.tsx"), "utf-8");
+  const srcCurvaBox = fs.readFileSync(path.join(raiz, "components", "macro", "LinhaRates.tsx"), "utf-8");
   const usaDataDoDado = /dataDoDado/.test(srcCurvaBox) && /construirProvenance/.test(srcCurvaBox);
   const naoUsaBuscadoEm = !/fmtDateBR\(\s*\w*buscadoEm/i.test(srcCurvaBox);
   if (usaDataDoDado && naoUsaBuscadoEm) {
-    console.log("✔ WO-32 Teste 6: CurvaBox carimba dataDoDado via provenance, nunca o buscadoEm");
+    console.log("✔ WO-32 Teste 6: LinhaRates carimba dataDoDado via provenance, nunca o buscadoEm");
   } else {
     console.log(`✘ WO-32 Teste 6 falhou: dataDoDado=${usaDataDoDado}, semBuscadoEm=${naoUsaBuscadoEm}`);
     failures++;
@@ -2091,6 +2091,151 @@ async function testesWo32() {
     console.log(`✔ WO-32 Teste 8: nenhum dos ${arquivos.length} componentes lê localStorage no useState (hidratação preservada)`);
   } else {
     console.log(`✘ WO-32 Teste 8 falhou — use usePersistedState em: ${ofensores.join(", ")}`);
+    failures++;
+  }
+
+  await testesWo33();
+}
+
+// ============ WO-33 — NÍVEL + VARIAÇÃO PADRONIZADOS ============
+
+async function testesWo33() {
+  const fs = await import("fs");
+  const path = await import("path");
+  const raiz = path.resolve(__dirname, "..", "..");
+  const { parseCurvasTesouro } = await import("../curvas");
+
+  // Fixture: 70 datas-base em ordem EMBARALHADA, com um vértice que só existe na data mais
+  // recente. Se o parser confiar na ordem do arquivo, os horizontes saem errados.
+  const cab =
+    "Tipo Titulo;Data Vencimento;Data Base;Taxa Compra Manha;Taxa Venda Manha;PU Compra Manha;PU Venda Manha;PU Base Manha";
+  const linhas: string[] = [cab];
+  // 70 dias úteis fictícios: 2026-05-04 .. (só dias de semana), o mais recente é o índice 69
+  const datas: string[] = [];
+  const d = new Date(Date.UTC(2026, 4, 4));
+  while (datas.length < 70) {
+    const dia = d.getUTCDay();
+    if (dia !== 0 && dia !== 6) datas.push(d.toISOString().slice(0, 10));
+    d.setUTCDate(d.getUTCDate() + 1);
+  }
+  const maisRecente = datas[69];
+  // taxa do jan/28 sobe 0,01 por dia: na data i vale 13,00 + i*0,01
+  const embaralhadas = [...datas].reverse(); // grava do mais recente para o mais antigo
+  for (const dt of embaralhadas) {
+    const i = datas.indexOf(dt);
+    const taxa = (13 + i * 0.01).toFixed(2).replace(".", ",");
+    const [a, m, dd] = dt.split("-");
+    const br = `${dd}/${m}/${a}`;
+    linhas.push(`Tesouro Prefixado;01/01/2028;${br};${taxa};${taxa};100;100;100`);
+  }
+  // vértice que só existe na data mais recente
+  {
+    const [a, m, dd] = maisRecente.split("-");
+    linhas.push(`Tesouro Prefixado;01/01/2033;${dd}/${m}/${a};14,50;14,55;100;100;100`);
+  }
+  const c = parseCurvasTesouro(linhas.join("\n"));
+
+  // ---- Teste 1: horizontes contados em dias úteis presentes no arquivo
+  const esperado = { d1: datas[68], d5: datas[64], d21: datas[48], d63: datas[6] };
+  const okDatas =
+    c.dataBase === maisRecente &&
+    c.datasComparacao.d1 === esperado.d1 &&
+    c.datasComparacao.d5 === esperado.d5 &&
+    c.datasComparacao.d21 === esperado.d21 &&
+    c.datasComparacao.d63 === esperado.d63;
+  if (okDatas) {
+    console.log(`✔ WO-33 Teste 1: horizontes resolvidos em dias úteis do arquivo (D-1 ${esperado.d1}, D-63 ${esperado.d63})`);
+  } else {
+    console.log(`✘ WO-33 Teste 1 falhou: ${JSON.stringify(c.datasComparacao)} vs ${JSON.stringify(esperado)}`);
+    failures++;
+  }
+
+  // ---- Teste 2: vértice ausente na data de comparação sai null, nunca zero
+  const jan33 = c.pre.find((v) => v.vencimento === "2033-01-01");
+  const todosNulos = jan33 != null && [jan33.d1, jan33.d5, jan33.d21, jan33.d63].every((x) => x === null);
+  if (todosNulos) {
+    console.log("✔ WO-33 Teste 2: vértice inexistente na data anterior tem delta null (a tela mostra —, não 0)");
+  } else {
+    console.log(`✘ WO-33 Teste 2 falhou: ${JSON.stringify(jan33)}`);
+    failures++;
+  }
+
+  // ---- Teste 3: delta exato, casado por vencimento
+  const jan28 = c.pre.find((v) => v.vencimento === "2028-01-01");
+  const okDelta =
+    jan28 != null &&
+    Math.abs((jan28.d1 ?? NaN) - 0.01) < 1e-6 &&
+    Math.abs((jan28.d5 ?? NaN) - 0.05) < 1e-6 &&
+    Math.abs((jan28.d21 ?? NaN) - 0.21) < 1e-6 &&
+    Math.abs((jan28.d63 ?? NaN) - 0.63) < 1e-6;
+  if (okDelta) {
+    console.log("✔ WO-33 Teste 3: deltas exatos por vencimento (+1, +5, +21 e +63 bps na série sintética)");
+  } else {
+    console.log(`✘ WO-33 Teste 3 falhou: d1=${jan28?.d1} d5=${jan28?.d5} d21=${jan28?.d21} d63=${jan28?.d63}`);
+    failures++;
+  }
+
+  // ---- Teste 4: histórico completo devolvido para o overlay
+  const temHistorico =
+    c.historico.pre.d1.length > 0 && c.historico.pre.d63.length > 0 &&
+    c.historico.pre.d1.every((x) => typeof x.taxa === "number" && !!x.vencimento);
+  if (temHistorico) {
+    console.log("✔ WO-33 Teste 4: histórico das curvas devolvido para o overlay do painel de variações");
+  } else {
+    console.log("✘ WO-33 Teste 4 falhou: histórico vazio ou malformado");
+    failures++;
+  }
+
+  // ---- Teste 5: acumulado COMPOSTO, não soma
+  // 1,00% em três meses: composto = 3,0301%; soma = 3,00%. Os dois têm de divergir no teste.
+  const meses = [{ valor: 1 }, { valor: 1 }, { valor: 1 }];
+  const composto = Number(((meses.reduce((a, x) => a * (1 + x.valor / 100), 1) - 1) * 100).toFixed(4));
+  const soma = meses.reduce((a, x) => a + x.valor, 0);
+  const srcMacro = fs.readFileSync(path.join(raiz, "app", "macro", "page.tsx"), "utf-8");
+  const usaProduto = /reduce\(\(a, x\) => a \* \(1 \+ x\.valor \/ 100\), 1\)/.test(srcMacro);
+  if (Math.abs(composto - 3.0301) < 1e-4 && composto !== soma && usaProduto) {
+    console.log(`✔ WO-33 Teste 5: acumulado composto (${composto}%) difere da soma (${soma}%) e a página usa o produto`);
+  } else {
+    console.log(`✘ WO-33 Teste 5 falhou: composto=${composto}, soma=${soma}, usaProduto=${usaProduto}`);
+    failures++;
+  }
+
+  // ---- Teste 6: ordem dos painéis e das seis linhas
+  const iImpacto = srcMacro.indexOf("[3] Impacto no Meu Universo");
+  const iRates = srcMacro.indexOf("[4] Rates &amp; FX");
+  // A busca tem de ser DENTRO do bloco linhasRates: os mesmos nomes aparecem antes no arquivo
+  // (IMPACT_DRIVERS cita BRL/USD, por exemplo) e um indexOf global mediria a ordem errada.
+  const iniBloco = srcMacro.indexOf("const linhasRates = useMemo");
+  const fimBloco = srcMacro.indexOf("}, [curvas, data, cupomCambial", iniBloco);
+  const bloco = srcMacro.slice(iniBloco, fimBloco);
+  const ordemLinhas = ["Pré (Tesouro)", "Treasuries US", "Cupom cambial", "BRL/USD", "NTN-B", "IPCA & IGP-M"];
+  const idx = ordemLinhas.map((t) => bloco.indexOf(t));
+  const linhasEmOrdem = idx.every((v, i) => v > 0 && (i === 0 || v > idx[i - 1]));
+  if (iImpacto > 0 && iRates > iImpacto && linhasEmOrdem) {
+    console.log("✔ WO-33 Teste 6: Impacto antes de Rates & FX, e as seis linhas na ordem pedida");
+  } else {
+    console.log(`✘ WO-33 Teste 6 falhou: impacto=${iImpacto}, rates=${iRates}, linhas=${JSON.stringify(idx)}`);
+    failures++;
+  }
+
+  // ---- Teste 7: IPCA-15 não usa a SGS 256 (que é taxa, não inflação mensal)
+  const srcRota = fs.readFileSync(path.join(raiz, "app", "api", "macro", "route.ts"), "utf-8");
+  const usa7478 = /fetchBcbSgsSeries\(7478,/.test(srcRota);
+  const usa256 = /fetchBcbSgsSeries\(256,/.test(srcRota);
+  if (usa7478 && !usa256) {
+    console.log("✔ WO-33 Teste 7: IPCA-15 vem da SGS 7478 (mensal); a 256 — que repete ~9,1 por meses — saiu");
+  } else {
+    console.log(`✘ WO-33 Teste 7 falhou: usa7478=${usa7478}, usa256=${usa256}`);
+    failures++;
+  }
+
+  // ---- Teste 8: delta null nunca é renderizado como zero
+  const srcLinha = fs.readFileSync(path.join(raiz, "components", "macro", "LinhaRates.tsx"), "utf-8");
+  const trataNulo = /if \(v == null \|\| !Number\.isFinite\(Number\(v\)\)\) return \{ texto: "—"/.test(srcLinha);
+  if (trataNulo) {
+    console.log("✔ WO-33 Teste 8: fmtBps devolve — para null; zero significaria 'não mudou', que é uma afirmação");
+  } else {
+    console.log("✘ WO-33 Teste 8 falhou: LinhaRates pode renderizar null como número");
     failures++;
   }
 }

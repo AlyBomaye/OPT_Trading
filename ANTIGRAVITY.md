@@ -324,13 +324,21 @@ atualizado uma vez por dia útil — cache de 6 h na rota).
 
 ```ts
 {
-  dataBase: "2026-08-03",      // data do PREGÃO; o Tesouro publica D-1
-  buscadoEm: "2026-08-04T...", // diagnóstico; NUNCA exibido como data do dado
-  pre:  [{ vencimento: "2027-01-01", anos: 0.41, taxa: 13.55 }, ...],  // LTN/NTN-F
-  ntnb: [{ vencimento: "2029-05-15", anos: 2.78, taxa: 8.15 }, ...],   // Tesouro IPCA+
+  dataBase: "2026-08-04",      // data do PREGÃO; o Tesouro publica D-1
+  buscadoEm: "2026-08-05T...", // diagnóstico; NUNCA exibido como data do dado
+  datasComparacao: { d1, d5, d21, d63 },   // datas-base REAIS, em dias úteis do arquivo
+  pre:  [{ vencimento, anos, taxa, d1, d5, d21, d63 }, ...],  // deltas em PONTOS PERCENTUAIS
+  ntnb: [{ ... }],
+  historico: { pre: { d1: [{vencimento, taxa}], ... }, ntnb: { ... } },  // overlay
   falhas: string[]
 }
 ```
+
+**Deltas (WO-33):** casados **por `Data Vencimento`**, nunca por posição na curva — o mesmo
+jan/2027 comparado com ele mesmo. Vértice ausente na data de comparação sai `null` e a tela
+mostra `—`: zero significaria "não mudou", que é uma afirmação sobre o mercado. Os horizontes
+são contados em **dias úteis presentes no arquivo**, então feriado e fim de semana já saem
+resolvidos por construção.
 
 **Não existe fonte pública para a curva de futuros DI1 da B3.** Verificado em 04/08/2026: o JSON
 do Tesouro Direto responde **410 Gone** e a página de taxas referenciais da B3 devolve HTML sem
@@ -347,6 +355,20 @@ Armadilhas do parsing, ambas cobertas por teste:
 O **cupom cambial** da aba Rates & FX é derivado: `((1+pré)/(1+US) − 1)`, com a curva Treasury
 interpolada linearmente para o prazo de cada vértice brasileiro. Vai para a tela com chip **EST**;
 fora do intervalo coberto pelos Treasuries o vértice fica em `—` (não se extrapola juro).
+
+
+### 6.8 Séries do BCB SGS — códigos verificados
+
+| Grandeza | SGS | Observação |
+|---|---|---|
+| Selic meta | 432 | |
+| CDI diário | 12 | |
+| Selic efetiva | 1178 | |
+| IPCA mensal | 433 | |
+| IPCA 12 meses | 13522 | |
+| **IPCA-15 mensal** | **7478** | **Não use a 256.** Medido em 05/08/2026, a 256 devolve ~9,13–9,19 por oito meses seguidos — é taxa, não inflação mensal. A 7478 entrega 0,41 (06/2026) e 0,06 (07/2026). |
+| IGP-M | 189 | |
+| INPC | 188 | |
 
 ## 7. Engine quantitativo
 

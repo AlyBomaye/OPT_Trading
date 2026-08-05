@@ -284,7 +284,9 @@ async function fetchBrasilMacro(): Promise<BrasilMacro> {
     fetchBcbSgsSeries(1178, 1),
     fetchBcbSgsSeries(433, 13),
     fetchBcbSgsSeries(13522, 13),
-    fetchBcbSgsSeries(256, 1),
+    // WO-33: a SGS 256 NAO e o IPCA-15 mensal — ela oscila em ~9,1 por meses seguidos (e taxa,
+    // nao inflacao). A 7478 entrega as variacoes mensais (0,41 em 06/2026; 0,06 em 07/2026).
+    fetchBcbSgsSeries(7478, 1),
     fetchBcbSgsSeries(189, 13),
     fetchBcbSgsSeries(188, 1),
   ]);
