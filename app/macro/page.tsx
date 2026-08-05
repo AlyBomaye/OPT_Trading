@@ -354,7 +354,7 @@ export default function MacroPage() {
       fonte: "Yahoo Finance",
       dataDoDado: data?.series.find((x) => x.symbol === "^TNX")?.dataDoDado ?? null,
       nota: usYieldCurve?.slopeInfo.slope != null
-        ? `Curva ${usYieldCurve.slopeInfo.label} (10Y−3M: ${usYieldCurve.slopeInfo.slope.toFixed(2)}%).`
+        ? `Curva ${usYieldCurve.slopeInfo.label} (10Y−3M: ${fmtNum(usYieldCurve.slopeInfo.slope, 2)}%).`
         : undefined,
       nivel: {
         dados: us.map((u) => ({ x: u.x, hoje: u.hoje })),
@@ -761,7 +761,7 @@ export default function MacroPage() {
                           {valChg != null ? (
                             <span className={clsx("font-semibold", valChg >= 0 ? "text-term-up" : "text-term-down")}>
                               {valChg >= 0 ? "+" : ""}
-                              {isBps ? `${valChg.toFixed(1)} bps` : fmtPct(valChg)}
+                              {isBps ? `${fmtNum(valChg, 1)} bps` : fmtPct(valChg)}
                             </span>
                           ) : (
                             "—"
@@ -815,9 +815,9 @@ export default function MacroPage() {
         {/* Cartões de referência de curto prazo: contra eles se lê a ponta curta das curvas */}
         {ratesOpen && (
           <div className="px-3 pt-3 grid grid-cols-3 gap-2">
-            <MacroCard title="Selic Meta" val={data?.brasil.selicMeta != null ? `${data.brasil.selicMeta.toFixed(2)}% a.a.` : "—"} />
-            <MacroCard title="Selic Efetiva" val={data?.brasil.selicEfetiva != null ? `${data.brasil.selicEfetiva.toFixed(2)}% a.a.` : "—"} />
-            <MacroCard title="CDI Diário" val={data?.brasil.cdiDaily != null ? `${data.brasil.cdiDaily.toFixed(4)}% a.d.` : "—"} />
+            <MacroCard title="Selic Meta" val={data?.brasil.selicMeta != null ? `${fmtNum(data.brasil.selicMeta, 2)}% a.a.` : "—"} />
+            <MacroCard title="Selic Efetiva" val={data?.brasil.selicEfetiva != null ? `${fmtNum(data.brasil.selicEfetiva, 2)}% a.a.` : "—"} />
+            <MacroCard title="CDI Diário" val={data?.brasil.cdiDaily != null ? `${fmtNum(data.brasil.cdiDaily, 4)}% a.d.` : "—"} />
           </div>
         )}
 
@@ -860,7 +860,7 @@ function BpsCell({ val }: { val: number | null }) {
   return (
     <span className={clsx("font-semibold", val >= 0 ? "text-term-up" : "text-term-down")}>
       {val >= 0 ? "+" : ""}
-      {val.toFixed(1)}
+      {fmtNum(val, 1)}
     </span>
   );
 }
@@ -899,13 +899,13 @@ function MarketSectionGroup({
               {s.nome} <span className="text-xxs text-term-dim">({s.symbol})</span>
             </td>
             <td className="py-1.5 px-1 text-term-cyan font-semibold truncate">
-              {s.last != null ? (isBps ? `${s.last.toFixed(2)}%` : fmtNum(s.last, 2)) : "—"}
+              {s.last != null ? (isBps ? `${fmtNum(s.last, 2)}%` : fmtNum(s.last, 2)) : "—"}
             </td>
             <td className="py-1.5 px-1 truncate" style={{ backgroundColor: bgHeat }}>
               {valActive != null ? (
                 <span className={clsx("font-bold", valActive >= 0 ? "text-term-up" : "text-term-down")}>
                   {valActive >= 0 ? "+" : ""}
-                  {isBps ? `${valActive.toFixed(1)} bps` : fmtPct(valActive)}
+                  {isBps ? `${fmtNum(valActive, 1)} bps` : fmtPct(valActive)}
                 </span>
               ) : (
                 "—"
@@ -940,7 +940,7 @@ function ValCell({ val, isBps }: { val: number | null; isBps?: boolean }) {
   return (
     <span className={clsx(val >= 0 ? "text-term-up" : "text-term-down")}>
       {val >= 0 ? "+" : ""}
-      {isBps ? `${val.toFixed(1)} bps` : fmtPct(val)}
+      {isBps ? `${fmtNum(val, 1)} bps` : fmtPct(val)}
     </span>
   );
 }

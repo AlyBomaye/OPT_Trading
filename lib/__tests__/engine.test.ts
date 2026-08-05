@@ -2362,6 +2362,18 @@ async function testesWo34() {
     failures++;
   }
 
+  // ---- Teste 9b: a aba Macro não mistura 13.56% com R$ 41,93 na mesma tela
+  // toFixed devolve ponto decimal; fmtNum usa toLocaleString("pt-BR"). Sobram só dois usos
+  // legítimos na página: o arredondamento de um acumulado (número, não texto) e o alpha do CSS.
+  const semToFixed = (ler("components/macro/LinhaRates.tsx").match(/toFixed/g) ?? []).length;
+  const naPagina = (ler("app/macro/page.tsx").match(/toFixed/g) ?? []).length;
+  if (semToFixed === 0 && naPagina <= 2) {
+    console.log(`✔ WO-34 Teste 9b: Rates & FX formata em pt-BR (LinhaRates 0 toFixed, página ${naPagina} — só cálculo e CSS)`);
+  } else {
+    console.log(`✘ WO-34 Teste 9b falhou: LinhaRates=${semToFixed}, página=${naPagina}`);
+    failures++;
+  }
+
   // ---- Teste 10: grade da Macro com Pré e Treasuries em painel único
   const srcMacro = ler("app/macro/page.tsx");
   const srcLinhaRates = ler("components/macro/LinhaRates.tsx");

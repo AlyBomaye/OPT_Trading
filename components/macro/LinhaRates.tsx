@@ -17,7 +17,7 @@
 
 import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis, Legend } from "recharts";
 import clsx from "clsx";
-import { fmtDateBR } from "@/lib/format";
+import { fmtDateBR, fmtNum } from "@/lib/format";
 import { construirProvenance, corFrescor } from "@/lib/provenance";
 import { sessionInfo } from "@/lib/session";
 
@@ -61,7 +61,7 @@ interface Props {
 function fmtBps(v: unknown): { texto: string; classe: string } {
   if (v == null || !Number.isFinite(Number(v))) return { texto: "—", classe: "text-term-dim" };
   const bps = Number(v) * 100;
-  const texto = `${bps >= 0 ? "+" : ""}${bps.toFixed(1)}`;
+  const texto = `${bps >= 0 ? "+" : ""}${fmtNum(bps, 1)}`;
   // Juro subindo é aperto: vermelho. Mantém a convenção que o Treasuries já usava.
   return { texto, classe: bps > 0 ? "text-term-down" : bps < 0 ? "text-term-up" : "text-term-dim" };
 }
@@ -70,7 +70,7 @@ function fmtPct(v: unknown): { texto: string; classe: string } {
   if (v == null || !Number.isFinite(Number(v))) return { texto: "—", classe: "text-term-dim" };
   const n = Number(v);
   return {
-    texto: `${n >= 0 ? "+" : ""}${n.toFixed(2)}%`,
+    texto: `${n >= 0 ? "+" : ""}${fmtNum(n, 2)}%`,
     classe: n > 0 ? "text-term-up" : n < 0 ? "text-term-down" : "text-term-dim",
   };
 }
@@ -101,10 +101,10 @@ function Grafico({
         <LineChart data={dados} margin={{ top: 6, right: 12, left: -18, bottom: 0 }}>
           <CartesianGrid stroke="#232a38" strokeDasharray="3 3" />
           <XAxis dataKey={xKey} stroke="#6b7689" fontSize={9} interval="preserveStartEnd" minTickGap={20} />
-          <YAxis stroke="#6b7689" fontSize={9} domain={["auto", "auto"]} tickFormatter={(v) => Number(v).toFixed(1)} />
+          <YAxis stroke="#6b7689" fontSize={9} domain={["auto", "auto"]} tickFormatter={(v) => fmtNum(Number(v), 1)} />
           <Tooltip
             contentStyle={{ background: "#151922", border: "1px solid #232a38", fontSize: 11 }}
-            formatter={(v: any, nome: any) => [`${Number(v).toFixed(2)}${unidade ?? "%"}`, nome]}
+            formatter={(v: any, nome: any) => [`${fmtNum(Number(v), 2)}${unidade ?? "%"}`, nome]}
           />
           {series.length > 1 && <Legend wrapperStyle={{ fontSize: 9, fontFamily: "monospace" }} />}
           {series.map((s) => (
@@ -199,7 +199,7 @@ export function LinhaRates({ titulo, fonte, dataDoDado, estimado, nota, nivel, v
                         let conteudo: string = bruto == null ? "—" : String(bruto);
                         let classe = "text-term-fg";
                         if (c.tipo === "taxa") {
-                          conteudo = bruto == null ? "—" : `${Number(bruto).toFixed(2)}%`;
+                          conteudo = bruto == null ? "—" : `${fmtNum(Number(bruto), 2)}%`;
                           classe = "font-semibold";
                         } else if (c.tipo === "bps") {
                           const f = fmtBps(bruto);
