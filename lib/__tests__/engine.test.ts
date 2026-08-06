@@ -2212,6 +2212,111 @@ async function testesWo33() {
 
   await testesWo34();
   await testesWo35();
+  await testesWo36();
+}
+
+// ============ WO-36 — O CICLO QUE FICAVA "RODANDO" PARA SEMPRE ============
+
+async function testesWo36() {
+  const fs = await import("fs");
+  const path = await import("path");
+  const raiz = path.resolve(__dirname, "..", "..");
+  const ler = (rel: string) => fs.readFileSync(path.join(raiz, rel), "utf-8");
+
+  const srcConsultor = ler("app/consultor/page.tsx");
+
+  // ---- Teste 1: a grade não pode pintar RODANDO antes de o ciclo existir no servidor
+  // A causa raiz do travamento: `isCycleRunning={loading}` acendia os 13 agentes no clique,
+  // inclusive prompt-gateway e curador-memoria, que só são criados no FIM do runCycle.
+  const pintaPorFase = /isCycleRunning=\{fase === "ciclo"\}/.test(srcConsultor);
+  const pintaPorLoading = /isCycleRunning=\{loading\}/.test(srcConsultor);
+  if (pintaPorFase && !pintaPorLoading) {
+    console.log("✔ WO-36 Teste 1: RODANDO só depois do POST aceito — a grade deixa de afirmar trabalho que não começou");
+  } else {
+    console.log(`✘ WO-36 Teste 1 falhou: porFase=${pintaPorFase}, porLoading=${pintaPorLoading}`);
+    failures++;
+  }
+
+  // ---- Teste 2: os três fetches de contexto têm teto no cliente
+  // Sem teto, um deles pendurado congelava tudo ANTES do POST — e as proteções do servidor
+  // (teto global de 300s, timeout por agente) nem chegavam a valer, porque ninguém as chamou.
+  const blocoCtx = srcConsultor.slice(
+    srcConsultor.indexOf("const [histRes, macroRes, newsRes]"),
+    srcConsultor.indexOf("// 1. Inicia o ciclo")
+  );
+  const rotas = ["/api/history", "/api/macro", "/api/news"];
+  const semTeto = rotas.filter((r) => {
+    const i = blocoCtx.indexOf(r);
+    return i < 0 || !/signal: sinal\(\)/.test(blocoCtx.slice(i, i + 220));
+  });
+  if (semTeto.length === 0 && /AbortSignal\.timeout\(CTX_TIMEOUT_MS\)/.test(srcConsultor)) {
+    console.log("✔ WO-36 Teste 2: histórico, macro e notícias com teto de 15s — contexto é desejável, não obrigatório");
+  } else {
+    console.log(`✘ WO-36 Teste 2 falhou: sem teto em ${semTeto.join(", ")}`);
+    failures++;
+  }
+
+  // ---- Teste 3: o polling desiste — do 404, da falha repetida e do prazo absoluto
+  // `if (!pollRes.ok) return;` engolia o 404 e perguntava para sempre. E 404 é comum: RUN_STATES
+  // é um Map em memória do módulo, apagado por qualquer recompilação do dev server.
+  const trata404 = /pollRes\.status === 404/.test(srcConsultor);
+  const contaFalhas = /falhasSeguidas >= LIMITE_FALHAS_POLL/.test(srcConsultor);
+  const temPrazo = /PRAZO_ABSOLUTO_MS/.test(srcConsultor);
+  // O próprio comentário que explica o defeito cita o código antigo; varrer o texto cru faria o
+  // teste se autodetectar. Só linhas de código contam.
+  const codigo = srcConsultor
+    .split(/\r?\n/)
+    .filter((l) => !/^\s*(\*|\/\/|\/\*)/.test(l))
+    .join("\n");
+  const engoleSilencioso = /if \(!pollRes\.ok\) return;/.test(codigo);
+  if (trata404 && contaFalhas && temPrazo && !engoleSilencioso) {
+    console.log("✔ WO-36 Teste 3: polling encerra em 404, em falha repetida e no prazo absoluto — nunca em silêncio");
+  } else {
+    console.log(
+      `✘ WO-36 Teste 3 falhou: 404=${trata404}, contagem=${contaFalhas}, prazo=${temPrazo}, engoleSilencioso=${engoleSilencioso}`
+    );
+    failures++;
+  }
+
+  // ---- Teste 4: quem apaga o `loading` também zera a fase
+  // A invariante, não um número mágico: um caminho que pare o loading sem zerar a fase deixaria
+  // a grade pulsando RODANDO com o ciclo já morto — exatamente o sintoma que se está corrigindo.
+  const paradas = (codigo.match(/setLoading\(false\)/g) ?? []).length;
+  const fasesZeradas = (codigo.match(/setFase\("parado"\)/g) ?? []).length;
+  const encerraCentralizado = /const encerrarPolling = \(mensagem: string \| null\) =>/.test(codigo);
+  if (encerraCentralizado && paradas > 0 && paradas === fasesZeradas) {
+    console.log(`✔ WO-36 Teste 4: os ${paradas} caminhos de saída zeram a fase junto com o loading`);
+  } else {
+    console.log(`✘ WO-36 Teste 4 falhou: centralizado=${encerraCentralizado}, setLoading(false)=${paradas}, setFase("parado")=${fasesZeradas}`);
+    failures++;
+  }
+
+  // ---- Teste 5: o prazo do cliente é maior que o teto do servidor
+  // Se fosse menor, o cliente desistiria de um ciclo que ainda ia responder.
+  const srcOrq = ler("lib/agents/orchestrator.ts");
+  const tetoServidor = Number(/TIMEOUT_GLOBAL_MS = (\d+)/.exec(srcOrq)?.[1] ?? 0);
+  const prazoCliente = Number(/PRAZO_ABSOLUTO_MS = (\d+)/.exec(srcConsultor)?.[1] ?? 0);
+  if (tetoServidor > 0 && prazoCliente > tetoServidor) {
+    console.log(`✔ WO-36 Teste 5: prazo do cliente (${prazoCliente / 1000}s) acima do teto do servidor (${tetoServidor / 1000}s)`);
+  } else {
+    console.log(`✘ WO-36 Teste 5 falhou: cliente=${prazoCliente}, servidor=${tetoServidor}`);
+    failures++;
+  }
+
+  // ---- Teste 6: Consultor é a primeira aba, e os atalhos não foram renumerados
+  const srcNav = ler("components/Nav.tsx");
+  const itens = Array.from(srcNav.matchAll(/\{ href: "([^"]+)", label: "([^"]+)", key: "([^"]+)"/g))
+    .map((m) => ({ href: m[1], label: m[2], key: m[3] }));
+  const primeiro = itens[0];
+  const consultorKeepsC = itens.find((i) => i.href === "/consultor")?.key === "C";
+  const carteiraKeeps1 = itens.find((i) => i.href === "/carteira")?.key === "1";
+  const manualKeeps0 = itens.find((i) => i.href === "/manual")?.key === "0";
+  if (primeiro?.href === "/consultor" && consultorKeepsC && carteiraKeeps1 && manualKeeps0 && itens.length === 11) {
+    console.log("✔ WO-36 Teste 6: Consultor abre a barra; atalhos preservados (C, 1–0)");
+  } else {
+    console.log(`✘ WO-36 Teste 6 falhou: primeiro=${primeiro?.href}, C=${consultorKeepsC}, 1=${carteiraKeeps1}, 0=${manualKeeps0}, n=${itens.length}`);
+    failures++;
+  }
 }
 
 // ============ WO-35 — BOLETIM FOCUS, ORDEM DA MACRO E FONTES PESADAS ============

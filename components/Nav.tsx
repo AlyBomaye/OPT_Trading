@@ -10,7 +10,15 @@ import { useMarket } from "@/store/market";
 import { sessionInfo } from "@/lib/session";
 import { fmtDateBR } from "@/lib/format";
 
+/**
+ * WO-36: o Consultor abre a barra — é a tela que consolida as outras.
+ *
+ * A tecla de atalho de cada aba NÃO acompanha a posição: o Consultor continua em `C` e as demais
+ * mantêm 1–0. Renumerar por causa da ordem visual trocaria o significado de teclas que já estão
+ * na memória muscular, e a ordem da barra é uma escolha de leitura, não um contrato de atalho.
+ */
 const ITEMS = [
+  { href: "/consultor", label: "Consultor", key: "C", icon: Bot },
   { href: "/carteira", label: "Carteira", key: "1", icon: Briefcase },
   { href: "/noticias", label: "Notícias", key: "2", icon: Newspaper },
   { href: "/macro", label: "Macro", key: "3", icon: Globe },
@@ -21,7 +29,6 @@ const ITEMS = [
   { href: "/chain", label: "Chain", key: "8", icon: Table2 },
   { href: "/historico", label: "Histórico", key: "9", icon: History },
   { href: "/manual", label: "Manual", key: "0", icon: BookOpen },
-  { href: "/consultor", label: "Consultor", key: "C", icon: Bot },
 ];
 
 export function Nav() {

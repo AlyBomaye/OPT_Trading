@@ -66,6 +66,15 @@ export default function ConsultorPage() {
 
   const [activeTab, setActiveTab] = useState<"relatorio" | "pipeline">("relatorio");
   const [loading, setLoading] = useState(false);
+  /**
+   * WO-36: a fase é separada de `loading` porque a grade mentia.
+   *
+   * Antes, clicar em rodar acendia `loading` e a CoverageGrid pintava os 13 agentes como
+   * RODANDO — inclusive `prompt-gateway` e `curador-memoria`, que só existem no FIM do ciclo.
+   * Só que nada tinha sido pedido ao servidor ainda: a tela ainda estava reunindo o contexto.
+   * Agente pintado como rodando enquanto ninguém rodou é afirmação falsa sobre o estado.
+   */
+  const [fase, setFase] = useState<"parado" | "preparando" | "ciclo">("parado");
   const [activeRunId, setActiveRunId] = useState<string | null>(null);
   const [cycleResult, setCycleResult] = useState<CycleResponse | null>(null);
   const [relatorioText, setRelatorioText] = useState<string>("");
@@ -183,6 +192,7 @@ export default function ConsultorPage() {
   // WO-27 P0.3: Execução Assíncrona com Polling e Progresso incremental
   const handleRunCycle = async () => {
     setLoading(true);
+    setFase("preparando");
     setRelatorioText("");
     setCycleResult(null);
     setCycleError(null);
@@ -194,10 +204,22 @@ export default function ConsultorPage() {
       const mkt = useMarket.getState();
       const wl = useWatchlist.getState();
 
+      // WO-36: teto no cliente. Estes três fetches não tinham timeout algum, e o ciclo só era
+      // POSTado depois que os três resolvessem. Um deles pendurado deixava a tela em RODANDO
+      // para sempre — e as proteções do servidor (teto global de 300s, timeout por agente) nem
+      // chegavam a existir, porque o servidor ainda não tinha sido chamado. Contexto é desejável,
+      // não obrigatório: o que falhar entra como null e o agente declara a limitação.
+      const comTeto = (p: Promise<Response>) =>
+        p.then((r) => (r.ok ? r.json() : null)).catch(() => null);
+      const CTX_TIMEOUT_MS = 15000;
+      const sinal = () => AbortSignal.timeout(CTX_TIMEOUT_MS);
+
       const [histRes, macroRes, newsRes] = await Promise.allSettled([
-        ticker ? fetch(`/api/history?ticker=${encodeURIComponent(ticker)}`).then((r) => (r.ok ? r.json() : null)) : Promise.resolve(null),
-        fetch("/api/macro").then((r) => (r.ok ? r.json() : null)),
-        fetch("/api/news").then((r) => (r.ok ? r.json() : null)),
+        ticker
+          ? comTeto(fetch(`/api/history?ticker=${encodeURIComponent(ticker)}`, { signal: sinal() }))
+          : Promise.resolve(null),
+        comTeto(fetch("/api/macro", { signal: sinal() })),
+        comTeto(fetch("/api/news", { signal: sinal() })),
       ]);
       const histData = histRes.status === "fulfilled" ? histRes.value : null;
       const macroData = macroRes.status === "fulfilled" ? macroRes.value : null;
@@ -243,15 +265,60 @@ export default function ConsultorPage() {
       if (!runId) throw new Error("ID de execução inválido retornado pela rota.");
 
       setActiveRunId(runId);
+      setFase("ciclo");
+
+      /**
+       * WO-36: o polling desistia de nada e nunca desistia.
+       *
+       * `if (!pollRes.ok) return;` engolia o 404 em silêncio e seguia perguntando para sempre.
+       * E 404 aqui é comum: `RUN_STATES` é um Map em memória do módulo, então qualquer
+       * recompilação do dev server (salvar um arquivo, um hot reload) apaga o estado do ciclo.
+       * O ciclo morre, o servidor esquece que ele existiu, e a tela fica em RODANDO até alguém
+       * recarregar a página. Agora há duas saídas: contagem de falhas e prazo absoluto.
+       */
+      const LIMITE_FALHAS_POLL = 5;
+      // O servidor tem teto global de 300s; 360s dá folga para a última resposta chegar.
+      const PRAZO_ABSOLUTO_MS = 360000;
+      const inicioPoll = Date.now();
+      let falhasSeguidas = 0;
+
+      const encerrarPolling = (mensagem: string | null) => {
+        if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
+        pollIntervalRef.current = null;
+        setActiveRunId(null);
+        setLoading(false);
+        setFase("parado");
+        if (mensagem) setCycleError(mensagem);
+      };
 
       // 2. Loop de Polling a cada 1000ms
       pollIntervalRef.current = setInterval(async () => {
+        if (Date.now() - inicioPoll > PRAZO_ABSOLUTO_MS) {
+          encerrarPolling(
+            `O ciclo passou de ${(PRAZO_ABSOLUTO_MS / 1000).toFixed(0)}s sem concluir e o acompanhamento foi encerrado. ` +
+              "O teto do servidor é de 300s, então isso indica que a execução parou de responder. Rode de novo."
+          );
+          return;
+        }
+
         try {
           const pollRes = await fetch(`/api/agents/run-cycle?runId=${runId}`);
-          if (!pollRes.ok) return;
+          if (!pollRes.ok) {
+            falhasSeguidas++;
+            if (pollRes.status === 404) {
+              encerrarPolling(
+                "O servidor perdeu o registro desta execução — normalmente porque o processo foi reiniciado " +
+                  "ou recompilado no meio do ciclo. Nada foi perdido além do progresso: rode de novo."
+              );
+            } else if (falhasSeguidas >= LIMITE_FALHAS_POLL) {
+              encerrarPolling(`O servidor respondeu ${pollRes.status} em ${falhasSeguidas} consultas seguidas. Acompanhamento encerrado.`);
+            }
+            return;
+          }
+          falhasSeguidas = 0;
 
           const state: RunState = await pollRes.json();
-          
+
           // Atualiza dados incrementais na UI
           setCycleResult({
             reports: state.reports,
@@ -262,24 +329,19 @@ export default function ConsultorPage() {
           });
 
           if (state.status === "concluido") {
-            if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
-            pollIntervalRef.current = null;
-            setActiveRunId(null);
-            setLoading(false);
-
+            encerrarPolling(null);
             // Inicia streaming do parecer sênior (Fase B)
             iniciarStreamDraftReport(state.reports["gestor-global"]);
           } else if (state.status === "erro" || state.status === "cancelado") {
-            if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
-            pollIntervalRef.current = null;
-            setActiveRunId(null);
-            setLoading(false);
-            if (state.status === "erro") {
-              setCycleError(state.error || "Erro durante a execução dos agentes.");
-            }
+            encerrarPolling(state.status === "erro" ? state.error || "Erro durante a execução dos agentes." : null);
           }
         } catch (pollErr) {
+          // Rede instável tolera tropeço; silêncio permanente, não.
+          falhasSeguidas++;
           console.warn("[consultor] Erro no polling de progresso:", pollErr);
+          if (falhasSeguidas >= LIMITE_FALHAS_POLL) {
+            encerrarPolling(`Não foi possível falar com o servidor em ${falhasSeguidas} tentativas seguidas. Acompanhamento encerrado.`);
+          }
         }
       }, 1000);
 
@@ -287,6 +349,7 @@ export default function ConsultorPage() {
       console.error("[consultor] Erro ao iniciar ciclo:", err);
       setCycleError(err?.message ?? "Falha ao conectar com a API do terminal.");
       setLoading(false);
+      setFase("parado");
     }
   };
 
@@ -300,6 +363,7 @@ export default function ConsultorPage() {
     pollIntervalRef.current = null;
     setActiveRunId(null);
     setLoading(false);
+    setFase("parado");
   };
 
   const iniciarStreamDraftReport = async (reportGestor: AgentReport | undefined) => {
@@ -572,14 +636,22 @@ export default function ConsultorPage() {
 
           {/* COBERTURA DO CICLO (COM PROGRESSO EM TEMPO REAL) */}
           <div className="mt-8">
+            {/* WO-36: a fase de preparo tem nome próprio. Antes ela era indistinguível do ciclo
+                em execução, e um contexto que demorasse parecia um agente travado. */}
             <h4 className="text-xs font-mono text-neutral-500 mb-3 uppercase tracking-widest">
-              Cobertura do Ciclo de Agentes {loading && <span className="text-cyan-400 animate-pulse ml-2">(Progresso em Tempo Real)</span>}
+              Cobertura do Ciclo de Agentes
+              {fase === "preparando" && (
+                <span className="text-neutral-400 animate-pulse ml-2 normal-case tracking-normal">
+                  reunindo contexto das abas (histórico, macro, notícias) — o ciclo ainda não começou
+                </span>
+              )}
+              {fase === "ciclo" && <span className="text-cyan-400 animate-pulse ml-2">(Progresso em Tempo Real)</span>}
             </h4>
             <CoverageGrid 
               agents={AGENTS.map((a) => ({ id: a.id, name: a.nome }))}
               reports={cycleResult?.reports ?? {}}
               executados={cycleResult?.executados ?? []}
-              isCycleRunning={loading}
+              isCycleRunning={fase === "ciclo"}
               custoCicloUsd={(cycleResult as any)?.custoCicloUsd}
             />
           </div>
