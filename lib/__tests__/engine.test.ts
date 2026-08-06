@@ -376,19 +376,28 @@ if (petroSec && petroSec.ivAtmMedio === 0.35 && petroSec.chgMedio === 0.005 && p
 }
 
 // 2. buildExpiryRisk: evento antes do vencimento entra, depois não; nEventosVol conta só volEvent=true
+// WO-35: as datas eram fixas e o teste apodreceu quando o calendário passou de 05/08/2026 —
+// buildExpiryRisk só conta evento entre hoje e o vencimento. Ancorar em "hoje + N dias" mantém a
+// afirmação (evento ANTES do vencimento entra, DEPOIS não) verdadeira em qualquer data de execução.
+const emDias = (n: number): string => {
+  const d = new Date();
+  d.setDate(d.getDate() + n);
+  return d.toISOString().slice(0, 10);
+};
+const vencRadar = emDias(30);
 const radarChain: ChainData = {
   ticker: "PETR4",
   spot: 40,
   updatedAt: new Date().toISOString(),
-  expiries: [{ date: "2026-08-20", label: "20/08", du: 20, dte: 30, isMonthly: true, weekCode: "M" }],
+  expiries: [{ date: vencRadar, label: "venc", du: 20, dte: 30, isMonthly: true, weekCode: "M" }],
   options: [],
   greeksComputedLocally: true,
 };
 const macroEvs = [
-  { date: "2026-08-05", time: "18:30", country: "BR" as const, event: "COPOM", relevance: 3 as const, volEvent: true },
-  { date: "2026-09-10", time: "15:00", country: "US" as const, event: "FOMC", relevance: 3 as const, volEvent: true },
+  { date: emDias(5), time: "18:30", country: "BR" as const, event: "COPOM", relevance: 3 as const, volEvent: true },
+  { date: emDias(45), time: "15:00", country: "US" as const, event: "FOMC", relevance: 3 as const, volEvent: true },
 ];
-const risks = buildExpiryRisk(radarChain, { "2026-08-20": 0.3 }, macroEvs, [], []);
+const risks = buildExpiryRisk(radarChain, { [vencRadar]: 0.3 }, macroEvs, [], []);
 if (risks.length === 1 && risks[0].eventos.length === 1 && risks[0].nEventosVol === 1) {
   console.log("✔ buildExpiryRisk: inclui evento antes do vencimento e conta nEventosVol corretamente");
 } else {
@@ -2160,8 +2169,11 @@ async function testesWo33() {
   }
 
   // ---- Teste 6: ordem dos painéis e das seis linhas
-  const iImpacto = srcMacro.indexOf("[3] Impacto no Meu Universo");
-  const iRates = srcMacro.indexOf("[4] Rates &amp; FX");
+  // WO-35: o número da seção mudou (Impacto subiu para [2], Rates desceu para [5]). O que este
+  // teste afirma é a ORDEM RELATIVA, não a numeração — buscar sem o número o mantém válido
+  // através de reordenações futuras. A numeração em si é o Teste 9 do WO-35.
+  const iImpacto = srcMacro.indexOf("Impacto no Meu Universo —");
+  const iRates = srcMacro.search(/\[\d\] Rates &amp; FX/);
   // A busca tem de ser DENTRO do bloco linhasRates: os mesmos nomes aparecem antes no arquivo
   // (IMPACT_DRIVERS cita BRL/USD, por exemplo) e um indexOf global mediria a ordem errada.
   const iniBloco = srcMacro.indexOf("const linhasRates = useMemo");
@@ -2199,6 +2211,214 @@ async function testesWo33() {
   }
 
   await testesWo34();
+  await testesWo35();
+}
+
+// ============ WO-35 — BOLETIM FOCUS, ORDEM DA MACRO E FONTES PESADAS ============
+
+async function testesWo35() {
+  const fs = await import("fs");
+  const path = await import("path");
+  const raiz = path.resolve(__dirname, "..", "..");
+  const ler = (rel: string) => fs.readFileSync(path.join(raiz, rel), "utf-8");
+
+  const {
+    INDICADORES_FOCUS, derivarVariacoes, normalizarSerie, normalizarCopom,
+    repararMojibake, ordenarReunioes, dataInicioJanela, BASE_CALCULO_30D,
+  } = await import("../focus");
+
+  // ---- Teste 1: variação casa por DATA de coleta, não por posição no array
+  // Série com buraco: contar 5 posições para trás devolveria o valor de outra semana.
+  const pontos = [
+    { data: "2026-07-20", ano: "2026", mediana: 4.0, respondentes: 100 },
+    { data: "2026-07-21", ano: "2026", mediana: 4.1, respondentes: 100 },
+    // 22 e 23 ausentes (feriado)
+    { data: "2026-07-24", ano: "2026", mediana: 4.5, respondentes: 100 },
+    { data: "2026-07-27", ano: "2026", mediana: 4.6, respondentes: 101 },
+  ];
+  const vars = derivarVariacoes(pontos);
+  const l = vars[0];
+  const d1Ok = l != null && Math.abs((l.d1 ?? 0) - 0.1) < 1e-9;      // 4,6 − 4,5
+  const d5Nulo = l != null && l.d5 === null;                          // só 4 coletas: não dá 5
+  if (d1Ok && d5Nulo && l.mediana === 4.6 && l.respondentes === 101) {
+    console.log("✔ WO-35 Teste 1: Δ casa por data de coleta; profundidade inexistente vira null, não zero");
+  } else {
+    console.log(`✘ WO-35 Teste 1 falhou: ${JSON.stringify(l)}`);
+    failures++;
+  }
+
+  // ---- Teste 2: mediana ausente é descartada, nunca virada em zero
+  const serie = normalizarSerie(INDICADORES_FOCUS[0], [
+    { Data: "2026-07-30", DataReferencia: "2026", Mediana: 5.0, numeroRespondentes: 150 },
+    { Data: "2026-07-31", DataReferencia: "2026", Mediana: null, numeroRespondentes: 150 },
+    { Data: "2026-07-31", DataReferencia: "2026", Mediana: 5.03, numeroRespondentes: 152 },
+  ] as any);
+  if (serie.pontos.length === 2 && serie.dataDoDado === "2026-07-31") {
+    console.log("✔ WO-35 Teste 2: ponto sem mediana é descartado — zero afirmaria uma projeção que ninguém fez");
+  } else {
+    console.log(`✘ WO-35 Teste 2 falhou: ${serie.pontos.length} pontos, dataDoDado=${serie.dataDoDado}`);
+    failures++;
+  }
+
+  // ---- Teste 3: mojibake reparado; texto já correto passa incólume
+  const reparado = repararMojibake("CÃ¢mbio");
+  const intacto = repararMojibake("Câmbio");
+  const asciiIntacto = repararMojibake("IPCA");
+  if (reparado === "Câmbio" && intacto === "Câmbio" && asciiIntacto === "IPCA") {
+    console.log("✔ WO-35 Teste 3: repararMojibake conserta o defeito e não estraga texto são");
+  } else {
+    console.log(`✘ WO-35 Teste 3 falhou: "${reparado}" · "${intacto}" · "${asciiIntacto}"`);
+    failures++;
+  }
+
+  // ---- Teste 4: os nomes na tabela são exatamente os que a API aceita no $filter
+  // Medido em 05/08/2026: filtrar pela forma corrompida devolve lista vazia.
+  const esperados = ["IPCA", "Selic", "Câmbio", "PIB Total", "IGP-M", "Taxa de desocupação"];
+  const nomes = INDICADORES_FOCUS.map((i) => i.api);
+  const iguais = nomes.length === esperados.length && nomes.every((n, i) => n === esperados[i]);
+  if (iguais && BASE_CALCULO_30D === 0) {
+    console.log("✔ WO-35 Teste 4: 6 indicadores com acento correto; base de cálculo fixada em 30 dias");
+  } else {
+    console.log(`✘ WO-35 Teste 4 falhou: ${JSON.stringify(nomes)}, base=${BASE_CALCULO_30D}`);
+    failures++;
+  }
+
+  // ---- Teste 5: reuniões do Copom em ordem cronológica, não alfabética
+  // Alfabeticamente R1/2028 viria antes de R8/2027 e a trajetória apareceria invertida.
+  const desordenado = ["R1/2028", "R8/2027", "R5/2026", "R10/2027"];
+  const ordenado = [...desordenado].sort(ordenarReunioes);
+  if (JSON.stringify(ordenado) === JSON.stringify(["R5/2026", "R8/2027", "R10/2027", "R1/2028"])) {
+    console.log("✔ WO-35 Teste 5: Copom ordenado por ano e depois por número da reunião");
+  } else {
+    console.log(`✘ WO-35 Teste 5 falhou: ${JSON.stringify(ordenado)}`);
+    failures++;
+  }
+
+  // ---- Teste 6: normalizarCopom usa só a coleta mais recente
+  const copom = normalizarCopom([
+    { Data: "2026-07-24", Reuniao: "R5/2026", Mediana: 14.25, numeroRespondentes: 100 },
+    { Data: "2026-07-31", Reuniao: "R6/2026", Mediana: 14.0, numeroRespondentes: 110 },
+    { Data: "2026-07-31", Reuniao: "R5/2026", Mediana: 14.0, numeroRespondentes: 112 },
+  ] as any);
+  if (copom.length === 2 && copom[0].reuniao === "R5/2026" && copom[0].mediana === 14.0) {
+    console.log("✔ WO-35 Teste 6: trajetória do Copom vem de uma coleta só — misturar datas criaria degrau falso");
+  } else {
+    console.log(`✘ WO-35 Teste 6 falhou: ${JSON.stringify(copom)}`);
+    failures++;
+  }
+
+  // ---- Teste 7: a janela do $filter é de 12 meses para trás
+  const inicio = dataInicioJanela(new Date("2026-08-06T00:00:00Z"));
+  if (inicio === "2025-08-06") {
+    console.log("✔ WO-35 Teste 7: janela do Focus começa 12 meses antes da data corrente");
+  } else {
+    console.log(`✘ WO-35 Teste 7 falhou: ${inicio}`);
+    failures++;
+  }
+
+  // ---- Teste 8: a rota do Focus nunca publica a data do fetch como data do dado
+  const srcRota = ler("app/api/focus/route.ts");
+  const separaDatas =
+    /dataDoDado/.test(srcRota) &&
+    /buscadoEm: new Date\(\)\.toISOString\(\)/.test(srcRota) &&
+    !/dataDoDado: new Date\(\)/.test(srcRota);
+  if (separaDatas) {
+    console.log("✔ WO-35 Teste 8: dataDoDado vem da coleta do Focus; buscadoEm é só diagnóstico");
+  } else {
+    console.log("✘ WO-35 Teste 8 falhou: a rota pode estar publicando a data do fetch como data do dado");
+    failures++;
+  }
+
+  // ---- Teste 9: ordem das seções na Macro
+  const srcMacro = ler("app/macro/page.tsx");
+  const ordem = Array.from(srcMacro.matchAll(/<span className="font-bold">\[(\d)\] ([^<—]+)/g))
+    .map((m) => `${m[1]}:${m[2].trim().split(" ")[0]}`);
+  const esperada = ["1:Estado", "2:Impacto", "3:Painéis", "4:Boletim", "5:Rates"];
+  if (JSON.stringify(ordem) === JSON.stringify(esperada)) {
+    console.log("✔ WO-35 Teste 9: Sessões → Impacto → Painéis → Focus → Rates");
+  } else {
+    console.log(`✘ WO-35 Teste 9 falhou: ${JSON.stringify(ordem)}`);
+    failures++;
+  }
+
+  // ---- Teste 10: cada seção guarda sua própria chave; renumerar não perde o estado
+  const chaves = ["macro-sessoes-open", "macro-impacto-open", "macro-mercados-open", "macro-focus-open", "macro-rates-open"];
+  const faltando = chaves.filter((c) => !srcMacro.includes(c));
+  const chavesNumeradas = /macro-[1-5]-open/.test(srcMacro);
+  if (faltando.length === 0 && !chavesNumeradas) {
+    console.log("✔ WO-35 Teste 10: chave de localStorage por seção, não por número — reordenar não apaga o estado");
+  } else {
+    console.log(`✘ WO-35 Teste 10 falhou: faltam ${faltando.join(", ")}; numeradas=${chavesNumeradas}`);
+    failures++;
+  }
+
+  // ---- Teste 11: o painel do Focus formata em pt-BR, como o resto da aba (WO-34 §9b)
+  const srcPainel = ler("components/macro/PainelFocus.tsx");
+  const nToFixed = (srcPainel.match(/toFixed/g) ?? []).length;
+  if (nToFixed === 0 && /fmtNum/.test(srcPainel)) {
+    console.log("✔ WO-35 Teste 11: PainelFocus sem toFixed — números em pt-BR via fmtNum");
+  } else {
+    console.log(`✘ WO-35 Teste 11 falhou: ${nToFixed} usos de toFixed`);
+    failures++;
+  }
+
+  // ---- Teste 12: cache de disco — vencido continua legível, para o degrau de degradação
+  const { gravarCache, lerCache } = await import("../cache-disco");
+  const chaveTeste = "__teste-wo35";
+  gravarCache(chaveTeste, { n: 42 }, "2026-07-31");
+  const fresco = lerCache<{ n: number }>(chaveTeste, 60_000);
+  const vencido = lerCache<{ n: number }>(chaveTeste, 0);
+  const arquivo = path.join(raiz, "data", "cache", `${chaveTeste}.json`);
+  if (fresco?.payload.n === 42 && fresco.vencido === false && vencido?.vencido === true && vencido.payload.n === 42) {
+    console.log("✔ WO-35 Teste 12: cache vencido segue legível e rotulado — dado velho é melhor que tela vazia");
+  } else {
+    console.log(`✘ WO-35 Teste 12 falhou: fresco=${JSON.stringify(fresco)}, vencido=${JSON.stringify(vencido)}`);
+    failures++;
+  }
+  if (fresco?.dadoEm !== "2026-07-31") {
+    console.log(`✘ WO-35 Teste 12b falhou: dadoEm=${fresco?.dadoEm} (esperado 2026-07-31)`);
+    failures++;
+  }
+  try { fs.unlinkSync(arquivo); } catch {}
+
+  // ---- Teste 13: as três rotas pesadas leem o disco antes da rede
+  const pesadas = ["app/api/curvas-br/route.ts", "app/api/focus/route.ts", "app/api/oi/route.ts"];
+  const semDisco = pesadas.filter((f) => !/lerCache/.test(ler(f)) || !/gravarCache/.test(ler(f)));
+  if (semDisco.length === 0) {
+    console.log("✔ WO-35 Teste 13: Tesouro, Focus e B3 persistem em disco — restart não repaga o download");
+  } else {
+    console.log(`✘ WO-35 Teste 13 falhou: sem cache de disco em ${semDisco.join(", ")}`);
+    failures++;
+  }
+
+  // ---- Teste 14: nenhum script npm aponta para arquivo removido
+  const pkg = JSON.parse(ler("package.json")) as { scripts: Record<string, string> };
+  const quebrados: string[] = [];
+  const alvos = (texto: string, re: RegExp): string[] => {
+    const achados: string[] = [];
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(texto)) !== null) achados.push(m[0]);
+    return achados;
+  };
+  for (const [nome, cmd] of Object.entries(pkg.scripts)) {
+    for (const alvo of alvos(cmd, /(?:scripts|lib)\/[\w./-]+\.(?:mjs|ts)/g)) {
+      if (!fs.existsSync(path.join(raiz, alvo))) quebrados.push(`${nome} → ${alvo}`);
+    }
+  }
+  for (const s of ["scripts/dados-sync.mjs", "scripts/agents-daily.mjs"]) {
+    const src = ler(s);
+    for (const alvo of alvos(src, /(?:lib|scripts)\/[\w./-]+\.ts\b/g)) {
+      // Menção em comentário explicando o histórico é aceitável; execução, não.
+      const executa = new RegExp(`execSync\\([^)]*${alvo.replace(/[/.]/g, "\\$&")}`).test(src);
+      if (!fs.existsSync(path.join(raiz, alvo)) && executa) quebrados.push(`${s} executa ${alvo}`);
+    }
+  }
+  if (quebrados.length === 0) {
+    console.log("✔ WO-35 Teste 14: nenhum script npm aponta para arquivo inexistente");
+  } else {
+    console.log(`✘ WO-35 Teste 14 falhou: ${quebrados.join(" · ")}`);
+    failures++;
+  }
 }
 
 // ============ WO-34 — DIDÁTICA, DIAGNÓSTICO E LIMPEZA ============

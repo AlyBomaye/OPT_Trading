@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { gravarCache, lerCache } from "@/lib/cache-disco";
 
 /**
  * Route /api/oi?ticker=PETR4
@@ -49,10 +50,38 @@ function getExpectedLastBizDate(): string {
   return formatDateIso(d);
 }
 
+/**
+ * WO-35 §C: o arquivo da B3 é grande, vem por download em duas etapas com token efêmero e muda
+ * uma vez por dia útil. Persistir o resultado JÁ PARSEADO em disco evita repetir o download a
+ * cada restart do servidor. `Map` não sobrevive a JSON — daí a conversão nas duas pontas.
+ */
+function chaveDisco(dateStr: string): string {
+  return `oi-b3-${dateStr}`;
+}
+
+function mapaParaObjeto(m: AssetSeriesMap): Record<string, Record<string, SeriesEntry>> {
+  return Object.fromEntries(m.entries());
+}
+
+function objetoParaMapa(o: Record<string, Record<string, SeriesEntry>>): AssetSeriesMap {
+  return new Map(Object.entries(o));
+}
+
 async function fetchAndParseB3File(dateStr: string): Promise<AssetSeriesMap | null> {
   const cached = cacheByDate.get(dateStr);
   if (cached && Date.now() - cached.at < CACHE_TTL_MS) {
     return cached.byAsset;
+  }
+
+  // O arquivo de um dia passado nunca muda; um cache de disco vencido dele continua correto.
+  // Por isso o TTL aqui é generoso: o que invalida o dado é a data, não a idade do arquivo.
+  const disco = lerCache<Record<string, Record<string, SeriesEntry>>>(chaveDisco(dateStr), CACHE_TTL_MS);
+  if (disco) {
+    const byAsset = objetoParaMapa(disco.payload);
+    if (byAsset.size > 0) {
+      cacheByDate.set(dateStr, { at: Date.now(), byAsset });
+      return byAsset;
+    }
   }
 
   try {
@@ -125,6 +154,8 @@ async function fetchAndParseB3File(dateStr: string): Promise<AssetSeriesMap | nu
     }
 
     cacheByDate.set(dateStr, { at: Date.now(), byAsset });
+    // dadoEm é a data do pregão do arquivo, não a de hoje (WO-30 §2.1).
+    if (byAsset.size > 0) gravarCache(chaveDisco(dateStr), mapaParaObjeto(byAsset), dateStr);
     return byAsset;
   } catch {
     return null;

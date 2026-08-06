@@ -37,8 +37,10 @@ import { curveSlope, sessionStatus } from "@/lib/macro";
 import { Sparkline } from "@/components/Sparkline";
 import { AgentPanel } from "@/components/AgentPanel";
 import { LinhaRates, type ColunaTabela } from "@/components/macro/LinhaRates";
+import { PainelCopom, PainelFocus } from "@/components/macro/PainelFocus";
 import { calcularCupomCambial, type VerticeCurva } from "@/lib/curvas";
 import type { CurvasBrBody } from "@/app/api/curvas-br/route";
+import type { FocusRouteBody } from "@/app/api/focus/route";
 
 type WindowKey = "1d" | "5d" | "1m" | "3m" | "6m" | "12m" | "YTD";
 
@@ -105,6 +107,8 @@ export default function MacroPage() {
   const [data, setData] = useState<MacroBody | null>(null);
   // WO-32: curvas brasileiras (pré e NTN-B) do Tesouro Transparente.
   const [curvas, setCurvas] = useState<CurvasBrBody | null>(null);
+  // WO-35: expectativas do Boletim Focus (BCB Olinda).
+  const [focus, setFocus] = useState<FocusRouteBody | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [selectedWindow, setSelectedWindow] = useState<WindowKey>("1d");
@@ -114,6 +118,7 @@ export default function MacroPage() {
   const [mercadosOpen, setMercadosOpen] = useState(true);
   const [ratesOpen, setRatesOpen] = useState(true);
   const [impactoOpen, setImpactoOpen] = useState(true);
+  const [focusOpen, setFocusOpen] = useState(true);
 
   useEffect(() => {
     try {
@@ -125,6 +130,8 @@ export default function MacroPage() {
       if (m !== null) setMercadosOpen(m === "true");
       if (r !== null) setRatesOpen(r === "true");
       if (i !== null) setImpactoOpen(i === "true");
+      const f = localStorage.getItem("macro-focus-open");
+      if (f !== null) setFocusOpen(f === "true");
     } catch {}
   }, []);
 
@@ -156,6 +163,16 @@ export default function MacroPage() {
     fetch("/api/curvas-br")
       .then((r) => (r.ok ? r.json() : null))
       .then((j) => { if (vivo && j) setCurvas(j); })
+      .catch(() => undefined);
+    return () => { vivo = false; };
+  }, []);
+
+  // O Focus sai uma vez por dia útil e com defasagem; a rota cacheia por 6h em memória e disco.
+  useEffect(() => {
+    let vivo = true;
+    fetch("/api/focus")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((j) => { if (vivo && j) setFocus(j); })
       .catch(() => undefined);
     return () => { vivo = false; };
   }, []);
@@ -652,74 +669,7 @@ export default function MacroPage() {
         )}
       </div>
 
-      {/* 2. PAINÉIS DE MERCADO */}
-      <div className="panel">
-        <div
-          onClick={() => {
-            const next = !mercadosOpen;
-            setMercadosOpen(next);
-            localStorage.setItem("macro-mercados-open", String(next));
-          }}
-          className="panel-title flex items-center justify-between cursor-pointer select-none"
-        >
-          <div className="flex items-center gap-2">
-            {mercadosOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-            <Compass size={14} className="text-term-gold" />
-            <span className="font-bold">[2] Painéis de Mercado — Índices, Futuros, VIX, Moedas e Commodities</span>
-          </div>
-
-          <span className="text-xxs text-term-dim">
-            Reordenados por: <b>{selectedWindow}</b>
-          </span>
-        </div>
-
-        {mercadosOpen && (
-          <div className="p-3">
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-xs font-mono border-collapse table-fixed min-w-[850px]">
-                <thead className="sticky top-0 bg-term-panel z-10 border-b border-term-line">
-                  <tr className="border-b border-term-line text-xxs text-term-dim uppercase bg-term-panel2/40">
-                    <th className="py-2 px-2 w-[26%]">Ativo</th>
-                    <th className="py-2 px-1 w-[10%]">Último</th>
-                    <th className="py-2 px-1 w-[10%]">Var Ativa</th>
-                    <th className="py-2 px-1 w-[7%]">1D</th>
-                    <th className="py-2 px-1 w-[7%]">5D</th>
-                    <th className="py-2 px-1 w-[7%]">1M</th>
-                    <th className="py-2 px-1 w-[7%]">YTD</th>
-                    <th className="py-2 px-1 w-[7%]">HV21</th>
-                    <th className="py-2 px-1 w-[9%]">Tendência</th>
-                    <th className="py-2 px-1 w-[10%]">Sparkline (1A)</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <MarketSectionGroup
-                    title="Índices Acionários Globais"
-                    list={getSortedSeries("INDICE")}
-                    activeField={activeField}
-                  />
-                  <MarketSectionGroup
-                    title="Futuros EUA & Volatilidade (VIX)"
-                    list={[...getSortedSeries("FUTURO"), ...getSortedSeries("VOL")]}
-                    activeField={activeField}
-                  />
-                  <MarketSectionGroup
-                    title="Moedas & Dólar"
-                    list={getSortedSeries("MOEDA")}
-                    activeField={activeField}
-                  />
-                  <MarketSectionGroup
-                    title="Commodities"
-                    list={getSortedSeries("COMMODITY")}
-                    activeField={activeField}
-                  />
-                </tbody>
-              </table>
-            </div>
-          </div>
-        )}
-      </div>
-
-      {/* 3. IMPACTO NO MEU UNIVERSO — sobe para logo depois dos painéis de mercado (WO-33 §2) */}
+      {/* 2. IMPACTO NO MEU UNIVERSO — sobe para logo depois dos painéis de mercado (WO-33 §2) */}
       <div id="impacto-universo" className="panel">
         <div
           onClick={() => {
@@ -732,7 +682,7 @@ export default function MacroPage() {
           <div className="flex items-center gap-2">
             {impactoOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
             <Zap size={14} className="text-term-gold" />
-            <span className="font-bold">[3] Impacto no Meu Universo — Driver → Tickers Afetados</span>
+            <span className="font-bold">[2] Impacto no Meu Universo — Driver → Tickers Afetados</span>
           </div>
         </div>
 
@@ -795,7 +745,124 @@ export default function MacroPage() {
         )}
       </div>
 
-      {/* 4. RATES & FX */}
+      {/* 3. PAINÉIS DE MERCADO */}
+      <div className="panel">
+        <div
+          onClick={() => {
+            const next = !mercadosOpen;
+            setMercadosOpen(next);
+            localStorage.setItem("macro-mercados-open", String(next));
+          }}
+          className="panel-title flex items-center justify-between cursor-pointer select-none"
+        >
+          <div className="flex items-center gap-2">
+            {mercadosOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+            <Compass size={14} className="text-term-gold" />
+            <span className="font-bold">[3] Painéis de Mercado — Índices, Futuros, VIX, Moedas e Commodities</span>
+          </div>
+
+          <span className="text-xxs text-term-dim">
+            Reordenados por: <b>{selectedWindow}</b>
+          </span>
+        </div>
+
+        {mercadosOpen && (
+          <div className="p-3">
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs font-mono border-collapse table-fixed min-w-[850px]">
+                <thead className="sticky top-0 bg-term-panel z-10 border-b border-term-line">
+                  <tr className="border-b border-term-line text-xxs text-term-dim uppercase bg-term-panel2/40">
+                    <th className="py-2 px-2 w-[26%]">Ativo</th>
+                    <th className="py-2 px-1 w-[10%]">Último</th>
+                    <th className="py-2 px-1 w-[10%]">Var Ativa</th>
+                    <th className="py-2 px-1 w-[7%]">1D</th>
+                    <th className="py-2 px-1 w-[7%]">5D</th>
+                    <th className="py-2 px-1 w-[7%]">1M</th>
+                    <th className="py-2 px-1 w-[7%]">YTD</th>
+                    <th className="py-2 px-1 w-[7%]">HV21</th>
+                    <th className="py-2 px-1 w-[9%]">Tendência</th>
+                    <th className="py-2 px-1 w-[10%]">Sparkline (1A)</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <MarketSectionGroup
+                    title="Índices Acionários Globais"
+                    list={getSortedSeries("INDICE")}
+                    activeField={activeField}
+                  />
+                  <MarketSectionGroup
+                    title="Futuros EUA & Volatilidade (VIX)"
+                    list={[...getSortedSeries("FUTURO"), ...getSortedSeries("VOL")]}
+                    activeField={activeField}
+                  />
+                  <MarketSectionGroup
+                    title="Moedas & Dólar"
+                    list={getSortedSeries("MOEDA")}
+                    activeField={activeField}
+                  />
+                  <MarketSectionGroup
+                    title="Commodities"
+                    list={getSortedSeries("COMMODITY")}
+                    activeField={activeField}
+                  />
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* 4. BOLETIM FOCUS */}
+      <div id="boletim-focus" className="panel">
+        <div
+          onClick={() => {
+            const next = !focusOpen;
+            setFocusOpen(next);
+            localStorage.setItem("macro-focus-open", String(next));
+          }}
+          className="panel-title flex items-center justify-between cursor-pointer select-none"
+        >
+          <div className="flex items-center gap-2">
+            {focusOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+            <Compass size={14} className="text-term-gold" />
+            <span className="font-bold">[4] Boletim Focus — Expectativas de Mercado</span>
+          </div>
+          {focus?.dataDoDado && (
+            <span className="text-xxs text-term-dim font-mono">coleta {fmtDateBR(focus.dataDoDado)}</span>
+          )}
+        </div>
+
+        {focusOpen && (
+          <div className="p-3 space-y-3">
+            {/* O Focus é consolidado com defasagem de dias. Dizer isso é mais honesto que
+                deixar o usuário supor que a projeção é de hoje. */}
+            <div className="text-xxs text-term-dim leading-relaxed">
+              Mediana das projeções coletadas pelo Banco Central junto a mais de 100 instituições.
+              É o que o mercado <b>espera</b>, não o que já aconteceu — o realizado está em Rates &amp; FX.
+              A base é a de 30 dias, a mesma do boletim, e a coleta sai com alguns dias de defasagem.
+            </div>
+
+            {focus?.falhas && focus.falhas.length > 0 && (
+              <div className="text-xxs text-term-gold bg-term-gold/10 border border-term-gold/30 rounded px-2 py-1.5">
+                {focus.falhas.join(" · ")}
+              </div>
+            )}
+
+            {focus == null ? (
+              <div className="px-3 py-8 text-center text-xxs text-term-dim">Carregando o Boletim Focus…</div>
+            ) : (
+              <>
+                {focus.series.map((s) => (
+                  <PainelFocus key={s.chave} serie={s} />
+                ))}
+                <PainelCopom pontos={focus.copom} dataDoDado={focus.dataDoDado} />
+              </>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* 5. RATES & FX */}
       <div id="curva-juros" className="panel">
         <div
           onClick={() => {
@@ -808,7 +875,7 @@ export default function MacroPage() {
           <div className="flex items-center gap-2">
             {ratesOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
             <LineChartIcon size={14} className="text-term-up" />
-            <span className="font-bold">[4] Rates &amp; FX</span>
+            <span className="font-bold">[5] Rates &amp; FX</span>
           </div>
         </div>
 

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { parseCurvasTesouro, type CurvasBr } from "@/lib/curvas";
+import { gravarCache, idadeEmHoras, lerCache } from "@/lib/cache-disco";
 
 /**
  * WO-32 — GET /api/curvas-br
@@ -19,6 +20,7 @@ const CSV_URL =
   "resource/796d2059-14e9-44e3-80c9-2d9e30b405c1/download/PrecoTaxaTesouroDireto.csv";
 
 const CACHE_TTL_MS = 6 * 60 * 60 * 1000;
+const CHAVE_CACHE = "curvas-br";
 
 export interface CurvasBrBody extends CurvasBr {
   /** ISO do fetch. Diagnóstico apenas — NUNCA exibido como data do dado (WO-30 §2.1). */
@@ -31,6 +33,14 @@ export async function GET() {
   const agora = Date.now();
   if (cache && agora - cache.at < CACHE_TTL_MS) {
     return NextResponse.json(cache.body);
+  }
+
+  // WO-35 §C: o disco entra antes da rede. São 13,7 MB e 174 mil linhas — pagar isso de novo só
+  // porque o servidor reiniciou é o custo que esta camada existe para eliminar.
+  const disco = lerCache<CurvasBrBody>(CHAVE_CACHE, CACHE_TTL_MS);
+  if (disco && !disco.vencido) {
+    cache = { body: disco.payload, at: agora };
+    return NextResponse.json(disco.payload);
   }
 
   try {
@@ -46,14 +56,22 @@ export async function GET() {
 
     const body: CurvasBrBody = { ...curvas, buscadoEm: new Date().toISOString() };
     cache = { body, at: agora };
+    gravarCache(CHAVE_CACHE, body, curvas.dataBase);
     return NextResponse.json(body);
   } catch (err: any) {
     // Degradação graciosa: a aba Macro renderiza os demais boxes normalmente.
-    const stale = cache?.body;
+    // Memória primeiro; se o processo é novo, o disco vencido ainda é melhor que tela vazia.
+    const stale = cache?.body ?? disco?.payload;
     if (stale) {
+      const horas = disco && !cache ? idadeEmHoras(disco.buscadoEm) : null;
       return NextResponse.json({
         ...stale,
-        falhas: [...stale.falhas, `Atualização falhou (${err?.message}); servindo último cache.`],
+        falhas: [
+          ...stale.falhas,
+          `Atualização falhou (${err?.message}); servindo cache${
+            horas != null ? ` de ${horas.toFixed(0)}h atrás` : " anterior"
+          }.`,
+        ],
       });
     }
     return NextResponse.json({
