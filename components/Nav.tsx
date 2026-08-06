@@ -76,7 +76,9 @@ export function Nav() {
         <div className="font-mono font-bold text-term-cyan tracking-tight">OPÇÕES·TERMINAL</div>
         <div className="text-xxs text-term-dim truncate" title={subText}>{subText}</div>
       </div>
-      <div className="flex-1 py-2">
+      {/* `py-2` sem `flex-1`: a lista ocupa só a própria altura, para o botão de sincronização
+          ficar logo abaixo de Manual em vez de ser empurrado para o rodapé da barra. */}
+      <div className="py-2">
         {ITEMS.map(({ href, label, key, icon: Icon }) => (
           <Link
             key={href}
@@ -96,6 +98,9 @@ export function Nav() {
       </div>
       {/* WO-38: atualização completa das fontes, alcançável de qualquer aba. */}
       <BotaoSync />
+
+      {/* Espaçador: empurra o rodapé de atalhos para baixo, agora que a lista não se estica. */}
+      <div className="flex-1" />
 
       <div className="px-3 py-2 text-xxs text-term-dim border-t border-term-line">
         Atalhos: <kbd>1</kbd>–<kbd>0</kbd> abas · <kbd>G</kbd> Gestor · <kbd>R</kbd> atualizar · <kbd>?</kbd> ajuda

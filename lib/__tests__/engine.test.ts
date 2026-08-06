@@ -2302,11 +2302,19 @@ async function testesWo38() {
     failures++;
   }
 
-  // ---- Teste 7: o botão é alcançável de qualquer aba
-  if (/<BotaoSync \/>/.test(srcNav) && /import \{ BotaoSync \}/.test(srcNav)) {
-    console.log("✔ WO-38 Teste 7: botão vive na barra lateral — alcançável de todas as abas");
+  // ---- Teste 7: o botão fica logo abaixo de Manual, não colado no rodapé
+  // A lista de abas não pode ter `flex-1`: com ela, a lista se estica e empurra o botão para o
+  // fim da barra. O espaçador que existe DEPOIS do botão é quem segura o rodapé embaixo.
+  const naNav = /<BotaoSync \/>/.test(srcNav) && /import \{ BotaoSync \}/.test(srcNav);
+  const listaSemFlex1 = !/<div className="flex-1 py-2">/.test(srcNav);
+  const posBotao = srcNav.indexOf("<BotaoSync />");
+  const posEspacador = srcNav.indexOf('<div className="flex-1" />');
+  const posRodape = srcNav.indexOf("Atalhos: <kbd>1</kbd>");
+  const ordemCerta = posBotao > 0 && posEspacador > posBotao && posRodape > posEspacador;
+  if (naNav && listaSemFlex1 && ordemCerta) {
+    console.log("✔ WO-38 Teste 7: botão logo abaixo de Manual, com o espaçador segurando o rodapé embaixo");
   } else {
-    console.log("✘ WO-38 Teste 7 falhou: botão não está na navegação");
+    console.log(`✘ WO-38 Teste 7 falhou: naNav=${naNav}, semFlex1=${listaSemFlex1}, ordem=${ordemCerta}`);
     failures++;
   }
 
