@@ -27,15 +27,17 @@ export interface FocusRouteBody extends FocusBody {
 
 let memoria: { body: FocusRouteBody; at: number } | null = null;
 
-export async function GET() {
+export async function GET(req: Request) {
   const agora = Date.now();
+  // WO-38: ver a nota em /api/curvas-br — `?forcar=1` existe para o botão de atualização.
+  const forcar = new URL(req.url).searchParams.get("forcar") === "1";
 
-  if (memoria && agora - memoria.at < CACHE_TTL_MS) {
+  if (!forcar && memoria && agora - memoria.at < CACHE_TTL_MS) {
     return NextResponse.json(memoria.body);
   }
 
   const disco = lerCache<FocusRouteBody>(CHAVE_CACHE, CACHE_TTL_MS);
-  if (disco && !disco.vencido) {
+  if (!forcar && disco && !disco.vencido) {
     memoria = { body: disco.payload, at: agora };
     return NextResponse.json(disco.payload);
   }

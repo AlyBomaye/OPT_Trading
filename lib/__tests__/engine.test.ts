@@ -2214,6 +2214,111 @@ async function testesWo33() {
   await testesWo35();
   await testesWo36();
   await testesWo37();
+  await testesWo38();
+}
+
+// ============ WO-38 — BOTÃO DE ATUALIZAÇÃO COMPLETA ============
+
+async function testesWo38() {
+  const fs = await import("fs");
+  const path = await import("path");
+  const raiz = path.resolve(__dirname, "..", "..");
+  const ler = (rel: string) => fs.readFileSync(path.join(raiz, rel), "utf-8");
+
+  const srcRota = ler("app/api/dados-sync/route.ts");
+  const srcBotao = ler("components/BotaoSync.tsx");
+  const srcNav = ler("components/Nav.tsx");
+
+  // ---- Teste 1: forçar a rebusca de fato pula memória E disco
+  // Sem isto o botão devolveria o cache e daria a impressão de ter atualizado sem buscar nada.
+  const pesadas = ["app/api/curvas-br/route.ts", "app/api/focus/route.ts"];
+  const semForcar = pesadas.filter((f) => {
+    const s = ler(f);
+    const leParametro = /searchParams\.get\("forcar"\) === "1"/.test(s);
+    // As duas guardas de cache — memória e disco — precisam respeitar o parâmetro.
+    const guardas = (s.match(/if \(!forcar &&/g) ?? []).length;
+    return !leParametro || guardas < 2;
+  });
+  if (semForcar.length === 0) {
+    console.log("✔ WO-38 Teste 1: forcar=1 pula memória e disco nas duas rotas pesadas");
+  } else {
+    console.log(`✘ WO-38 Teste 1 falhou: ${semForcar.join(", ")}`);
+    failures++;
+  }
+
+  // ---- Teste 2: a rota orquestra as fontes sem reimplementar o parse de nenhuma
+  const chamaRotas = /\$\{base\}\$\{f\.rota\}/.test(srcRota);
+  const naoDuplica = !/parseCurvasTesouro|buscarFocus/.test(srcRota);
+  const forcaAsPesadas = /curvas-br\?forcar=1/.test(srcRota) && /focus\?forcar=1/.test(srcRota);
+  // O arquivo da B3 de um pregão passado é imutável: forçá-lo seria rebaixar megabytes à toa.
+  const naoForcaB3 = !/\/api\/oi[^"]*forcar/.test(srcRota);
+  if (chamaRotas && naoDuplica && forcaAsPesadas && naoForcaB3) {
+    console.log("✔ WO-38 Teste 2: sync chama as próprias rotas — uma verdade só por fonte — e não força o arquivo imutável da B3");
+  } else {
+    console.log(`✘ WO-38 Teste 2 falhou: chama=${chamaRotas}, naoDuplica=${naoDuplica}, forca=${forcaAsPesadas}, b3=${naoForcaB3}`);
+    failures++;
+  }
+
+  // ---- Teste 3: repassa o cookie, senão a sincronização toma 401 de si mesma
+  if (/req\.headers\.get\("cookie"\)/.test(srcRota)) {
+    console.log("✔ WO-38 Teste 3: cookie de sessão repassado — o middleware protege estas rotas");
+  } else {
+    console.log("✘ WO-38 Teste 3 falhou: sem repasse de cookie, a sync recebe 401 das próprias rotas");
+    failures++;
+  }
+
+  // ---- Teste 4: uma fonte fora do ar não invalida as outras
+  const isolaFalha = /Promise\.all/.test(srcRota) && /catch \(err: any\)/.test(srcRota) && /todasOk/.test(srcRota);
+  if (isolaFalha) {
+    console.log("✔ WO-38 Teste 4: falha por fonte é isolada e nomeada, não derruba a sincronização");
+  } else {
+    console.log("✘ WO-38 Teste 4 falhou: falha de uma fonte pode derrubar as demais");
+    failures++;
+  }
+
+  // ---- Teste 5: o relatório mostra a DATA DO DADO, não "atualizado com sucesso"
+  // Depois de sincronizar, o Focus continua sendo de dias atrás — é assim que ele é publicado.
+  // O comentário do componente cita a frase que ele evita; varrer o texto cru se autodetectaria.
+  const codigoBotao = srcBotao
+    .split(/\r?\n/)
+    .filter((l) => !/^\s*(\*|\/\/|\/\*)/.test(l))
+    .join("\n");
+  const mostraData = /dado de \$\{fmtDateBR/.test(codigoBotao);
+  const semSucessoVago = !/atualizado com sucesso/i.test(codigoBotao);
+  if (mostraData && semSucessoVago) {
+    console.log("✔ WO-38 Teste 5: relatório mostra a data do dado por fonte, não um 'sucesso' sem data");
+  } else {
+    console.log(`✘ WO-38 Teste 5 falhou: mostraData=${mostraData}, semSucessoVago=${semSucessoVago}`);
+    failures++;
+  }
+
+  // ---- Teste 6: sem recarregamento automático — ele apagaria o relatório recém-pedido
+  const semAutoReload = !/setTimeout\([^)]*location\.reload/.test(srcBotao);
+  const temBotaoManual = /Recarregar tela/.test(srcBotao);
+  if (semAutoReload && temBotaoManual) {
+    console.log("✔ WO-38 Teste 6: quem decide quando recarregar é o usuário — o relatório fica na tela");
+  } else {
+    console.log(`✘ WO-38 Teste 6 falhou: autoReload=${!semAutoReload}, botaoManual=${temBotaoManual}`);
+    failures++;
+  }
+
+  // ---- Teste 7: o botão é alcançável de qualquer aba
+  if (/<BotaoSync \/>/.test(srcNav) && /import \{ BotaoSync \}/.test(srcNav)) {
+    console.log("✔ WO-38 Teste 7: botão vive na barra lateral — alcançável de todas as abas");
+  } else {
+    console.log("✘ WO-38 Teste 7 falhou: botão não está na navegação");
+    failures++;
+  }
+
+  // ---- Teste 8: teto de tempo na chamada do botão e na da rota
+  const tetoBotao = /AbortSignal\.timeout\(240_000\)/.test(srcBotao);
+  const tetoRota = /AbortSignal\.timeout\(180_000\)/.test(srcRota);
+  if (tetoBotao && tetoRota) {
+    console.log("✔ WO-38 Teste 8: sincronização tem teto no cliente e por fonte no servidor");
+  } else {
+    console.log(`✘ WO-38 Teste 8 falhou: botão=${tetoBotao}, rota=${tetoRota}`);
+    failures++;
+  }
 }
 
 // ============ WO-37 — CONSISTÊNCIA, ROBUSTEZ E PRONTIDÃO PARA PUBLICAR ============

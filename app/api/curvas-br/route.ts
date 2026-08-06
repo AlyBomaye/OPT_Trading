@@ -29,16 +29,20 @@ export interface CurvasBrBody extends CurvasBr {
 
 let cache: { body: CurvasBrBody; at: number } | null = null;
 
-export async function GET() {
+export async function GET(req: Request) {
   const agora = Date.now();
-  if (cache && agora - cache.at < CACHE_TTL_MS) {
+  // WO-38: `?forcar=1` pula memória e disco. É o que o botão de atualização usa — sem isto ele
+  // devolveria o cache e daria a impressão de ter atualizado sem ter buscado nada.
+  const forcar = new URL(req.url).searchParams.get("forcar") === "1";
+
+  if (!forcar && cache && agora - cache.at < CACHE_TTL_MS) {
     return NextResponse.json(cache.body);
   }
 
   // WO-35 §C: o disco entra antes da rede. São 13,7 MB e 174 mil linhas — pagar isso de novo só
   // porque o servidor reiniciou é o custo que esta camada existe para eliminar.
   const disco = lerCache<CurvasBrBody>(CHAVE_CACHE, CACHE_TTL_MS);
-  if (disco && !disco.vencido) {
+  if (!forcar && disco && !disco.vencido) {
     cache = { body: disco.payload, at: agora };
     return NextResponse.json(disco.payload);
   }

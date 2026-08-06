@@ -28,6 +28,14 @@ Abre em `http://localhost:3000`. Em desenvolvimento, `APP_PASSWORD` em branco li
 | `npm run dados:sync` | Aquece o cache das fontes pesadas antes do pregão |
 | `npm run agents:daily` | Dispara um ciclo completo de agentes |
 
+## A rotina da manhã
+
+Duas formas, mesmo efeito: rebuscar as fontes pesadas antes do pregão.
+
+- **Na plataforma**: botão **Atualizar dados**, no rodapé da barra lateral. Mostra, por fonte, a
+  data do dado e quanto demorou.
+- **No terminal**: `npm run dados:sync`, com o servidor no ar — é a forma agendável.
+
 ## Módulos
 
 | Tecla | Aba | O que faz |

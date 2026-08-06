@@ -8,6 +8,7 @@ import clsx from "clsx";
 
 import { useMarket } from "@/store/market";
 import { sessionInfo } from "@/lib/session";
+import { BotaoSync } from "@/components/BotaoSync";
 import { fmtDateBR } from "@/lib/format";
 
 /**
@@ -93,6 +94,9 @@ export function Nav() {
           </Link>
         ))}
       </div>
+      {/* WO-38: atualização completa das fontes, alcançável de qualquer aba. */}
+      <BotaoSync />
+
       <div className="px-3 py-2 text-xxs text-term-dim border-t border-term-line">
         Atalhos: <kbd>1</kbd>–<kbd>0</kbd> abas · <kbd>G</kbd> Gestor · <kbd>R</kbd> atualizar · <kbd>?</kbd> ajuda
       </div>
