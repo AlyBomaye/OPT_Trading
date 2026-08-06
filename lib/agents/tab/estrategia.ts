@@ -46,10 +46,52 @@ export async function runEstrategia(ctx: unknown): Promise<AgentReport> {
     }));
   }
 
-  // 2. Melhores Estruturas Ranqueadas por EV Ajustado a Risco
+  /**
+   * 2. Melhores estruturas ranqueadas por retorno esperado ajustado a risco.
+   *
+   * WO-37 §A: antes isto testava UMA família — `bullCallSpread` — e anunciava "a estrutura com
+   * melhor relação entre retorno e risco". Não era: era a melhor trava de alta. Com o book em
+   * qualquer viés que não fosse altista, a recomendação nascia enviesada.
+   *
+   * Agora varre as famílias de risco definido nos dois sentidos, mais as neutras de volatilidade.
+   * Ficam de fora as de risco ilimitado e as que exigem posição prévia em ação (`coveredCall`,
+   * `protectivePut`): recomendá-las sem saber se o papel está em carteira seria sugerir uma
+   * operação que o trader talvez não consiga montar.
+   */
+  const FAMILIAS_TESTADAS = [
+    "bullCallSpread",
+    "bearPutSpread",
+    "bullPutSpread",
+    "bearCallSpread",
+    "ironCondor",
+    "ironButterfly",
+    "calendar",
+  ] as const;
+
+  // A taxa vem do contexto, como nas páginas — nunca literal (WO-37 §A).
+  const selic: number = typeof c.selic === "number" && Number.isFinite(c.selic) ? c.selic : 0.1425;
+
   let candidates: any[] = [];
+  const familiasComResultado: string[] = [];
   if (chain && selectedExpiry) {
-    candidates = suggestStructures(chain, selectedExpiry, "bullCallSpread", 0.125, 3);
+    for (const familia of FAMILIAS_TESTADAS) {
+      try {
+        const achadas = suggestStructures(chain, selectedExpiry, familia, selic, 3);
+        if (achadas.length > 0) familiasComResultado.push(familia);
+        candidates.push(...achadas);
+      } catch {
+        // Uma família sem strikes líquidos não invalida as outras; ela simplesmente não concorre.
+      }
+    }
+    // O ranking é global: a melhor de todas as famílias, não a melhor de uma escolhida a dedo.
+    candidates.sort((a, b) => (b.score ?? 0) - (a.score ?? 0));
+    candidates = candidates.slice(0, 3);
+
+    if (candidates.length === 0) {
+      limitacoes.push(
+        `Nenhuma das ${FAMILIAS_TESTADAS.length} famílias testadas encontrou strikes líquidos no vencimento ${selectedExpiry}.`
+      );
+    }
   } else {
     limitacoes.push("Chain de opções ou vencimento selecionado indisponível para sugestões de estrutura.");
   }
@@ -62,7 +104,9 @@ export async function runEstrategia(ctx: unknown): Promise<AgentReport> {
     achados.push(montarAchado({
       id: "estrategia-top-candidata",
       titulo: `A estrutura com melhor relação entre retorno e risco agora é ${top.label}`,
-      leitura: `Entre as candidatas testadas para o vencimento ${selectedExpiry}, ${top.label} é a que paga mais por unidade de risco assumido. O retorno médio esperado é de R$ ${top.ev.toFixed(2)}${popPct != null ? `, com ${popPct.toFixed(0)}% de chance de terminar no lucro` : ""}.`,
+      // O texto declara QUANTAS famílias entraram na comparação: "melhor" só significa alguma
+      // coisa quando se sabe contra o que foi comparado.
+      leitura: `Comparando ${familiasComResultado.length} famílias de estrutura no vencimento ${selectedExpiry}, ${top.label} é a que paga mais por unidade de risco assumido. O retorno médio esperado é de R$ ${top.ev.toFixed(2)}${popPct != null ? `, com ${popPct.toFixed(0)}% de chance de terminar no lucro` : ""}.`,
       porQueImporta: `Retorno esperado sozinho não decide nada — uma estrutura pode ter retorno alto e ainda assim ser ruim se a perda possível for desproporcional. O número que importa é a razão entre os dois: aqui, ${top.score.toFixed(2)} de retorno esperado para cada real${perdaMax != null ? ` dos R$ ${Math.abs(perdaMax).toFixed(2)} que se pode perder` : " de risco"}. Acima de 1 já compensa; muito acima costuma indicar que algum preço da grade está desatualizado — vale conferir.`,
       exemplo: popPct != null
         ? `Repetindo essa mesma operação 10 vezes, o modelo espera ${Math.round(popPct / 10)} ganhos e ${10 - Math.round(popPct / 10)} perdas, com saldo médio positivo de R$ ${(top.ev * 10).toFixed(2)}. É um número de longo prazo: em qualquer operação isolada, o resultado é ganhar ou perder, não a média.`

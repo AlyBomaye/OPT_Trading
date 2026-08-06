@@ -13,6 +13,20 @@ const BASE = "https://opcoes.net.br/listaopcoes/completa";
 const HEADERS = { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)" };
 const CACHE_TTL_MS = 60_000;
 
+/**
+ * WO-37 §B: esta rota não tinha timeout algum.
+ *
+ * São até 9 requisições por carregamento — 1 catálogo mais 1 por vencimento, em paralelo —
+ * contra um site que é scraping de HTML, sem contrato nenhum. Uma pendurada segurava a
+ * requisição indefinidamente, e é desta grade que dependem Chain, Estratégia, Scanner e Cockpit.
+ * É o mesmo mecanismo que travou o Consultor por meia hora no WO-36, na rota mais crítica de todas.
+ *
+ * O catálogo tem prazo mais curto porque, sem ele, não há o que buscar: falhar rápido é melhor
+ * que esperar por uma lista de vencimentos que não vem.
+ */
+const CATALOGO_TIMEOUT_MS = 8_000;
+const VENCIMENTO_TIMEOUT_MS = 12_000;
+
 interface RawExpiry {
   value: string;
   text: string;
@@ -72,9 +86,13 @@ function parseTradeDate(val: unknown): string | null {
   return null;
 }
 
-async function fetchJson(params: Record<string, string>): Promise<any> {
+async function fetchJson(params: Record<string, string>, timeoutMs: number): Promise<any> {
   const url = `${BASE}?${new URLSearchParams(params)}`;
-  const res = await fetch(url, { headers: HEADERS, cache: "no-store" });
+  const res = await fetch(url, {
+    headers: HEADERS,
+    cache: "no-store",
+    signal: AbortSignal.timeout(timeoutMs),
+  });
   if (!res.ok) throw new Error(`opcoes.net.br HTTP ${res.status}`);
   return res.json();
 }
@@ -94,7 +112,10 @@ export async function GET(req: NextRequest) {
   }
 
   try {
-    const cat = await fetchJson({ idAcao: ticker, listarVencimentos: "true", cotacoes: "false" });
+    const cat = await fetchJson(
+      { idAcao: ticker, listarVencimentos: "true", cotacoes: "false" },
+      CATALOGO_TIMEOUT_MS
+    );
     const rawExpiries: RawExpiry[] = cat?.data?.vencimentos ?? [];
     if (!rawExpiries.length) {
       return NextResponse.json({ error: `Sem vencimentos para ${ticker}` }, { status: 404 });
@@ -112,15 +133,22 @@ export async function GET(req: NextRequest) {
         weekCode: e.dataAttributes?.w ?? "",
       }));
 
+    // WO-37 §B: cada vencimento é uma requisição independente. Uma que falhe não pode derrubar as
+    // outras — mas também não pode sumir em silêncio, senão a grade parece só menor, e não avariada.
+    const falhasPorVencimento: string[] = [];
+
     const perExpiry = await Promise.all(
       expiries.map(async (exp) => {
         try {
-          const j = await fetchJson({
-            idAcao: ticker,
-            vencimentos: exp.date,
-            cotacoes: "true",
-            listarVencimentos: "false",
-          });
+          const j = await fetchJson(
+            {
+              idAcao: ticker,
+              vencimentos: exp.date,
+              cotacoes: "true",
+              listarVencimentos: "false",
+            },
+            VENCIMENTO_TIMEOUT_MS
+          );
           const rows: RawRow[] = j?.data?.cotacoesOpcoes ?? [];
           return rows.map((r): CleanRow | null => {
             const opTicker = String(r[0] ?? "");
@@ -147,13 +175,41 @@ export async function GET(req: NextRequest) {
               dte: exp.dte,
             };
           }).filter((x): x is CleanRow => x != null);
-        } catch {
+        } catch (err: any) {
+          const causa = /timeout|abort/i.test(String(err?.message ?? err))
+            ? `tempo esgotado (${VENCIMENTO_TIMEOUT_MS / 1000}s)`
+            : String(err?.message ?? "falha desconhecida");
+          falhasPorVencimento.push(`${exp.label}: ${causa}`);
           return [] as CleanRow[];
         }
       })
     );
 
     const options = perExpiry.flat();
+
+    /**
+     * WO-37 §B — detector de layout mudado.
+     *
+     * A fonte é scraping de HTML: uma mudança de layout quebra o parser SEM erro de HTTP. O
+     * sintoma é uma grade vazia, indistinguível de "esse papel não tem opção". A distinção está
+     * no catálogo: se ele listou vencimentos e NENHUM devolveu linha, o problema não é o papel —
+     * é o nosso parser. Ficar em silêncio aqui é o pior caso, porque a falha mais provável da
+     * plataforma seria também a mais invisível (ver FONTES-DE-DADOS.md).
+     */
+    const nenhumaFalhaDeRede = falhasPorVencimento.length === 0;
+    if (options.length === 0 && expiries.length > 0 && nenhumaFalhaDeRede) {
+      return NextResponse.json(
+        {
+          error:
+            `A fonte respondeu para os ${expiries.length} vencimentos de ${ticker}, mas nenhuma linha foi reconhecida. ` +
+            "Isso indica mudança no layout de opcoes.net.br, não ausência de opções — o parser precisa ser revisto.",
+          ticker,
+          expiriesListados: expiries.length,
+          diagnostico: "layout-mudou",
+        },
+        { status: 502 }
+      );
+    }
 
     // Spot derivado do próprio chain: mediana de Strike/(1+DistStrikePct)
     const spots = options
@@ -200,12 +256,20 @@ export async function GET(req: NextRequest) {
       expiries,
       options,
       sourceGreeksAvailable: options.some((o) => o.sourceIv != null),
+      // Grade parcial é servida, mas nomeada: quem lê precisa saber que faltou vencimento.
+      falhas: falhasPorVencimento,
     };
     cache.set(ticker, { at: Date.now(), body });
     return NextResponse.json(body, { headers: { "x-cache": "MISS" } });
-  } catch (err) {
+  } catch (err: any) {
+    const msg = String(err?.message ?? err);
+    const foiTimeout = /timeout|abort/i.test(msg);
     return NextResponse.json(
-      { error: `Falha ao consultar opcoes.net.br: ${err instanceof Error ? err.message : String(err)}` },
+      {
+        error: foiTimeout
+          ? `A fonte de opções não respondeu em ${CATALOGO_TIMEOUT_MS / 1000}s. Tente de novo; se persistir, opcoes.net.br está fora do ar ou bloqueando as requisições.`
+          : `Falha ao consultar opcoes.net.br: ${msg}`,
+      },
       { status: 502 }
     );
   }

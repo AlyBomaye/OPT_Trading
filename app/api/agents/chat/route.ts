@@ -2,13 +2,24 @@ import { NextResponse } from "next/server";
 import Anthropic from "@anthropic-ai/sdk";
 import { prepararRequest, registrarUso } from "@/lib/agents/gateway";
 import { alocacaoPorBalde } from "@/lib/agents/risk";
+import { traduzirErroApi } from "@/lib/agents/erro-api";
 import type { AgentReport } from "@/lib/agents/types";
 
 /**
  * WO-26 C.4: Roteamento determinístico por palavra-chave.
  * Responde com números reais + deep link quando não há chave de API.
  */
-function respostaDeterministica(message: string, contextReports: Record<string, AgentReport> | undefined, carteiraCtx: any): string | null {
+function respostaDeterministica(
+  message: string,
+  contextReports: Record<string, AgentReport> | undefined,
+  carteiraCtx: any,
+  /**
+   * WO-37 §C: o rodapé é parametrizado porque o motivo de cair aqui mudou.
+   * "configure a ANTHROPIC_API_KEY" só vale quando ela está ausente — dizer isso quando a chave
+   * existe e o que faltou foi crédito manda o usuário consertar o que não está quebrado.
+   */
+  rodape = "Modo determinístico — para respostas em linguagem natural, configure a ANTHROPIC_API_KEY em .env.local."
+): string | null {
   const msg = message.toLowerCase();
   const parts: string[] = [];
 
@@ -79,13 +90,16 @@ function respostaDeterministica(message: string, contextReports: Record<string, 
 
   if (parts.length === 0) return null;
 
-  parts.push(`\n---\n*Modo determinístico — para respostas em linguagem natural, configure a ANTHROPIC_API_KEY em .env.local.*`);
+  if (rodape) parts.push(`\n---\n*${rodape}*`);
   return parts.join("\n");
 }
 
 export async function POST(req: Request) {
+  // O corpo é lido UMA vez, fora do try: um `Request` só pode ser consumido uma vez, e o
+  // tratamento de erro precisa dele para montar a resposta determinística de reserva.
+  const body = await req.json().catch(() => ({} as any));
+
   try {
-    const body = await req.json().catch(() => ({}));
     const { message, contextReports, history, carteiraCtx, currentPath, currentAgentReport } = body;
 
     if (!message) {
@@ -166,9 +180,27 @@ export async function POST(req: Request) {
       usage: res.usage,
     });
   } catch (err: any) {
-    return NextResponse.json(
-      { error: "Erro no chat do agente", message: err?.message },
-      { status: 500 }
-    );
+    /**
+     * WO-37 §C: esta superfície ficou de fora do WO-36b e ainda devolvia
+     * `{"error":"Erro no chat do agente","message":"400 {\"type\":\"error\"…"}` com HTTP 500 —
+     * um blob cru que não diz o que fazer. Medido em produção com a conta sem créditos.
+     *
+     * Agora a falha da API não mata a resposta: cai no roteamento determinístico, que responde
+     * com os números reais da carteira, e a causa vira uma linha em português no fim.
+     */
+    const t = traduzirErroApi(err);
+    // Rodapé vazio: quem explica a causa aqui é a tradução do erro, logo abaixo.
+    const determinista = respostaDeterministica(body?.message ?? "", body?.contextReports, body?.carteiraCtx, "");
+
+    const aviso = `\n\n---\n*${t.mensagem}${t.acao ? ` ${t.acao}` : ""}*`;
+    return NextResponse.json({
+      reply: determinista
+        ? `${determinista}${aviso}`
+        : `Não consegui usar o modelo agora.${aviso}`,
+      gatewayDecisoes: [t.mensagem],
+      // 200: há resposta útil. O problema está declarado no texto, não escondido num código HTTP.
+      degradado: true,
+      podeTentarDeNovo: t.vaiAdiantarRepetir,
+    });
   }
 }

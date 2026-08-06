@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import Anthropic from "@anthropic-ai/sdk";
 import { prepararRequest, registrarUso } from "@/lib/agents/gateway";
 import { fallbackDeterministicoGestorGlobal } from "@/lib/agents/senior/gestor-global";
+import { limitacaoDeErroApi } from "@/lib/agents/erro-api";
 
 export async function POST(req: Request) {
   try {
@@ -92,6 +93,6 @@ Transforme a análise obtida num relatório executivo em markdown didático com 
       },
     });
   } catch (err: any) {
-    return NextResponse.json({ error: "Erro no stream", message: err?.message }, { status: 500 });
+    return NextResponse.json({ error: limitacaoDeErroApi(err) }, { status: 502 });
   }
 }

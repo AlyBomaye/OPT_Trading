@@ -12,6 +12,18 @@ export async function runCockpit(ctx: unknown): Promise<AgentReport> {
   const chain = c.chain ?? null;
   const positions = Array.isArray(c.positions) ? c.positions : [];
   const capitalTotal = Number(c.capitalTotal ?? 100000);
+
+  /**
+   * WO-37 §A: a taxa e a volatilidade vêm do contexto, não de constantes.
+   *
+   * Estas duas linhas usavam `0.125` e `0.35` fixos enquanto `app/page.tsx` calculava o mesmo VaR
+   * com a Selic real e a IV ATM medida. O painel do agente e a aba em que ele mora mostravam
+   * números diferentes para o mesmo book — a classe de defeito que o WO-30 existiu para eliminar.
+   * `lib/agents/context.ts` já entrega os dois valores; faltava consumi-los.
+   */
+  const selic: number = typeof c.selic === "number" && Number.isFinite(c.selic) ? c.selic : 0.1425;
+  const atmIv: number | null =
+    typeof c.atmIv === "number" && Number.isFinite(c.atmIv) && c.atmIv > 0 ? c.atmIv : null;
   const reportsList: AgentReport[] = Array.isArray(c.reports)
     ? c.reports
     : c.reports && typeof c.reports === "object"
@@ -29,8 +41,13 @@ export async function runCockpit(ctx: unknown): Promise<AgentReport> {
    */
   let regimeSupressao: number | null = null;
 
-  const greeks = netGreeks(positions, chain, 0.125);
-  const riskVaR = positions.length > 0 && chain ? Math.abs(var95(positions, chain, 0.125, 0.35) ?? 0) : 0;
+  const greeks = netGreeks(positions, chain, selic);
+  // Sem IV ATM medida o VaR não é estimado com um número plausível: fica `null` e o achado diz
+  // por quê. Inventar 35% aqui produziria um risco com cara de apurado (WO-30 §7.1.1).
+  const riskVaR =
+    positions.length > 0 && chain && atmIv != null
+      ? Math.abs(var95(positions, chain, selic, atmIv) ?? 0)
+      : null;
   const alocado = allocatedCapital(positions);
   const caixaLivre = Math.max(capitalTotal - alocado, 0);
 
@@ -105,7 +122,7 @@ export async function runCockpit(ctx: unknown): Promise<AgentReport> {
   }
 
   // 3. VaR95 frente ao Caixa Livre
-  if (positions.length > 0) {
+  if (positions.length > 0 && riskVaR != null) {
     const varPctCaixa = caixaLivre > 0 ? (riskVaR / caixaLivre) * 100 : 100;
     achados.push(montarAchado({
       id: "cockpit-var-caixa",
@@ -130,8 +147,13 @@ export async function runCockpit(ctx: unknown): Promise<AgentReport> {
       ],
       deepLink: link("cockpit.shock"),
     }));
-  } else {
+  } else if (positions.length === 0) {
     limitacoes.push("Nenhuma posição aberta na carteira para cálculo de choque.");
+  } else {
+    // Há posições, mas falta o insumo. Dizer qual falta é o que permite corrigir.
+    limitacoes.push(
+      "VaR não apurado: a volatilidade implícita ATM não foi medida neste ciclo. Carregue o chain do ticker para o cálculo sair."
+    );
   }
 
   // 4. Síntese Direcional cruzando Macro e Notícias
@@ -171,7 +193,9 @@ export async function runCockpit(ctx: unknown): Promise<AgentReport> {
     agentRole: "Trader sênior, PhD em economia: análise de portfólio e gestão de risco",
     generatedAt: asOf,
     ticker: chain?.ticker ?? null,
-    headline: `Cockpit Matinal: ${positions.length} posições, Δ R$ ${(greeks.deltaCash ?? 0).toFixed(0)}, VaR95 R$ ${riskVaR.toFixed(0)}.`,
+    headline: `Cockpit Matinal: ${positions.length} posições, Δ R$ ${(greeks.deltaCash ?? 0).toFixed(0)}, VaR95 ${
+      riskVaR != null ? `R$ ${riskVaR.toFixed(0)}` : "não apurado"
+    }.`,
     metricas: {
       deltaCash: greeks.deltaCash ?? 0,
       gammaNet: greeks.gamma ?? 0,

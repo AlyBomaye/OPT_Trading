@@ -1,0 +1,41 @@
+name: CI
+
+# Roda a mesma verificação que existe na máquina local, em cada push e PR.
+# Sem isto, typecheck e testes só rodavam quando alguém lembrava.
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+
+jobs:
+  verificar:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+
+      - run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      # A suíte não faz chamadas de rede nem usa chave de API: roda no CI sem segredo nenhum.
+      - name: Testes do engine
+        run: npm run test:engine
+
+      - name: Build de produção
+        run: npm run build
+
+      # Trava de segurança: nenhuma chave pode entrar no repositório.
+      - name: Varredura de segredo
+        run: |
+          PREFIXO="sk-""ant"   # partido para o workflow nao casar consigo mesmo
+          if grep -rn "$PREFIXO" --include="*.ts" --include="*.tsx" --include="*.md" --include="*.mjs" --include="*.json" --include="*.yml" . | grep -v node_modules; then
+            echo "::error::Possível chave de API encontrada no repositório."
+            exit 1
+          fi
+          echo "Nenhum segredo encontrado."

@@ -2213,6 +2213,204 @@ async function testesWo33() {
   await testesWo34();
   await testesWo35();
   await testesWo36();
+  await testesWo37();
+}
+
+// ============ WO-37 — CONSISTÊNCIA, ROBUSTEZ E PRONTIDÃO PARA PUBLICAR ============
+
+async function testesWo37() {
+  const fs = await import("fs");
+  const path = await import("path");
+  const raiz = path.resolve(__dirname, "..", "..");
+  const ler = (rel: string) => fs.readFileSync(path.join(raiz, rel), "utf-8");
+  const existe = (rel: string) => fs.existsSync(path.join(raiz, rel));
+
+  const arquivosAgentes = fs
+    .readdirSync(path.join(raiz, "lib", "agents", "tab"))
+    .filter((f) => f.endsWith(".ts"))
+    .map((f) => `lib/agents/tab/${f}`);
+
+  // ---- Teste 1: nenhum agente calcula com taxa literal
+  // O Cockpit usava 0.125 (e vol 0.35) enquanto app/page.tsx usava a Selic real e a IV medida:
+  // o painel do agente e a aba em que ele mora mostravam VaR diferente para o mesmo book.
+  const comLiteral: string[] = [];
+  for (const f of arquivosAgentes) {
+    const src = ler(f);
+    const re = /(netGreeks|var95|suggestStructures)\s*\([^)]*?,\s*(0\.\d+)/g;
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(src)) !== null) comLiteral.push(`${f}: ${m[1]}(… ${m[2]})`);
+  }
+  if (comLiteral.length === 0) {
+    console.log(`✔ WO-37 Teste 1: os ${arquivosAgentes.length} agentes de aba usam taxa do contexto, nunca literal`);
+  } else {
+    console.log(`✘ WO-37 Teste 1 falhou: ${comLiteral.join(" · ")}`);
+    failures++;
+  }
+
+  // ---- Teste 2: sem IV medida, o VaR do Cockpit é null e a limitação diz por quê
+  const { runCockpit } = await import("../agents/tab/cockpit");
+  const posicaoFalsa = [{ underlying: "PETR4", qty: 100, type: "CALL", strike: 40, premium: 1, side: "BUY" }];
+  const semIv = await runCockpit({ positions: posicaoFalsa, capitalTotal: 100000, chain: null, selic: 0.1425 });
+  const disseOMotivo = (semIv.limitacoes ?? []).some((l) => /volatilidade implícita ATM não foi medida/i.test(l));
+  const varNulo = semIv.metricas?.var95 == null;
+  if (varNulo && disseOMotivo) {
+    console.log("✔ WO-37 Teste 2: sem IV medida o VaR sai null com o motivo — não vira número plausível");
+  } else {
+    console.log(`✘ WO-37 Teste 2 falhou: var95=${semIv.metricas?.var95}, motivo=${disseOMotivo}`);
+    failures++;
+  }
+
+  // ---- Teste 3: a Selic do contexto chega ao cálculo
+  // Duas Selics diferentes têm de produzir gregas diferentes; se não produzirem, o valor foi ignorado.
+  const { adaptarContexto } = await import("../agents/context");
+  const ctxA = adaptarContexto({ selic: 14.25, positions: [], capitalTotal: 100000 } as any);
+  const ctxB = adaptarContexto({ selic: 12.5, positions: [], capitalTotal: 100000 } as any);
+  if (Math.abs(ctxA.selic - 0.1425) < 1e-9 && Math.abs(ctxB.selic - 0.125) < 1e-9) {
+    console.log("✔ WO-37 Teste 3: contexto converte a Selic para fração e preserva o valor recebido");
+  } else {
+    console.log(`✘ WO-37 Teste 3 falhou: A=${ctxA.selic}, B=${ctxB.selic}`);
+    failures++;
+  }
+
+  // ---- Teste 4: o agente de Estratégia compara mais de uma família
+  const srcEstrategia = ler("lib/agents/tab/estrategia.ts");
+  const familias = /const FAMILIAS_TESTADAS = \[([\s\S]*?)\] as const;/.exec(srcEstrategia)?.[1] ?? "";
+  const nFamilias = (familias.match(/"/g) ?? []).length / 2;
+  const declaraQuantas = /familiasComResultado\.length/.test(srcEstrategia);
+  if (nFamilias >= 5 && declaraQuantas) {
+    console.log(`✔ WO-37 Teste 4: ${nFamilias} famílias comparadas e o texto declara contra o que comparou`);
+  } else {
+    console.log(`✘ WO-37 Teste 4 falhou: ${nFamilias} famílias, declara=${declaraQuantas}`);
+    failures++;
+  }
+
+  // ---- Teste 5: toda chamada de rede tem teto, no servidor e no cliente
+  const comRede: string[] = [];
+  const varrer = (dir: string) => {
+    for (const e of fs.readdirSync(path.join(raiz, dir), { withFileTypes: true })) {
+      const rel = `${dir}/${e.name}`;
+      if (e.isDirectory()) {
+        if (e.name === "node_modules" || e.name === ".next" || e.name === "__tests__") continue;
+        varrer(rel);
+      } else if (/\.tsx?$/.test(e.name)) {
+        const src = ler(rel);
+        const nRede = (src.match(/await fetch\(|= fetch\(/g) ?? []).length;
+        const nTeto = (src.match(/AbortSignal\.timeout|signal:/g) ?? []).length;
+        if (nRede > 0 && nTeto < nRede) comRede.push(`${rel} (${nRede} rede / ${nTeto} teto)`);
+      }
+    }
+  };
+  for (const d of ["app/api", "lib"]) varrer(d);
+  if (comRede.length === 0) {
+    console.log("✔ WO-37 Teste 5: nenhuma chamada de rede em app/api ou lib fica sem teto de tempo");
+  } else {
+    console.log(`✘ WO-37 Teste 5 falhou: ${comRede.join(" · ")}`);
+    failures++;
+  }
+
+  // ---- Teste 6: a grade tolera vencimento parcial e detecta layout mudado
+  const srcOpcoes = ler("app/api/opcoes/route.ts");
+  const tolera = /falhasPorVencimento/.test(srcOpcoes) && /falhas: falhasPorVencimento/.test(srcOpcoes);
+  const detecta = /diagnostico: "layout-mudou"/.test(srcOpcoes);
+  const doisTetos = /CATALOGO_TIMEOUT_MS/.test(srcOpcoes) && /VENCIMENTO_TIMEOUT_MS/.test(srcOpcoes);
+  if (tolera && detecta && doisTetos) {
+    console.log("✔ WO-37 Teste 6: grade parcial é servida e nomeada; grade vazia com fonte viva vira 502 explícito");
+  } else {
+    console.log(`✘ WO-37 Teste 6 falhou: tolera=${tolera}, detecta=${detecta}, tetos=${doisTetos}`);
+    failures++;
+  }
+
+  // ---- Teste 7: o middleware protege as rotas que gastam e nunca abre sozinho em produção
+  const srcMw = ler("middleware.ts");
+  const rotasProtegidas = ["/api/agents/chat", "/api/agents/draft-report", "/api/agents/run-cycle", "/api/agents/run"];
+  const faltando = rotasProtegidas.filter((r) => !srcMw.includes(r));
+  // Duas afirmações independentes, em vez de uma regex longa e frágil: em desenvolvimento sem
+  // senha o acesso é liberado; em produção sem senha a plataforma responde 503 e não abre.
+  const liberaEmDev = /if \(!ehProducao\) return NextResponse\.next\(\);/.test(srcMw);
+  const fechaEmProd = liberaEmDev && /status: 503/.test(srcMw);
+  const tempoConstante = /igualdadeConstante/.test(srcMw);
+  const cookieSeguro = /httpOnly: true/.test(srcMw) && /sameSite: "lax"/.test(srcMw);
+  if (faltando.length === 0 && fechaEmProd && tempoConstante && cookieSeguro) {
+    console.log("✔ WO-37 Teste 7: as 4 rotas de custo protegidas, produção sem senha fecha, cookie httpOnly");
+  } else {
+    console.log(`✘ WO-37 Teste 7 falhou: faltam=${faltando.join(",")}, fechaProd=${fechaEmProd}, tc=${tempoConstante}, cookie=${cookieSeguro}`);
+    failures++;
+  }
+
+  // ---- Teste 8: teto por IP responde com a causa, não com 500
+  const temTeto = /MAX_POR_JANELA/.test(srcMw) && /status: 429/.test(srcMw) && /Aguarde \$\{faltaS\}s/.test(srcMw);
+  if (temTeto) {
+    console.log("✔ WO-37 Teste 8: teto por IP devolve 429 dizendo o limite e quanto falta");
+  } else {
+    console.log("✘ WO-37 Teste 8 falhou: teto por IP ausente ou sem causa na resposta");
+    failures++;
+  }
+
+  // ---- Teste 8b: as superfícies de chat também traduzem o erro da API
+  // Medido em produção: o chat devolvia HTTP 500 com o blob cru da SDK. O WO-36b só cobriu os
+  // dois agentes sênior; estas duas rotas ficaram para trás.
+  const srcChat = ler("app/api/agents/chat/route.ts");
+  const srcDraft = ler("app/api/agents/draft-report/route.ts");
+  const chatDegrada =
+    /traduzirErroApi/.test(srcChat) &&
+    /degradado: true/.test(srcChat) &&
+    !/error: "Erro no chat do agente"/.test(srcChat);
+  const draftTraduz = /limitacaoDeErroApi/.test(srcDraft) && !/"Erro no stream"/.test(srcDraft);
+  // O rodapé "configure a ANTHROPIC_API_KEY" não pode aparecer quando a chave existe.
+  const rodapeParametrizado = /rodape = "Modo determinístico/.test(srcChat) && /if \(rodape\)/.test(srcChat);
+  if (chatDegrada && draftTraduz && rodapeParametrizado) {
+    console.log("✔ WO-37 Teste 8b: chat e draft-report traduzem a falha e o chat ainda responde com números reais");
+  } else {
+    console.log(`✘ WO-37 Teste 8b falhou: chat=${chatDegrada}, draft=${draftTraduz}, rodapé=${rodapeParametrizado}`);
+    failures++;
+  }
+
+  // ---- Teste 9: artefato de build fora do versionamento
+  const gitignore = ler(".gitignore");
+  const ignorado = /tsbuildinfo/.test(gitignore);
+  const rastreado = fs
+    .readFileSync(path.join(raiz, ".git", "index"))
+    .includes("tsconfig.tsbuildinfo");
+  if (ignorado && !rastreado) {
+    console.log("✔ WO-37 Teste 9: tsconfig.tsbuildinfo ignorado e fora do índice do git");
+  } else {
+    console.log(`✘ WO-37 Teste 9 falhou: ignorado=${ignorado}, aindaRastreado=${rastreado}`);
+    failures++;
+  }
+
+  // ---- Teste 10: prontidão do repositório
+  const obrigatorios = ["LICENSE", ".env.example", "DEPLOY.md", "FONTES-DE-DADOS.md", "AGENTES-DEFINICAO.md", ".github/workflows/ci.yml"];
+  const ausentes = obrigatorios.filter((f) => !existe(f));
+  if (ausentes.length === 0) {
+    console.log(`✔ WO-37 Teste 10: os ${obrigatorios.length} arquivos de publicação estão no lugar`);
+  } else {
+    console.log(`✘ WO-37 Teste 10 falhou: ausentes — ${ausentes.join(", ")}`);
+    failures++;
+  }
+
+  // ---- Teste 11: README correto e sem caminho pessoal
+  const readme = ler("README.md");
+  const semCaminho = !/OneDrive|C:\\Users\\/.test(readme);
+  const atalhosCertos = /\| `C` \| \*\*Consultor\*\*/.test(readme) && /\| `1` \| \*\*Carteira\*\*/.test(readme);
+  const semTabelaAntiga = !/atalhos 1–5/.test(readme);
+  if (semCaminho && atalhosCertos && semTabelaAntiga) {
+    console.log("✔ WO-37 Teste 11: README com os atalhos reais e sem caminho de máquina local");
+  } else {
+    console.log(`✘ WO-37 Teste 11 falhou: semCaminho=${semCaminho}, atalhos=${atalhosCertos}, semAntiga=${semTabelaAntiga}`);
+    failures++;
+  }
+
+  // ---- Teste 12: .env.example é modelo, não vazamento
+  const exemplo = ler(".env.example");
+  const linhasComValor = exemplo
+    .split(/\r?\n/)
+    .filter((l) => /^[A-Z_]+=.+/.test(l.trim()));
+  if (linhasComValor.length === 0 && /APP_PASSWORD=/.test(exemplo) && /ANTHROPIC_API_KEY=/.test(exemplo)) {
+    console.log("✔ WO-37 Teste 12: .env.example declara as variáveis e não traz nenhum valor");
+  } else {
+    console.log(`✘ WO-37 Teste 12 falhou: ${linhasComValor.length} linha(s) com valor preenchido`);
+    failures++;
+  }
 }
 
 // ============ WO-36 — O CICLO QUE FICAVA "RODANDO" PARA SEMPRE ============

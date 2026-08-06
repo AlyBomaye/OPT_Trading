@@ -9,6 +9,15 @@ import type { Candle } from "@/app/api/history/route";
 
 import { type WatchRowLike } from "./sector-analytics";
 
+/**
+ * WO-37 §B: teto por ticker na varredura do watchlist.
+ *
+ * Esta função roda para os 20 nomes do universo, ou seja, até 40 requisições. Sem teto, um único
+ * ticker lento segurava a varredura inteira e a tela ficava sem saber se estava carregando ou
+ * travada. 20s é folgado para uma grade completa e curto o bastante para não prender a varredura.
+ */
+const VARREDURA_TIMEOUT_MS = 20_000;
+
 interface WatchState {
   rows: Record<string, WatchRowLike>;
   lastRunAt: string | null;
@@ -44,7 +53,9 @@ export async function scanTicker(ticker: string, r = 0.15): Promise<WatchRowLike
   };
 
   try {
-    const opRes = await fetch(`/api/opcoes?ticker=${encodeURIComponent(ticker)}`);
+    const opRes = await fetch(`/api/opcoes?ticker=${encodeURIComponent(ticker)}`, {
+      signal: AbortSignal.timeout(VARREDURA_TIMEOUT_MS),
+    });
     if (opRes.ok) {
       const op = await opRes.json();
       base.spot = op.spot;
@@ -86,7 +97,9 @@ export async function scanTicker(ticker: string, r = 0.15): Promise<WatchRowLike
   }
 
   try {
-    const hRes = await fetch(`/api/history?ticker=${encodeURIComponent(ticker)}&range=3mo`);
+    const hRes = await fetch(`/api/history?ticker=${encodeURIComponent(ticker)}&range=3mo`, {
+      signal: AbortSignal.timeout(VARREDURA_TIMEOUT_MS),
+    });
     if (hRes.ok) {
       const h: { candles: Candle[] } = await hRes.json();
       const c = h.candles;
