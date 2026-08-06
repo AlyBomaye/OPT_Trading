@@ -6,6 +6,9 @@ on:
   push:
     branches: ["**"]
   pull_request:
+  # Disparo manual pela aba Actions. O push que CRIA o branch padrão de um repositório vazio não
+  # dispara workflows no GitHub — sem isto, a primeira execução dependeria de um commit seguinte.
+  workflow_dispatch:
 
 jobs:
   verificar:
