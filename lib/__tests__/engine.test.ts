@@ -2303,6 +2303,43 @@ async function testesWo36() {
     failures++;
   }
 
+  // ---- Teste 5b: erro da API vira frase acionável, não "Falha na API LLM: 400 {...}"
+  // Caso real de 06/08/2026: os dois agentes de LLM falharam em ~600ms por saldo insuficiente.
+  // A mensagem crua não dizia "compre créditos", que era a única ação útil.
+  const { traduzirErroApi, limitacaoDeErroApi } = await import("../agents/erro-api");
+  const casos: Array<[string, RegExp, boolean]> = [
+    ["400 Your credit balance is too low to access the Anthropic API.", /sem créditos/i, false],
+    ["401 authentication_error: invalid x-api-key", /recusada/i, false],
+    ["429 rate_limit_error", /limite de requisi/i, true],
+    ["529 overloaded_error", /indisponível|sobrecarregada/i, true],
+    ["fetch failed", /rede indisponível|tempo esgotado/i, true],
+  ];
+  const ruins = casos.filter(([entrada, esperado, repetir]) => {
+    const t = traduzirErroApi(new Error(entrada));
+    return !esperado.test(t.mensagem) || t.vaiAdiantarRepetir !== repetir;
+  });
+  // Saldo e chave inválida não podem ser confundidos: a chave está certa nos dois, o que muda é a ação.
+  const saldo = traduzirErroApi(new Error("400 credit balance is too low"));
+  const chave = traduzirErroApi(new Error("401 invalid x-api-key"));
+  const distintos = saldo.mensagem !== chave.mensagem && /Billing/.test(saldo.acao ?? "") && /REINICIE/.test(chave.acao ?? "");
+  const semVazamento = !/sk-ant/.test(limitacaoDeErroApi(new Error("401 invalid x-api-key")));
+  if (ruins.length === 0 && distintos && semVazamento) {
+    console.log("✔ WO-36 Teste 5b: erro da API traduzido por causa, com ação e sem confundir saldo com chave");
+  } else {
+    console.log(`✘ WO-36 Teste 5b falhou: ${ruins.length} casos errados, distintos=${distintos}, semVazamento=${semVazamento}`);
+    failures++;
+  }
+
+  // ---- Teste 5c: nenhum agente ainda monta a mensagem crua antiga
+  const senior = ["lib/agents/senior/gestor-global.ts", "lib/agents/senior/melhoria-continua.ts"];
+  const crus = senior.filter((f) => /Falha na API LLM: \$\{/.test(ler(f)));
+  if (crus.length === 0 && senior.every((f) => /limitacaoDeErroApi/.test(ler(f)))) {
+    console.log("✔ WO-36 Teste 5c: os dois agentes de LLM reportam pela tradução, não pela mensagem crua");
+  } else {
+    console.log(`✘ WO-36 Teste 5c falhou: ainda cru em ${crus.join(", ")}`);
+    failures++;
+  }
+
   // ---- Teste 6: Consultor é a primeira aba, e os atalhos não foram renumerados
   const srcNav = ler("components/Nav.tsx");
   const itens = Array.from(srcNav.matchAll(/\{ href: "([^"]+)", label: "([^"]+)", key: "([^"]+)"/g))

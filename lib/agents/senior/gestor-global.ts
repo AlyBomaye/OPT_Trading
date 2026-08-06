@@ -1,4 +1,5 @@
 import Anthropic from "@anthropic-ai/sdk";
+import { limitacaoDeErroApi } from "../erro-api";
 import { montarContextoGestor } from "./contexto-gestor";
 import type { AgentReport, Achado, Recomendacao } from "../types";
 import { prepararRequest, registrarUso } from "../gateway";
@@ -446,7 +447,7 @@ export async function executarGestorGlobal(ctx: GestorGlobalInputContext): Promi
       return { report, textoRelatorio };
     } catch (err: any) {
       console.error("[gestor-global] Erro na chamada à API Anthropic:", err);
-      return fallbackDeterministicoGestorGlobal(ctx, `Falha na API LLM: ${err?.message ?? "Erro desconhecido"}`);
+      return fallbackDeterministicoGestorGlobal(ctx, limitacaoDeErroApi(err));
     }
   })();
 

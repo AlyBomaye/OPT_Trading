@@ -1,4 +1,5 @@
 import Anthropic from "@anthropic-ai/sdk";
+import { limitacaoDeErroApi } from "../erro-api";
 import type { AgentReport, Achado, Melhoria, Esforco } from "../types";
 import { prepararRequest, registrarUso } from "../gateway";
 import { link } from "../deeplinks";
@@ -181,7 +182,7 @@ export async function runMelhoriaContinua(ctx: unknown): Promise<AgentReport> {
       recomendacoes: [],
       melhorias: [],
       confianca: "media",
-      limitacoes: [`Falha na API LLM: ${err.message}`],
+      limitacoes: [limitacaoDeErroApi(err)],
     };
   }
 }
