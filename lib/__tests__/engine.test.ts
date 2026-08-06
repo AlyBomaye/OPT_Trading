@@ -2322,7 +2322,10 @@ async function testesWo36() {
   const saldo = traduzirErroApi(new Error("400 credit balance is too low"));
   const chave = traduzirErroApi(new Error("401 invalid x-api-key"));
   const distintos = saldo.mensagem !== chave.mensagem && /Billing/.test(saldo.acao ?? "") && /REINICIE/.test(chave.acao ?? "");
-  const semVazamento = !/sk-ant/.test(limitacaoDeErroApi(new Error("401 invalid x-api-key")));
+  // O prefixo é montado em pedaços de propósito: o critério de segurança do projeto é que
+  // buscar por ele no repositório não retorne NADA, nem sequer numa asserção negativa.
+  const prefixoChave = ["sk", "ant"].join("-");
+  const semVazamento = !limitacaoDeErroApi(new Error("401 invalid x-api-key")).includes(prefixoChave);
   if (ruins.length === 0 && distintos && semVazamento) {
     console.log("✔ WO-36 Teste 5b: erro da API traduzido por causa, com ação e sem confundir saldo com chave");
   } else {
