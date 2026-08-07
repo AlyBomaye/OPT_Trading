@@ -745,7 +745,50 @@ export default function MacroPage() {
         )}
       </div>
 
-      {/* 3. PAINÉIS DE MERCADO */}
+      {/* 3. RATES & FX */}
+      <div id="curva-juros" className="panel">
+        <div
+          onClick={() => {
+            const next = !ratesOpen;
+            setRatesOpen(next);
+            localStorage.setItem("macro-rates-open", String(next));
+          }}
+          className="panel-title flex items-center justify-between cursor-pointer select-none"
+        >
+          <div className="flex items-center gap-2">
+            {ratesOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+            <LineChartIcon size={14} className="text-term-up" />
+            <span className="font-bold">[3] Rates &amp; FX</span>
+          </div>
+        </div>
+
+        {/* Cartões de referência de curto prazo: contra eles se lê a ponta curta das curvas */}
+        {ratesOpen && (
+          <div className="px-3 pt-3 grid grid-cols-3 gap-2">
+            <MacroCard title="Selic Meta" val={data?.brasil.selicMeta != null ? `${fmtNum(data.brasil.selicMeta, 2)}% a.a.` : "—"} />
+            <MacroCard title="Selic Efetiva" val={data?.brasil.selicEfetiva != null ? `${fmtNum(data.brasil.selicEfetiva, 2)}% a.a.` : "—"} />
+            <MacroCard title="CDI Diário" val={data?.brasil.cdiDaily != null ? `${fmtNum(data.brasil.cdiDaily, 4)}% a.d.` : "—"} />
+          </div>
+        )}
+
+        {ratesOpen && (
+          <div className="p-3 space-y-3">
+            {/* WO-34 §A: Pré e Treasuries dividem a primeira linha, cada um só com o painel de
+                variações — o nível já se lê na coluna TAXA da tabela. As demais seguem em
+                largura inteira com os dois painéis. */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+              {linhasRates.slice(0, 2).map((l) => (
+                <LinhaRates key={l.titulo} {...l} modo="somenteVariacao" />
+              ))}
+            </div>
+            {linhasRates.slice(2).map((l) => (
+              <LinhaRates key={l.titulo} {...l} />
+            ))}
+          </div>
+        )}
+
+      </div>
+      {/* 4. PAINÉIS DE MERCADO */}
       <div className="panel">
         <div
           onClick={() => {
@@ -758,7 +801,7 @@ export default function MacroPage() {
           <div className="flex items-center gap-2">
             {mercadosOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
             <Compass size={14} className="text-term-gold" />
-            <span className="font-bold">[3] Painéis de Mercado — Índices, Futuros, VIX, Moedas e Commodities</span>
+            <span className="font-bold">[4] Painéis de Mercado — Índices, Futuros, VIX, Moedas e Commodities</span>
           </div>
 
           <span className="text-xxs text-term-dim">
@@ -812,7 +855,7 @@ export default function MacroPage() {
         )}
       </div>
 
-      {/* 4. BOLETIM FOCUS */}
+      {/* 5. BOLETIM FOCUS */}
       <div id="boletim-focus" className="panel">
         <div
           onClick={() => {
@@ -825,7 +868,7 @@ export default function MacroPage() {
           <div className="flex items-center gap-2">
             {focusOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
             <Compass size={14} className="text-term-gold" />
-            <span className="font-bold">[4] Boletim Focus — Expectativas de Mercado</span>
+            <span className="font-bold">[5] Boletim Focus — Expectativas de Mercado</span>
           </div>
           {focus?.dataDoDado && (
             <span className="text-xxs text-term-dim font-mono">coleta {fmtDateBR(focus.dataDoDado)}</span>
@@ -862,49 +905,6 @@ export default function MacroPage() {
         )}
       </div>
 
-      {/* 5. RATES & FX */}
-      <div id="curva-juros" className="panel">
-        <div
-          onClick={() => {
-            const next = !ratesOpen;
-            setRatesOpen(next);
-            localStorage.setItem("macro-rates-open", String(next));
-          }}
-          className="panel-title flex items-center justify-between cursor-pointer select-none"
-        >
-          <div className="flex items-center gap-2">
-            {ratesOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-            <LineChartIcon size={14} className="text-term-up" />
-            <span className="font-bold">[5] Rates &amp; FX</span>
-          </div>
-        </div>
-
-        {/* Cartões de referência de curto prazo: contra eles se lê a ponta curta das curvas */}
-        {ratesOpen && (
-          <div className="px-3 pt-3 grid grid-cols-3 gap-2">
-            <MacroCard title="Selic Meta" val={data?.brasil.selicMeta != null ? `${fmtNum(data.brasil.selicMeta, 2)}% a.a.` : "—"} />
-            <MacroCard title="Selic Efetiva" val={data?.brasil.selicEfetiva != null ? `${fmtNum(data.brasil.selicEfetiva, 2)}% a.a.` : "—"} />
-            <MacroCard title="CDI Diário" val={data?.brasil.cdiDaily != null ? `${fmtNum(data.brasil.cdiDaily, 4)}% a.d.` : "—"} />
-          </div>
-        )}
-
-        {ratesOpen && (
-          <div className="p-3 space-y-3">
-            {/* WO-34 §A: Pré e Treasuries dividem a primeira linha, cada um só com o painel de
-                variações — o nível já se lê na coluna TAXA da tabela. As demais seguem em
-                largura inteira com os dois painéis. */}
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
-              {linhasRates.slice(0, 2).map((l) => (
-                <LinhaRates key={l.titulo} {...l} modo="somenteVariacao" />
-              ))}
-            </div>
-            {linhasRates.slice(2).map((l) => (
-              <LinhaRates key={l.titulo} {...l} />
-            ))}
-          </div>
-        )}
-
-      </div>
     </div>
   );
 }

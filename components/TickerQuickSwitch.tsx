@@ -5,22 +5,18 @@ import { Search, Command, Check } from "lucide-react";
 import clsx from "clsx";
 import { UNIVERSE } from "@/lib/universe";
 import { useMarket } from "@/store/market";
-import { usePersistedState, useHidratado } from "@/lib/use-persisted-state";
-
-const LS_RECENT_KEY = "ticker-recent-list";
+import { useHidratado } from "@/lib/use-persisted-state";
+import { useRecentesTicker } from "@/lib/hooks/useRecentesTicker";
 
 export function TickerQuickSwitch() {
   const ticker = useMarket((st) => st.ticker);
-  const setTicker = useMarket((st) => st.setTicker);
+  // WO-39: a lista de recentes é compartilhada com o seletor da barra lateral. Manter duas cópias
+  // faria os dois controles discordarem sobre o que foi consultado.
+  const { recentes, escolherTicker } = useRecentesTicker();
 
   const [query, setQuery] = useState("");
   const [open, setOpen] = useState(false);
   const [selectedIndex, setSelectedIndex] = useState(0);
-  // A leitura do localStorage acontece APÓS a montagem — ler no inicializador do useState fazia
-  // o primeiro render do cliente divergir do servidor e quebrava a hidratação.
-  const [recents, setRecents] = usePersistedState<string[]>(LS_RECENT_KEY, [
-    "PETR4", "VALE3", "BOVA11", "ITUB4", "BBDC4",
-  ]);
   const hidratado = useHidratado();
 
   const inputRef = useRef<HTMLInputElement>(null);
@@ -63,12 +59,10 @@ export function TickerQuickSwitch() {
   }, []);
 
   const handleSelect = (selectedTicker: string) => {
-    setTicker(selectedTicker);
+    // O hook troca o ativo e registra na lista de recentes, numa chamada só.
+    escolherTicker(selectedTicker);
     setQuery("");
     setOpen(false);
-
-    // Salva nos últimos 5 consultados (o hook persiste sozinho)
-    setRecents((prev) => [selectedTicker, ...prev.filter((t) => t !== selectedTicker)].slice(0, 5));
   };
 
   const handleInputKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
@@ -147,7 +141,7 @@ export function TickerQuickSwitch() {
       {/* Fileira dos últimos 5 tickers consultados */}
       <div className="hidden md:flex items-center gap-1">
         <span className="text-[10px] font-mono text-term-dim mr-0.5">Recentes:</span>
-        {recents.map((t) => (
+        {recentes.map((t) => (
           <button
             key={t}
             onClick={() => handleSelect(t)}

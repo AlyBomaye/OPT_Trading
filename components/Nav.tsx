@@ -9,6 +9,7 @@ import clsx from "clsx";
 import { useMarket } from "@/store/market";
 import { sessionInfo } from "@/lib/session";
 import { BotaoSync } from "@/components/BotaoSync";
+import { SeletorAtivo } from "@/components/SeletorAtivo";
 import { fmtDateBR } from "@/lib/format";
 
 /**
@@ -98,6 +99,9 @@ export function Nav() {
       </div>
       {/* WO-38: atualização completa das fontes, alcançável de qualquer aba. */}
       <BotaoSync />
+
+      {/* WO-39: ativo de referência da plataforma, logo abaixo do botão de atualização. */}
+      <SeletorAtivo />
 
       {/* Espaçador: empurra o rodapé de atalhos para baixo, agora que a lista não se estica. */}
       <div className="flex-1" />

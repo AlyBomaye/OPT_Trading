@@ -2215,6 +2215,90 @@ async function testesWo33() {
   await testesWo36();
   await testesWo37();
   await testesWo38();
+  await testesWo39();
+}
+
+// ============ WO-39 — ORDEM DA MACRO E SELETOR DE ATIVO ============
+
+async function testesWo39() {
+  const fs = await import("fs");
+  const path = await import("path");
+  const raiz = path.resolve(__dirname, "..", "..");
+  const ler = (rel: string) => fs.readFileSync(path.join(raiz, rel), "utf-8");
+
+  const srcMacro = ler("app/macro/page.tsx");
+  const srcNav = ler("components/Nav.tsx");
+  const srcSeletor = ler("components/SeletorAtivo.tsx");
+  const srcHook = ler("lib/hooks/useRecentesTicker.ts");
+  const srcBusca = ler("components/TickerQuickSwitch.tsx");
+
+  // ---- Teste 1: Rates & FX logo abaixo do Impacto
+  const ordem = Array.from(srcMacro.matchAll(/<span className="font-bold">\[(\d)\] ([^<—]+)/g))
+    .map((m) => `${m[1]}:${m[2].trim().split(" ")[0]}`);
+  const esperada = ["1:Estado", "2:Impacto", "3:Rates", "4:Painéis", "5:Boletim"];
+  if (JSON.stringify(ordem) === JSON.stringify(esperada)) {
+    console.log("✔ WO-39 Teste 1: Sessões → Impacto → Rates & FX → Painéis → Focus");
+  } else {
+    console.log(`✘ WO-39 Teste 1 falhou: ${JSON.stringify(ordem)}`);
+    failures++;
+  }
+
+  // ---- Teste 2: reordenar não pode apagar o estado de aberto/fechado dos painéis
+  // As chaves seguem a SEÇÃO, não o número — é o que permite mover blocos sem efeito colateral.
+  const chaves = ["macro-sessoes-open", "macro-impacto-open", "macro-rates-open", "macro-mercados-open", "macro-focus-open"];
+  const faltando = chaves.filter((c) => !srcMacro.includes(c));
+  const numeradas = /macro-[1-5]-open/.test(srcMacro);
+  if (faltando.length === 0 && !numeradas) {
+    console.log("✔ WO-39 Teste 2: as 5 chaves de localStorage seguem a seção, não a posição");
+  } else {
+    console.log(`✘ WO-39 Teste 2 falhou: faltam ${faltando.join(", ")}; numeradas=${numeradas}`);
+    failures++;
+  }
+
+  // ---- Teste 3: o seletor guarda a hidratação antes de exibir o ticker
+  // Sem isto volta o `Text content did not match. Server: "PETR4" Client: "VALE3"` do WO-34.
+  const usaGuarda = /useHidratado\(\)/.test(srcSeletor) && /hidratado \? ticker/.test(srcSeletor);
+  if (usaGuarda) {
+    console.log("✔ WO-39 Teste 3: SeletorAtivo só exibe o ticker depois de hidratar");
+  } else {
+    console.log("✘ WO-39 Teste 3 falhou: o ticker do store persistido é lido sem guarda de hidratação");
+    failures++;
+  }
+
+  // ---- Teste 4: as opções saem de bySector(), não de lista escrita à mão
+  const { UNIVERSE, bySector } = await import("../universe");
+  const setores = Object.keys(bySector());
+  const usaBySector = /bySector\(\)/.test(srcSeletor);
+  const semListaFixa = !/"PETR4"[\s\S]{0,80}"VALE3"/.test(srcSeletor);
+  if (usaBySector && semListaFixa && UNIVERSE.length > 0 && setores.length > 1) {
+    console.log(`✔ WO-39 Teste 4: seletor derivado do universo — ${UNIVERSE.length} ativos em ${setores.length} setores`);
+  } else {
+    console.log(`✘ WO-39 Teste 4 falhou: bySector=${usaBySector}, semListaFixa=${semListaFixa}`);
+    failures++;
+  }
+
+  // ---- Teste 5: posição na barra — abaixo do botão de sincronização, acima do espaçador
+  const pBotao = srcNav.indexOf("<BotaoSync />");
+  const pSeletor = srcNav.indexOf("<SeletorAtivo />");
+  const pEspacador = srcNav.indexOf('<div className="flex-1" />');
+  if (pBotao > 0 && pSeletor > pBotao && pEspacador > pSeletor) {
+    console.log("✔ WO-39 Teste 5: seletor entre o botão de atualizar e o espaçador do rodapé");
+  } else {
+    console.log(`✘ WO-39 Teste 5 falhou: botão=${pBotao}, seletor=${pSeletor}, espaçador=${pEspacador}`);
+    failures++;
+  }
+
+  // ---- Teste 6: uma lista de recentes só, compartilhada pelos dois controles
+  // Duas cópias fariam a barra lateral trocar o papel e o topo continuar mostrando outra coisa.
+  const chaveNoHook = /"ticker-recent-list"/.test(srcHook);
+  const buscaUsaHook = /useRecentesTicker/.test(srcBusca) && !/ticker-recent-list/.test(srcBusca);
+  const seletorUsaHook = /useRecentesTicker/.test(srcSeletor) && !/ticker-recent-list/.test(srcSeletor);
+  if (chaveNoHook && buscaUsaHook && seletorUsaHook) {
+    console.log("✔ WO-39 Teste 6: a chave dos recentes vive só no hook; busca e seletor consomem o mesmo");
+  } else {
+    console.log(`✘ WO-39 Teste 6 falhou: hook=${chaveNoHook}, busca=${buscaUsaHook}, seletor=${seletorUsaHook}`);
+    failures++;
+  }
 }
 
 // ============ WO-38 — BOTÃO DE ATUALIZAÇÃO COMPLETA ============
@@ -2785,15 +2869,19 @@ async function testesWo35() {
     failures++;
   }
 
-  // ---- Teste 9: ordem das seções na Macro
+  // ---- Teste 9: o Boletim Focus é uma seção de primeira classe na Macro
+  // A ORDEM das cinco seções mudou no WO-39 e é afirmada lá (Teste 1). Manter a asserção de ordem
+  // aqui criaria dois testes se contradizendo a cada reordenação — este guarda só o que é do WO-35:
+  // que o Focus existe como seção própria, numerada, com painel colapsável e fetch dedicado.
   const srcMacro = ler("app/macro/page.tsx");
-  const ordem = Array.from(srcMacro.matchAll(/<span className="font-bold">\[(\d)\] ([^<—]+)/g))
-    .map((m) => `${m[1]}:${m[2].trim().split(" ")[0]}`);
-  const esperada = ["1:Estado", "2:Impacto", "3:Painéis", "4:Boletim", "5:Rates"];
-  if (JSON.stringify(ordem) === JSON.stringify(esperada)) {
-    console.log("✔ WO-35 Teste 9: Sessões → Impacto → Painéis → Focus → Rates");
+  const secoes = Array.from(srcMacro.matchAll(/<span className="font-bold">\[(\d)\] ([^<—]+)/g))
+    .map((m) => m[2].trim().split(" ")[0]);
+  const focusEhSecao = secoes.includes("Boletim") && secoes.length === 5;
+  const temPainelProprio = /macro-focus-open/.test(srcMacro) && /<PainelFocus/.test(srcMacro);
+  if (focusEhSecao && temPainelProprio) {
+    console.log("✔ WO-35 Teste 9: Boletim Focus é uma das 5 seções da Macro, com painel e estado próprios");
   } else {
-    console.log(`✘ WO-35 Teste 9 falhou: ${JSON.stringify(ordem)}`);
+    console.log(`✘ WO-35 Teste 9 falhou: seções=${JSON.stringify(secoes)}, painelProprio=${temPainelProprio}`);
     failures++;
   }
 
