@@ -2217,7 +2217,69 @@ async function testesWo33() {
   await testesWo38();
   await testesWo39();
   await testesWo40();
+  await testesWo41();
 }
+
+// ============ WO-41 — ICONE DA ABA ============
+
+async function testesWo41() {
+  const fs = await import("fs");
+  const path = await import("path");
+  const raiz = path.resolve(__dirname, "..", "..");
+
+  // O App Router do Next serve app/icon.svg como favicon automaticamente. Se o arquivo mudar de
+  // nome ou de lugar, a aba volta ao icone generico sem nenhum erro de build avisando.
+  const caminho = path.join(raiz, "app", "icon.svg");
+  if (!fs.existsSync(caminho)) {
+    console.log("✘ WO-41 Teste 1 falhou: app/icon.svg nao existe — o Next nao tem o que servir");
+    failures++;
+    return;
+  }
+  const svg = fs.readFileSync(caminho, "utf-8");
+
+  // ---- Teste 1: viewBox quadrado e paleta do terminal
+  const vb = /viewBox="0 0 (\d+) (\d+)"/.exec(svg);
+  const quadrado = vb != null && vb[1] === vb[2];
+  const usaCiano = svg.includes("#22d3ee");
+  const usaFundo = svg.includes("#0b0e14");
+  if (quadrado && usaCiano && usaFundo) {
+    console.log(`✔ WO-41 Teste 1: icone ${vb![1]}x${vb![2]} na paleta do terminal (ciano sobre o fundo escuro)`);
+  } else {
+    console.log(`✘ WO-41 Teste 1 falhou: quadrado=${quadrado}, ciano=${usaCiano}, fundo=${usaFundo}`);
+    failures++;
+  }
+
+  // ---- Teste 2: o desenho e um payoff, nao um traco solto
+  // Sao tres exigencias: a linha do zero (sem ela o traco vira um "visto"), o joelho do strike
+  // (dois segmentos, nao um), e traco grosso o bastante para sobreviver a 16px.
+  const temLinhaZero = /<line[^>]*y1="18"[^>]*y2="18"/.test(svg);
+  const segmentos = (/ d="M[^"]*"/.exec(svg)?.[0].match(/L/g) ?? []).length;
+  const larguraTraco = Number(/stroke-width="([\d.]+)"[^>]*\/>\s*<\/svg>|stroke="#22d3ee"\s*stroke-width="([\d.]+)"/.exec(svg)?.slice(1).find(Boolean) ?? 0);
+  if (temLinhaZero && segmentos >= 2 && larguraTraco >= 3) {
+    console.log(`✔ WO-41 Teste 2: payoff com linha de zero, joelho no strike e traco de ${larguraTraco} (legivel a 16px)`);
+  } else {
+    console.log(`✘ WO-41 Teste 2 falhou: zero=${temLinhaZero}, segmentos=${segmentos}, traco=${larguraTraco}`);
+    failures++;
+  }
+
+  // ---- Teste 3: nada sai do viewBox — corte no canto do icone e invisivel ate alguem reclamar
+  const lado = Number(vb![1]);
+  const foraDoQuadro: string[] = [];
+  const re = /(?:x1|y1|x2|y2)="([\d.]+)"/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(svg)) !== null) {
+    if (Number(m[1]) > lado) foraDoQuadro.push(m[0]);
+  }
+  const coordsPath = (/ d="([^"]*)"/.exec(svg)?.[1] ?? "").match(/[\d.]+/g) ?? [];
+  for (const c of coordsPath) if (Number(c) > lado) foraDoQuadro.push(`path ${c}`);
+  if (foraDoQuadro.length === 0) {
+    console.log("✔ WO-41 Teste 3: todo o desenho cabe no viewBox — nada cortado na borda");
+  } else {
+    console.log(`✘ WO-41 Teste 3 falhou: fora do quadro — ${foraDoQuadro.join(", ")}`);
+    failures++;
+  }
+}
+
 
 // ============ WO-40 — CADENCIA DE PUBLICACAO DO BOLETIM FOCUS ============
 
