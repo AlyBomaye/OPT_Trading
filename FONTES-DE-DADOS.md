@@ -14,7 +14,7 @@ demora.
 | Tesouro Transparente | `/api/curvas-br` | CSV | **13,7 MB · 174 mil linhas** | 1×/dia útil, manhã | **ALTA** |
 | B3 — posições em aberto | `/api/oi` | CSV via token | ~2.600 séries por ativo | 1×/dia útil (D-1) | **ALTA** |
 | opcoes.net.br | `/api/opcoes` | HTML | médio | intradiário | **ALTA** |
-| BCB Olinda — Boletim Focus | `/api/focus` | OData JSON | 500 KB (7 consultas) | 1×/dia útil, com defasagem | MÉDIA |
+| BCB Olinda — Boletim Focus | `/api/focus` | OData JSON | 500 KB (7 consultas) | **semanal** (segunda 8h25, cobre até a sexta anterior) | MÉDIA |
 | Yahoo Finance | `/api/macro`, `/api/history` | JSON | pequeno | intradiário | MÉDIA |
 | RSS — InfoMoney, MoneyTimes, G1, Google News | `/api/news` | XML | pequeno | contínuo | MÉDIA |
 | BCB SGS | `/api/macro`, `/api/news` | JSON | mínimo | diário/mensal | BAIXA |
@@ -77,8 +77,13 @@ API aberta, sem chave, rápida (0,6 s por indicador). **Três armadilhas medidas
 1. **Encoding instável.** A mesma consulta devolve `Câmbio` ou `CÃ¢mbio` conforme a forma da query.
    O `$filter` só aceita a forma correta. Por isso consultamos um indicador por vez e rotulamos
    pela nossa tabela — o texto devolvido nunca é usado para exibir nem para casar.
-2. **Defasagem de dias.** Em 05/08 a leitura mais recente era de 31/07. `dataDoDado` é sempre a
-   data de coleta, nunca a do fetch.
+2. **Cadência semanal, não diária.** O boletim sai toda **segunda por volta das 8h25** e carrega
+   as expectativas coletadas até a **sexta anterior**. Medido: em 19/08 (quarta) a leitura mais
+   recente era 14/08 (sexta); em 06/08 (quinta), era 31/07. Durante a semana inteira, a coleta
+   mais nova possível é sempre aquela sexta — **não é atraso**. `avaliarPublicacao()` em
+   `lib/focus.ts` compara o que temos com o que deveria existir e mede atraso em BOLETINS, não
+   em dias; a tarja só fica âmbar quando falta boletim de verdade. `dataDoDado` é sempre a data
+   de coleta, nunca a do fetch.
 3. **`baseCalculo`.** `0` = base de 30 dias (a do boletim), `1` = base de 5 dias úteis. Misturar as
    duas produz degraus que parecem revisão de expectativa e não são. Usamos sempre `0`.
 

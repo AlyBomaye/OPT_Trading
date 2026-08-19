@@ -13,14 +13,20 @@
  * tabela com cor por sinal — mas a semântica é outra: aqui o eixo x é o TEMPO DA COLETA, não o
  * prazo. O que se lê é a revisão da expectativa, não o formato de uma curva.
  *
- * Proveniência: a tarja mostra a data de COLETA do Focus, que costuma estar dias atrás de hoje.
- * Nunca a data do fetch (WO-30 §2.1).
+ * Proveniência (WO-40): a tarja mostra a data de COLETA do Focus — nunca a do fetch (WO-30 §2.1)
+ * — e é julgada pela CADÊNCIA DO BOLETIM, não pela régua de um dado diário.
+ *
+ * O boletim sai toda segunda por volta das 8h25 carregando as expectativas coletadas até a SEXTA
+ * anterior. Logo, entre uma segunda e a seguinte, a coleta mais nova possível é sempre aquela
+ * sexta. Julgando pela régua diária, um boletim recém-publicado aparecia com 3 pregões de idade e
+ * a tarja saía VERMELHA — alarme disparando com a fonte em dia, que é o que ensina a ignorar
+ * alarme (mesma disciplina de causa do WO-34).
  */
 
 import { CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import clsx from "clsx";
 import { fmtDateBR, fmtNum } from "@/lib/format";
-import { construirProvenance, corFrescor } from "@/lib/provenance";
+import { avaliarPublicacao } from "@/lib/focus";
 import type { SerieFocus } from "@/lib/focus";
 
 /** Cores por ano de referência: o mais próximo é o mais forte, como nas curvas de Rates. */
@@ -49,7 +55,7 @@ function fmtDelta(v: number | null, casas: number): string {
 }
 
 export function PainelFocus({ serie }: { serie: SerieFocus }) {
-  const prov = construirProvenance("BCB · Boletim Focus", serie.dataDoDado);
+  const pub = avaliarPublicacao(serie.dataDoDado);
 
   const anosGrafico = serie.horizontes.slice(0, ANOS_NO_GRAFICO).map((h) => h.ano);
 
@@ -76,13 +82,15 @@ export function PainelFocus({ serie }: { serie: SerieFocus }) {
           <span className="text-term-dim font-normal"> — mediana das projeções</span>
         </span>
         <span
-          className={clsx("tag bg-term-panel2 whitespace-nowrap", corFrescor(prov.frescor))}
-          title={`BCB · Boletim Focus · coleta de ${
-            serie.dataDoDado ? fmtDateBR(serie.dataDoDado) : "—"
-          }${prov.idadePregoes ? ` · ${prov.idadePregoes} pregão(ões) de defasagem` : ""}`}
+          className={clsx("tag bg-term-panel2 whitespace-nowrap", pub.emDia ? "text-term-cyan" : "text-term-gold")}
+          title={
+            pub.emDia
+              ? `BCB · Boletim Focus · coleta de ${serie.dataDoDado ? fmtDateBR(serie.dataDoDado) : "—"}. É o boletim mais recente publicado: o de segunda carrega as expectativas coletadas até a sexta anterior.`
+              : `Atrasado: a coleta esperada seria ${fmtDateBR(pub.esperada)} e temos ${serie.dataDoDado ? fmtDateBR(serie.dataDoDado) : "nenhuma"}.`
+          }
         >
           {serie.dataDoDado ? `COLETA ${fmtDateBR(serie.dataDoDado)}` : "—"}
-          {prov.idadePregoes && prov.idadePregoes > 0 ? ` (D-${prov.idadePregoes})` : ""}
+          {pub.emDia ? " · EM DIA" : ` · ${pub.boletinsAtraso} BOLETIM(NS) ATRÁS`}
         </span>
       </div>
 
@@ -190,7 +198,7 @@ export function PainelCopom({
   pontos: Array<{ reuniao: string; mediana: number; respondentes: number | null }>;
   dataDoDado: string | null;
 }) {
-  const prov = construirProvenance("BCB · Boletim Focus", dataDoDado);
+  const pub = avaliarPublicacao(dataDoDado);
 
   return (
     <div className="bg-term-panel rounded border border-term-line/60">
@@ -199,9 +207,9 @@ export function PainelCopom({
           Trajetória da Selic
           <span className="text-term-dim font-normal"> — mediana esperada por reunião do Copom</span>
         </span>
-        <span className={clsx("tag bg-term-panel2 whitespace-nowrap", corFrescor(prov.frescor))}>
+        <span className={clsx("tag bg-term-panel2 whitespace-nowrap", pub.emDia ? "text-term-cyan" : "text-term-gold")}>
           {dataDoDado ? `COLETA ${fmtDateBR(dataDoDado)}` : "—"}
-          {prov.idadePregoes && prov.idadePregoes > 0 ? ` (D-${prov.idadePregoes})` : ""}
+          {pub.emDia ? " · EM DIA" : ` · ${pub.boletinsAtraso} BOLETIM(NS) ATRÁS`}
         </span>
       </div>
 

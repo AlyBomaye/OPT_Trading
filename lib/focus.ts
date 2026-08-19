@@ -317,3 +317,76 @@ export async function buscarFocus(timeoutMs = 20000): Promise<FocusBody> {
 
   return { dataDoDado, series, copom, falhas };
 }
+
+/* ========================================================================== *
+ * Cadência de publicação — WO-40
+ *
+ * O Boletim Focus é divulgado toda SEGUNDA por volta das 8h25, e carrega as expectativas
+ * coletadas até a SEXTA anterior. As duas datas são diferentes e confundi-las faz a plataforma
+ * parecer atrasada quando está em dia.
+ *
+ * Medido na API em 19/08/2026 (quarta): a leitura mais recente era 14/08 (sexta) — o boletim de
+ * segunda 17/08. Em 06/08 (quinta), a mais recente era 31/07 (sexta) — o boletim de 03/08. O
+ * padrão se repete: entre uma segunda e a seguinte, a coleta mais nova possível é sempre a sexta
+ * anterior à última segunda.
+ *
+ * Sem esta regra, `classificarFrescor` julgava o Focus pela régua de um dado diário e devolvia
+ * ANTIGO (tarja vermelha) para um boletim recém-publicado. Alarme que dispara quando está tudo
+ * certo ensina a ignorar o alarme — a mesma disciplina de causa do WO-34.
+ * ========================================================================== */
+
+/** Hora de divulgação do boletim, em horário de Brasília. */
+const HORA_DIVULGACAO = 9;
+
+function iso(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+/**
+ * A coleta mais recente que PODE existir agora.
+ *
+ * Passo 1: achar a última segunda cujo boletim já saiu (se hoje é segunda antes das 9h, o de
+ * hoje ainda não saiu — vale o da semana passada).
+ * Passo 2: a coleta que esse boletim carrega é a da sexta imediatamente anterior a ele.
+ */
+export function coletaEsperada(agora = new Date()): string {
+  const d = new Date(agora.getFullYear(), agora.getMonth(), agora.getDate());
+  const diaSemana = agora.getDay(); // 0 = domingo, 1 = segunda
+
+  // Recua até a segunda-feira mais recente.
+  const recuoAteSegunda = (diaSemana + 6) % 7;
+  d.setDate(d.getDate() - recuoAteSegunda);
+
+  // Segunda antes da divulgação: o boletim de hoje ainda não saiu.
+  if (diaSemana === 1 && agora.getHours() < HORA_DIVULGACAO) {
+    d.setDate(d.getDate() - 7);
+  }
+
+  // Da segunda do boletim, a sexta anterior são 3 dias atrás.
+  d.setDate(d.getDate() - 3);
+  return iso(d);
+}
+
+export interface EstadoPublicacaoFocus {
+  /** A coleta mais recente que deveria existir agora. */
+  esperada: string;
+  /** `true` quando a plataforma tem o boletim mais recente publicado. */
+  emDia: boolean;
+  /** Quantos boletins semanais de atraso. 0 quando em dia. */
+  boletinsAtraso: number;
+}
+
+/**
+ * Compara a coleta que temos com a que deveria existir. Devolve atraso em BOLETINS, não em dias:
+ * "3 dias atrás" não diz nada sobre um dado semanal; "um boletim atrás" diz tudo.
+ */
+export function avaliarPublicacao(dataDoDado: string | null, agora = new Date()): EstadoPublicacaoFocus {
+  const esperada = coletaEsperada(agora);
+  if (dataDoDado == null) return { esperada, emDia: false, boletinsAtraso: 0 };
+  if (dataDoDado >= esperada) return { esperada, emDia: true, boletinsAtraso: 0 };
+
+  const diffDias = Math.round(
+    (new Date(`${esperada}T12:00:00`).getTime() - new Date(`${dataDoDado}T12:00:00`).getTime()) / 86_400_000
+  );
+  return { esperada, emDia: false, boletinsAtraso: Math.max(1, Math.round(diffDias / 7)) };
+}

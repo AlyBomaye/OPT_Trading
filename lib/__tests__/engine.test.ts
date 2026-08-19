@@ -2216,7 +2216,83 @@ async function testesWo33() {
   await testesWo37();
   await testesWo38();
   await testesWo39();
+  await testesWo40();
 }
+
+// ============ WO-40 — CADENCIA DE PUBLICACAO DO BOLETIM FOCUS ============
+
+async function testesWo40() {
+  const fs = await import("fs");
+  const path = await import("path");
+  const raiz = path.resolve(__dirname, "..", "..");
+  const ler = (rel: string) => fs.readFileSync(path.join(raiz, rel), "utf-8");
+
+  const { coletaEsperada, avaliarPublicacao } = await import("../focus");
+
+  // ---- Teste 1: a coleta esperada e sempre a sexta anterior a ultima segunda com boletim
+  // Casos ancorados no que foi MEDIDO na API, nao supostos:
+  //   em 19/08/2026 (qua) a leitura mais recente era 14/08 (sex)
+  //   em 06/08/2026 (qui) a leitura mais recente era 31/07 (sex)
+  const casos: Array<[string, string, string]> = [
+    ["2026-08-19T14:00:00", "2026-08-14", "quarta: boletim de 17/08 cobre ate a sexta 14/08"],
+    ["2026-08-06T14:00:00", "2026-07-31", "quinta: boletim de 03/08 cobre ate a sexta 31/07"],
+    ["2026-08-21T14:00:00", "2026-08-14", "sexta: o lote da semana so sai na segunda seguinte"],
+    ["2026-08-24T08:00:00", "2026-08-14", "segunda antes das 9h: o boletim do dia ainda nao saiu"],
+    ["2026-08-24T10:00:00", "2026-08-21", "segunda depois das 9h: ja vale a sexta 21/08"],
+  ];
+  const erradas = casos.filter(([quando, esperado]) => coletaEsperada(new Date(quando)) !== esperado);
+  if (erradas.length === 0) {
+    console.log(`✔ WO-40 Teste 1: coleta esperada correta nos ${casos.length} marcos da semana`);
+  } else {
+    const [q, e] = erradas[0];
+    console.log(`✘ WO-40 Teste 1 falhou: em ${q} esperava ${e}, veio ${coletaEsperada(new Date(q))}`);
+    failures++;
+  }
+
+  // ---- Teste 2: boletim recem-publicado e EM DIA, nao "antigo"
+  // Antes disto, classificarFrescor via 3 pregoes de idade e devolvia ANTIGO — tarja VERMELHA
+  // num dado que acabara de sair. Alarme que dispara com a fonte em dia ensina a ignorar alarme.
+  const emDia = avaliarPublicacao("2026-08-14", new Date("2026-08-19T14:00:00"));
+  if (emDia.emDia && emDia.boletinsAtraso === 0 && emDia.esperada === "2026-08-14") {
+    console.log("✔ WO-40 Teste 2: coleta de sexta na quarta seguinte e EM DIA — nao dispara alarme");
+  } else {
+    console.log(`✘ WO-40 Teste 2 falhou: ${JSON.stringify(emDia)}`);
+    failures++;
+  }
+
+  // ---- Teste 3: atraso real e medido em BOLETINS, nao em dias
+  // "3 dias atras" nao diz nada sobre um dado semanal; "um boletim atras" diz tudo.
+  const umAtras = avaliarPublicacao("2026-08-07", new Date("2026-08-19T14:00:00"));
+  const doisAtras = avaliarPublicacao("2026-07-31", new Date("2026-08-19T14:00:00"));
+  if (!umAtras.emDia && umAtras.boletinsAtraso === 1 && doisAtras.boletinsAtraso === 2) {
+    console.log("✔ WO-40 Teste 3: atraso contado em boletins semanais — 1 e 2 boletins atras");
+  } else {
+    console.log(`✘ WO-40 Teste 3 falhou: um=${umAtras.boletinsAtraso}, dois=${doisAtras.boletinsAtraso}`);
+    failures++;
+  }
+
+  // ---- Teste 4: o painel julga pela cadencia, nao pela regua diaria
+  const srcPainel = ler("components/macro/PainelFocus.tsx");
+  const usaCadencia = /avaliarPublicacao/.test(srcPainel) && /EM DIA/.test(srcPainel);
+  const semReguaDiaria = !/corFrescor|construirProvenance/.test(srcPainel);
+  if (usaCadencia && semReguaDiaria) {
+    console.log("✔ WO-40 Teste 4: PainelFocus usa a cadencia do boletim, sem a regua de dado diario");
+  } else {
+    console.log(`✘ WO-40 Teste 4 falhou: cadencia=${usaCadencia}, semReguaDiaria=${semReguaDiaria}`);
+    failures++;
+  }
+
+  // ---- Teste 5: a tela explica a cadencia, para o usuario nao ler "sexta" como atraso
+  const srcMacro = ler("app/macro/page.tsx");
+  const explica = /segunda por volta das 8h25/.test(srcMacro) && /sexta anterior/.test(srcMacro);
+  if (explica) {
+    console.log("✔ WO-40 Teste 5: a secao Focus declara a cadencia de publicacao na propria tela");
+  } else {
+    console.log("✘ WO-40 Teste 5 falhou: a tela nao explica por que o dado e sempre de sexta");
+    failures++;
+  }
+}
+
 
 // ============ WO-39 — ORDEM DA MACRO E SELETOR DE ATIVO ============
 

@@ -882,7 +882,10 @@ export default function MacroPage() {
             <div className="text-xxs text-term-dim leading-relaxed">
               Mediana das projeções coletadas pelo Banco Central junto a mais de 100 instituições.
               É o que o mercado <b>espera</b>, não o que já aconteceu — o realizado está em Rates &amp; FX.
-              A base é a de 30 dias, a mesma do boletim, e a coleta sai com alguns dias de defasagem.
+              O boletim sai toda <b>segunda por volta das 8h25</b> e carrega as expectativas coletadas
+              até a <b>sexta anterior</b>: durante a semana inteira, a leitura mais recente que existe é
+              a daquela sexta. Não é atraso da plataforma — é a cadência da fonte. A base é a de 30 dias,
+              a mesma do boletim.
             </div>
 
             {focus?.falhas && focus.falhas.length > 0 && (
