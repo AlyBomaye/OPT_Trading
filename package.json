@@ -10,7 +10,8 @@
     "test:engine": "tsx lib/__tests__/engine.test.ts",
     "dados:sync": "node scripts/dados-sync.mjs",
     "agents:daily": "node scripts/agents-daily.mjs",
-    "setup:db": "powershell -ExecutionPolicy Bypass -File ./scripts/setup-db.ps1"
+    "setup:db": "powershell -ExecutionPolicy Bypass -File ./scripts/setup-db.ps1",
+    "reset:senha-db": "powershell -ExecutionPolicy Bypass -File ./scripts/reset-senha-postgres.ps1"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.115.0",

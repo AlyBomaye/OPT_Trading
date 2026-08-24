@@ -28,6 +28,7 @@ Abre em `http://localhost:3000`. Em desenvolvimento, `APP_PASSWORD` em branco li
 | `npm run dados:sync` | Aquece o cache das fontes pesadas antes do pregão |
 | `npm run agents:daily` | Dispara um ciclo completo de agentes |
 | `npm run setup:db` | Cria banco e usuário no PostgreSQL e grava a `DATABASE_URL` (uma vez só) |
+| `npm run reset:senha-db` | Redefine a senha do superusuário `postgres` (só se você não a souber) |
 
 ## Banco de dados (opcional, recomendado)
 
@@ -46,6 +47,16 @@ npm run dev          # reinicie para a conexão valer
 ```
 
 O script usa a porta **5433** por padrão (PostgreSQL 18). Nenhuma credencial entra no repositório.
+
+Se você não souber a senha do superusuário `postgres`, rode antes, **em PowerShell como
+administrador**:
+
+```bash
+npm run reset:senha-db
+```
+
+Ele libera a autenticação, troca a senha e **restaura o `pg_hba.conf`** — a restauração fica num
+`finally`, então acontece mesmo se algo falhar no meio.
 
 ## A rotina da manhã
 
