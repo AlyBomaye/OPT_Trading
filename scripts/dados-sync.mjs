@@ -103,6 +103,54 @@ for (const f of FONTES) {
   }
 }
 
+// ---------------------------------------------------------------------------
+// WO-42 — Snapshot diario de IV do universo.
+//
+// Vem DEPOIS das fontes porque depende da grade de opcoes ja aquecida. E o unico item da rotina
+// cujo custo aumenta com a espera: o IV Rank exige 20 observacoes POR PAPEL e um pregao sem
+// snapshot nao se recupera depois.
+// ---------------------------------------------------------------------------
+console.log("→ Snapshot de volatilidade implicita (universo)");
+const tIv = Date.now();
+try {
+  const res = await fetch(`${BASE}/api/iv-sync`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({}),
+    signal: AbortSignal.timeout(600_000),
+  });
+  const ms = Date.now() - tIv;
+
+  if (!res.ok) {
+    houveFalha = true;
+    console.log(`  ✘ HTTP ${res.status} em ${fmtMs(ms)}
+`);
+  } else {
+    const j = await res.json();
+    if (!j.configurado) {
+      console.log(`  — ${j.aviso}
+`);
+    } else {
+      console.log(`  data    : ${j.data}`);
+      console.log(`  gravados: ${j.gravados} de ${j.total} papeis em ${fmtMs(ms)}`);
+      const faltaram = (j.resultados ?? []).filter((r) => !r.ok);
+      if (faltaram.length === 0) {
+        console.log("  ✔ historico do dia completo");
+      } else {
+        // Papel sem serie fresca no dinheiro nao e falha da rotina: e o mercado daquele papel.
+        console.log(`  ⚠ ${faltaram.length} sem snapshot hoje:`);
+        for (const r of faltaram.slice(0, 6)) console.log(`      ${r.ticker}: ${r.motivo}`);
+        if (faltaram.length > 6) console.log(`      … e mais ${faltaram.length - 6}`);
+      }
+      console.log();
+    }
+  }
+} catch (err) {
+  houveFalha = true;
+  console.log(`  ✘ ${err?.message ?? err} (apos ${fmtMs(Date.now() - tIv)})
+`);
+}
+
 console.log("=========================================");
 if (houveFalha) {
   console.log("  CONCLUÍDO COM FALHA — veja acima.");

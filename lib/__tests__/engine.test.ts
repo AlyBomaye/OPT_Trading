@@ -2218,7 +2218,135 @@ async function testesWo33() {
   await testesWo39();
   await testesWo40();
   await testesWo41();
+  await testesWo42();
 }
+
+// ============ WO-42 — POSTGRES: DURABILIDADE DO BOOK E HISTORICO DE IV ============
+
+async function testesWo42() {
+  const fs = await import("fs");
+  const path = await import("path");
+  const raiz = path.resolve(__dirname, "..", "..");
+  const ler = (rel: string) => fs.readFileSync(path.join(raiz, rel), "utf-8");
+  const existe = (rel: string) => fs.existsSync(path.join(raiz, rel));
+
+  // ---- Teste 1: sem DATABASE_URL nada quebra
+  // O banco e melhoria, nao requisito. Se `consultar` lancasse, uma rota sem try/catch viraria
+  // tela branca por causa de um recurso acessorio.
+  delete process.env.DATABASE_URL;
+  const { consultar, bancoConfigurado, estadoBanco, obterPool } = await import("../db");
+  const semBanco = await consultar("SELECT 1");
+  const estado = await estadoBanco();
+  if (semBanco === null && bancoConfigurado() === false && obterPool() === null && estado.configurado === false) {
+    console.log("✔ WO-42 Teste 1: sem DATABASE_URL as consultas devolvem null e nada lanca");
+  } else {
+    console.log(`✘ WO-42 Teste 1 falhou: consulta=${semBanco}, configurado=${bancoConfigurado()}`);
+    failures++;
+  }
+
+  // ---- Teste 2: a impressao digital nao depende da ordem das chaves
+  // Duas serializacoes da MESMA carteira nao podem gerar hashes diferentes, senao cada
+  // salvamento vira uma versao nova e o historico enche de duplicata.
+  const { impressaoDigital } = await import("../carteira-backup");
+  const a = impressaoDigital({ positions: [{ id: "x" }], capitalTotal: 100000, closed: [] });
+  const b = impressaoDigital({ closed: [], capitalTotal: 100000, positions: [{ id: "x" }] });
+  const c = impressaoDigital({ positions: [{ id: "y" }], capitalTotal: 100000, closed: [] });
+  if (a === b && a !== c && a.length === 32) {
+    console.log("✔ WO-42 Teste 2: impressao digital estavel a ordem das chaves e sensivel ao conteudo");
+  } else {
+    console.log(`✘ WO-42 Teste 2 falhou: a===b? ${a === b} · a!==c? ${a !== c}`);
+    failures++;
+  }
+
+  // ---- Teste 3: IV so sai de premio do MESMO pregao do spot
+  // Extrair IV de um premio de outro dia contra o spot de hoje produz numero contaminado — foram
+  // 738 IVs contaminadas quando isso foi medido no WO-30.
+  const { ivAtmDoChainCru, agregarAtm } = await import("../iv-atm");
+  const chainMisto = {
+    ticker: "TESTE", spot: 100, dataEfetiva: "2026-08-21",
+    expiries: [{ date: "2026-09-18", isMonthly: true }],
+    options: [
+      // fresca, no dinheiro
+      { type: "CALL" as const, strike: 100, last: 4, du: 20, expiry: "2026-09-18", sourceIv: null, volumeFin: 1000, lastTradeAt: "2026-08-21" },
+      { type: "PUT" as const,  strike: 100, last: 4, du: 20, expiry: "2026-09-18", sourceIv: null, volumeFin: 1000, lastTradeAt: "2026-08-21" },
+      // stale: premio de outro pregao — precisa ser DESCARTADA
+      { type: "CALL" as const, strike: 101, last: 40, du: 20, expiry: "2026-09-18", sourceIv: null, volumeFin: 9_000_000, lastTradeAt: "2026-07-10" },
+    ],
+  };
+  const r = ivAtmDoChainCru(chainMisto, 0.1425);
+  // A stale tem premio absurdo e volume gigante: se entrasse, dominaria a media ponderada.
+  const descartouStale = r.amostra === 2 && r.atmIvMean != null && r.atmIvMean < 1;
+  if (descartouStale) {
+    console.log(`✔ WO-42 Teste 3: so premio da data do spot entra na IV ATM (amostra=${r.amostra})`);
+  } else {
+    console.log(`✘ WO-42 Teste 3 falhou: amostra=${r.amostra}, iv=${r.atmIvMean}`);
+    failures++;
+  }
+
+  // ---- Teste 4: sem serie utilizavel a IV e null, nunca zero
+  const vazio = ivAtmDoChainCru({ ...chainMisto, options: [] }, 0.1425);
+  const semSpot = agregarAtm([{ type: "CALL", strike: 100, iv: 0.3 }], 0);
+  if (vazio.atmIvMean === null && vazio.amostra === 0 && semSpot.atmIvMean === null) {
+    console.log("✔ WO-42 Teste 4: IV ausente devolve null — zero afirmaria vol zero (WO-30)");
+  } else {
+    console.log(`✘ WO-42 Teste 4 falhou: vazio=${vazio.atmIvMean}, semSpot=${semSpot.atmIvMean}`);
+    failures++;
+  }
+
+  // ---- Teste 5: o minimo de observacoes e o mesmo nos dois lados
+  // Se o servidor e o navegador discordassem, o IV Rank apareceria numa tela e sumiria na outra.
+  const { MIN_OBSERVACOES } = await import("../iv-historico");
+  const srcSnapshots = ler("lib/snapshots.ts");
+  const minCliente = Number(/hist\.length < (\d+)/.exec(srcSnapshots)?.[1] ?? 0);
+  if (MIN_OBSERVACOES === minCliente && MIN_OBSERVACOES === 20) {
+    console.log(`✔ WO-42 Teste 5: minimo de ${MIN_OBSERVACOES} observacoes igual no servidor e no navegador`);
+  } else {
+    console.log(`✘ WO-42 Teste 5 falhou: servidor=${MIN_OBSERVACOES}, cliente=${minCliente}`);
+    failures++;
+  }
+
+  // ---- Teste 6: schema e script de setup no lugar, e idempotentes
+  const temSchema = existe("db/001_fundacao.sql");
+  const sql = temSchema ? ler("db/001_fundacao.sql") : "";
+  const idempotente =
+    (sql.match(/CREATE TABLE IF NOT EXISTS/g) ?? []).length >= 3 &&
+    (sql.match(/CREATE (UNIQUE )?INDEX IF NOT EXISTS/g) ?? []).length >= 3;
+  const temSetup = existe("scripts/setup-db.ps1");
+  if (temSchema && idempotente && temSetup) {
+    console.log("✔ WO-42 Teste 6: schema idempotente e script de setup presentes");
+  } else {
+    console.log(`✘ WO-42 Teste 6 falhou: schema=${temSchema}, idempotente=${idempotente}, setup=${temSetup}`);
+    failures++;
+  }
+
+  // ---- Teste 7: nenhuma senha no repositorio
+  // O setup grava a DATABASE_URL no .env.local, que e ignorado. Nada de credencial versionada.
+  const gitignore = ler(".gitignore");
+  const exemplo = ler(".env.example");
+  const envIgnorado = /\.env\.local/.test(gitignore);
+  const exemploSemValor = /^DATABASE_URL=\s*$/m.test(exemplo);
+  const setupNaoGravaSenha = !/postgresql:\/\/[a-z]+:[^$]/i.test(ler("scripts/setup-db.ps1"));
+  if (envIgnorado && exemploSemValor && setupNaoGravaSenha) {
+    console.log("✔ WO-42 Teste 7: nenhuma credencial de banco versionada");
+  } else {
+    console.log(`✘ WO-42 Teste 7 falhou: ignorado=${envIgnorado}, exemploVazio=${exemploSemValor}, setup=${setupNaoGravaSenha}`);
+    failures++;
+  }
+
+  // ---- Teste 8: o sync do universo entrou na rotina da manha
+  const srcSync = ler("scripts/dados-sync.mjs");
+  const srcRota = ler("app/api/iv-sync/route.ts");
+  const naRotina = /\/api\/iv-sync/.test(srcSync);
+  const varreUniverso = /UNIVERSE/.test(srcRota) && /for \(const entrada of UNIVERSE\)/.test(srcRota);
+  const temTeto = /AbortSignal\.timeout/.test(srcRota);
+  if (naRotina && varreUniverso && temTeto) {
+    console.log("✔ WO-42 Teste 8: dados:sync captura IV do universo inteiro, com teto de tempo");
+  } else {
+    console.log(`✘ WO-42 Teste 8 falhou: rotina=${naRotina}, universo=${varreUniverso}, teto=${temTeto}`);
+    failures++;
+  }
+}
+
 
 // ============ WO-41 — ICONE DA ABA ============
 

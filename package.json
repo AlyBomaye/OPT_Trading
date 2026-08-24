@@ -9,13 +9,15 @@
     "typecheck": "tsc --noEmit",
     "test:engine": "tsx lib/__tests__/engine.test.ts",
     "dados:sync": "node scripts/dados-sync.mjs",
-    "agents:daily": "node scripts/agents-daily.mjs"
+    "agents:daily": "node scripts/agents-daily.mjs",
+    "setup:db": "powershell -ExecutionPolicy Bypass -File ./scripts/setup-db.ps1"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.115.0",
     "clsx": "^2.1.1",
     "lucide-react": "^0.428.0",
     "next": "^14.2.5",
+    "pg": "^8.23.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "recharts": "^2.12.7",
@@ -23,6 +25,7 @@
   },
   "devDependencies": {
     "@types/node": "^20.14.0",
+    "@types/pg": "^8.23.1",
     "@types/react": "^18.3.3",
     "@types/react-dom": "^18.3.0",
     "autoprefixer": "^10.4.19",

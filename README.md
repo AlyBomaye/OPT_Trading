@@ -27,6 +27,25 @@ Abre em `http://localhost:3000`. Em desenvolvimento, `APP_PASSWORD` em branco li
 | `npm run test:engine` | Suíte do engine, dos agentes e das travas de interface |
 | `npm run dados:sync` | Aquece o cache das fontes pesadas antes do pregão |
 | `npm run agents:daily` | Dispara um ciclo completo de agentes |
+| `npm run setup:db` | Cria banco e usuário no PostgreSQL e grava a `DATABASE_URL` (uma vez só) |
+
+## Banco de dados (opcional, recomendado)
+
+A plataforma funciona sem banco — o navegador continua sendo a fonte do estado, como sempre foi.
+Com PostgreSQL, duas coisas mudam:
+
+- **O book deixa de viver num navegador só.** Cada alteração é versionada no servidor; limpar
+  dados do site deixa de apagar o registro das operações.
+- **O IV Rank passa a acumular para o universo inteiro.** Ele exige 20 observações **por papel**;
+  sem banco, o histórico só cresce para o ticker aberto naquele dia, e cada pregão perdido não
+  volta.
+
+```bash
+npm run setup:db     # pergunta as senhas no seu terminal e grava a DATABASE_URL no .env.local
+npm run dev          # reinicie para a conexão valer
+```
+
+O script usa a porta **5433** por padrão (PostgreSQL 18). Nenhuma credencial entra no repositório.
 
 ## A rotina da manhã
 
