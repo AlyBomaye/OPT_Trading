@@ -22,6 +22,7 @@ import { getIvRank, snapshotCount, useSnapshots } from "@/lib/snapshots";
 import { tickers } from "@/lib/universe";
 import { fmtBRL, fmtNum, fmtPct, fmtCompact, fmtDateBR } from "@/lib/format";
 import { AgentPanel } from "@/components/AgentPanel";
+import { PainelTendencia } from "@/components/PainelTendencia";
 
 /* ============================================================================
  * Histórico — dados históricos e vol realizada do universo monitorado
@@ -208,6 +209,10 @@ export default function HistoricoPage() {
           ))}
         </div>
       )}
+
+      {/* WO-44: as suas marcações de tendência plotadas contra o que o preço fez. Vem antes dos
+          demais painéis porque é a camada 1 do método — o portão que decide se opera. */}
+      <PainelTendencia ticker={ticker} />
 
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-3">
         {/* Preço + volume */}

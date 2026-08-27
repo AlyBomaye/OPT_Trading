@@ -116,6 +116,26 @@ export interface Position extends Leg {
   entryGreeks?: { delta: number | null; vega: number | null; theta: number | null };
   notes?: string;
   tags?: string[];
+
+  /**
+   * WO-44 — as 3 perguntas do método, respondidas por escrito.
+   *
+   * O manual as transforma em critério de entrada: "se você não souber responder essas três, não
+   * opera". Havia só um `notes` livre, que não permite consultar depois se as saídas por alvo
+   * pagam mais que as por stop, ou quais regimes rendem.
+   *
+   * Opcionais para não invalidar as posições já registradas.
+   */
+  /** Pergunta 1 — direção e por quê. */
+  tese?: string;
+  /** Pergunta 2 — onde a tese para: suporte, resistência ou Fibonacci. */
+  alvo?: number;
+  /** Pergunta 3 — a regra de saída definida ANTES de entrar. */
+  regraSaida?: string;
+  /** Regime marcado no momento da entrada — congelado, para comparar depois. */
+  regimeNaEntrada?: "alta" | "baixa" | "lateral" | "indefinido";
+  /** No fechamento: qual regra efetivamente disparou. */
+  motivoSaida?: "alvo" | "stop" | "regime" | "vencimento" | "manual";
 }
 
 export interface StrategyMetrics {

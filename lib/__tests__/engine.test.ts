@@ -2228,7 +2228,172 @@ async function testesWo33() {
   await testesWo41();
   await testesWo42();
   await testesWo43();
+  await testesWo44();
 }
+
+// ============ WO-44 — TENDENCIA, FISCAL, AMOSTRA E JOURNAL ============
+
+async function testesWo44() {
+  const fs = await import("fs");
+  const path = await import("path");
+  const raiz = path.resolve(__dirname, "..", "..");
+  const ler = (rel: string) => fs.readFileSync(path.join(raiz, rel), "utf-8");
+
+  // ---- Teste 1: faixas de regime — cada marcacao vale ate a proxima
+  const { montarFaixas } = await import("../../components/PainelTendencia");
+  const faixas = montarFaixas(
+    [
+      { ticker: "X", regime: "alta", observadoEm: "2026-06-10", nota: null },
+      { ticker: "X", regime: "baixa", observadoEm: "2026-07-15", nota: null },
+    ],
+    "2026-06-01",
+    "2026-08-21"
+  );
+  const encadeado =
+    faixas.length === 2 &&
+    faixas[0].regime === "alta" && faixas[0].de === "2026-06-10" && faixas[0].ate === "2026-07-15" &&
+    faixas[1].regime === "baixa" && faixas[1].ate === "2026-08-21";
+  if (encadeado) {
+    console.log("✔ WO-44 Teste 1: cada marcacao vale ate a proxima; a ultima se estende ate o fim da serie");
+  } else {
+    console.log(`✘ WO-44 Teste 1 falhou: ${JSON.stringify(faixas)}`);
+    failures++;
+  }
+
+  // ---- Teste 2: marcacao anterior a janela nao deixa o inicio sem cor
+  const recortada = montarFaixas(
+    [{ ticker: "X", regime: "alta", observadoEm: "2026-01-05", nota: null }],
+    "2026-06-01",
+    "2026-08-21"
+  );
+  if (recortada.length === 1 && recortada[0].de === "2026-06-01") {
+    console.log("✔ WO-44 Teste 2: marcacao anterior a janela e recortada, nao descartada");
+  } else {
+    console.log(`✘ WO-44 Teste 2 falhou: ${JSON.stringify(recortada)}`);
+    failures++;
+  }
+
+  // ---- Teste 3: day trade e a MESMA opcao no MESMO dia
+  // O manual destaca como erro comum: comprar hoje e vender amanha e swing, nao day.
+  const { classificarNatureza } = await import("../fiscal");
+  const base = { id: "1", underlying: "PETR4", qty: 100, price: 1, side: 1, kind: "OPTION" } as any;
+  const mesmoDia = classificarNatureza({ ...base, openedAt: "2026-05-04T10:00:00Z", closedAt: "2026-05-04T16:00:00Z" });
+  const diaSeguinte = classificarNatureza({ ...base, openedAt: "2026-05-04T10:00:00Z", closedAt: "2026-05-05T11:00:00Z" });
+  const aberta = classificarNatureza({ ...base, openedAt: "2026-05-04T10:00:00Z" });
+  if (mesmoDia === "day" && diaSeguinte === "swing" && aberta === "swing") {
+    console.log("✔ WO-44 Teste 3: day trade so no mesmo dia — comprar hoje e vender amanha e swing");
+  } else {
+    console.log(`✘ WO-44 Teste 3 falhou: ${mesmoDia}/${diaSeguinte}/${aberta}`);
+    failures++;
+  }
+
+  // ---- Teste 4: prejuizo NAO cruza natureza
+  // Prejuizo de day nao pode abater lucro de swing. E o erro que a Receita audita.
+  const { apurarMeses } = await import("../fiscal");
+  const meses = apurarMeses([
+    { id: "a", ticker: "PETR4", opTicker: null, natureza: "day", competencia: "2026-01", resultado: -2000, valorVenda: 5000, custos: 0 },
+    { id: "b", ticker: "PETR4", opTicker: null, natureza: "swing", competencia: "2026-02", resultado: 5000, valorVenda: 20000, custos: 0 },
+  ]);
+  const fev = meses.find((m) => m.competencia === "2026-02");
+  const naoCruzou = fev != null && fev.compensadoSwing === 0 && fev.baseSwing === 5000;
+  const guardouDay = fev != null && fev.saldoPrejuizoDay === 2000;
+  if (naoCruzou && guardouDay) {
+    console.log("✔ WO-44 Teste 4: prejuizo de day nao abate lucro de swing, e continua acumulado");
+  } else {
+    console.log(`✘ WO-44 Teste 4 falhou: compensado=${fev?.compensadoSwing}, base=${fev?.baseSwing}, saldoDay=${fev?.saldoPrejuizoDay}`);
+    failures++;
+  }
+
+  // ---- Teste 5: o exemplo do manual bate
+  // "Janeiro prejuizo R$2.000 swing; fevereiro lucro R$5.000 swing; imposto = 15% x 3.000 = R$450"
+  const exemplo = apurarMeses([
+    { id: "a", ticker: "PETR4", opTicker: null, natureza: "swing", competencia: "2026-01", resultado: -2000, valorVenda: 8000, custos: 0 },
+    { id: "b", ticker: "PETR4", opTicker: null, natureza: "swing", competencia: "2026-02", resultado: 5000, valorVenda: 20000, custos: 0 },
+  ]);
+  const fev2 = exemplo.find((m) => m.competencia === "2026-02");
+  const bate = fev2 != null && Math.abs(fev2.impostoSwing - 450) < 0.01 && fev2.compensadoSwing === 2000;
+  if (bate) {
+    console.log("✔ WO-44 Teste 5: exemplo do manual confere — R$450 de imposto apos compensar R$2.000");
+  } else {
+    console.log(`✘ WO-44 Teste 5 falhou: imposto=${fev2?.impostoSwing}, compensado=${fev2?.compensadoSwing}`);
+    failures++;
+  }
+
+  // ---- Teste 6: DARF vence no ultimo dia UTIL do mes seguinte
+  const { ultimoDiaUtil } = await import("../fiscal");
+  // 31/05/2026 e um domingo — o vencimento tem de recuar para sexta 29/05.
+  const maio = ultimoDiaUtil("2026-05");
+  const diaSemana = new Date(`${maio}T12:00:00`).getDay();
+  if (diaSemana !== 0 && diaSemana !== 6 && maio.startsWith("2026-05")) {
+    console.log(`✔ WO-44 Teste 6: vencimento da DARF cai em dia util (${maio})`);
+  } else {
+    console.log(`✘ WO-44 Teste 6 falhou: ${maio} (dia da semana ${diaSemana})`);
+    failures++;
+  }
+
+  // ---- Teste 7: a margem de erro encolhe com a amostra
+  // E o numero que torna concreto o "abaixo de centenas e ruido".
+  const { avaliarAmostra, acertoMinimoParaEmpatar, esperancaPorOperacao, REFERENCIA_MANUAL } = await import("../amostra");
+  const poucas = avaliarAmostra(20, 0.5, 2.3);
+  const muitas = avaliarAmostra(600, 0.5, 2.3);
+  const encolhe =
+    poucas.margemErro != null && muitas.margemErro != null && poucas.margemErro > muitas.margemErro * 3;
+  const marcos = poucas.proximoMarco === 100 && poucas.faltamParaMarco === 80 && muitas.proximoMarco === 1000;
+  if (encolhe && marcos) {
+    console.log(`✔ WO-44 Teste 7: margem cai de ±${(poucas.margemErro! * 100).toFixed(0)}pp (20 ops) para ±${(muitas.margemErro! * 100).toFixed(0)}pp (600 ops)`);
+  } else {
+    console.log(`✘ WO-44 Teste 7 falhou: encolhe=${encolhe}, marcos=${marcos}`);
+    failures++;
+  }
+
+  // ---- Teste 8: o metodo e lucrativo errando mais do que acerta
+  // Com o payoff 2,31 do caso real, 47,1% de acerto tem esperanca POSITIVA.
+  const esp = esperancaPorOperacao(REFERENCIA_MANUAL.taxaAcerto, REFERENCIA_MANUAL.payoff);
+  const minimo = acertoMinimoParaEmpatar(REFERENCIA_MANUAL.payoff);
+  const confere = esp > 0 && minimo != null && minimo < 0.5 && REFERENCIA_MANUAL.taxaAcerto > minimo;
+  if (confere) {
+    console.log(`✔ WO-44 Teste 8: com payoff 2,31 bastam ${(minimo! * 100).toFixed(0)}% de acerto — o metodo vive de errar mais e ganhar mais`);
+  } else {
+    console.log(`✘ WO-44 Teste 8 falhou: esperanca=${esp}, minimo=${minimo}`);
+    failures++;
+  }
+
+  // ---- Teste 9: as 3 perguntas viraram campos consultaveis
+  const srcTipos = ler("lib/types.ts");
+  const campos = ["tese?", "alvo?", "regraSaida?", "regimeNaEntrada?", "motivoSaida?"];
+  const faltam = campos.filter((c) => !srcTipos.includes(c));
+  if (faltam.length === 0) {
+    console.log("✔ WO-44 Teste 9: as 3 perguntas do metodo sao campos proprios, nao texto livre");
+  } else {
+    console.log(`✘ WO-44 Teste 9 falhou: faltam ${faltam.join(", ")}`);
+    failures++;
+  }
+
+  // ---- Teste 10: o Scanner carrega a ressalva do proprio metodo
+  const srcScanner = ler("app/scanner/page.tsx");
+  const temRessalva = /desaconselha esta estrat/i.test(srcScanner) && /95% e 98%/.test(srcScanner);
+  if (temRessalva) {
+    console.log("✔ WO-44 Teste 10: o Scanner declara que o metodo desaconselha o Pozinho, com o numero");
+  } else {
+    console.log("✘ WO-44 Teste 10 falhou: a aba ranqueia Pozinhos sem a ressalva do manual");
+    failures++;
+  }
+
+  // ---- Teste 11: a visualizacao de tendencia nao sugere tendencia
+  // O manual diz que os parametros do indicador sao proprietarios. A tela mostra o que o trader
+  // marcou contra o que o preco fez — estimar seria entregar outro indicador com o mesmo nome.
+  const srcPainel = ler("components/PainelTendencia.tsx");
+  const naoEstima = !/calcularRegime|estimarTendencia|sugerirRegime/.test(srcPainel);
+  const dizNaTela = /não estima tendência|nao estima tendencia/i.test(srcPainel);
+  const noHistorico = /<PainelTendencia/.test(ler("app/historico/page.tsx"));
+  if (naoEstima && dizNaTela && noHistorico) {
+    console.log("✔ WO-44 Teste 11: o painel plota a marcacao do trader e declara que nao estima tendencia");
+  } else {
+    console.log(`✘ WO-44 Teste 11 falhou: naoEstima=${naoEstima}, declara=${dizNaTela}, naTela=${noHistorico}`);
+    failures++;
+  }
+}
+
 
 // ============ WO-43 — A CAMADA DE METODO ============
 

@@ -54,6 +54,15 @@ export default function ScannerPage() {
       />
       <div className="panel">
         <div className="panel-title">Scanner de Pozinhos — OTM barato com máxima convexidade (Δ/R$)</div>
+
+        {/* WO-44: o manual dedica um capítulo ao Pozinho para DESENCORAJÁ-LO. A tela ranqueava sem
+            dizer isso. A ressalva é do próprio método, com o número que ele dá. */}
+        <div className="mx-3 mt-3 text-xxs text-term-gold bg-term-gold/10 border border-term-gold/30 rounded px-2.5 py-2 leading-relaxed">
+          <b>O método desaconselha esta estratégia.</b> Entre 95% e 98% dessas opções viram pó no
+          vencimento. O manual a inclui para que você reconheça a narrativa quando alguém tentar
+          vendê-la — e entenda por que a matemática agregada é desfavorável, mesmo com casos virais
+          de ganho extremo. Se for operar, trate como bilhete de loteria: valor que não faz falta.
+        </div>
         <div className="flex flex-wrap gap-3 px-3 pb-2 text-xxs text-term-dim items-end">
           <Filter label="Prêmio mín" v={f.premiumMin} step={0.01} on={set("premiumMin")} />
           <Filter label="Prêmio máx" v={f.premiumMax} step={0.01} on={set("premiumMax")} />
