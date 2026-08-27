@@ -213,10 +213,16 @@ export default function EstrategiaPage() {
                 key={p.key}
                 className={clsx("btn transition-colors", suggestPreset === p.key && "border-term-cyan text-term-cyan font-bold bg-term-cyan/10")}
                 onClick={() => handlePresetClick(p.key)}
-                title={`${p.bias} — ${p.desc}`}
+                title={[
+                  p.capitulo ? `Capítulo ${p.capitulo} do método` : "Fora do método",
+                  p.nomeTecnico ? `também chamada de ${p.nomeTecnico}` : null,
+                  p.bias,
+                  p.desc,
+                ].filter(Boolean).join(" · ")}
               >
                 {p.name}
                 {p.advanced ? " ⚠" : ""}
+                {p.foraDoMetodo && <span className="text-term-dim/70 font-normal"> ·fora</span>}
               </button>
             ))}
           </div>
@@ -232,6 +238,15 @@ export default function EstrategiaPage() {
               <span className="font-mono font-bold text-xs text-term-cyan">
                 Sugestões — {currentPresetDef.name} · {chain?.ticker} · venc. {selectedExpiry}
               </span>
+              {/* WO-45: o nome de mercado fica visível — é o que aparece na tela da corretora. */}
+              {currentPresetDef.nomeTecnico && (
+                <span className="tag bg-term-panel2 text-term-dim whitespace-nowrap" title="Como esta estrutura é chamada na corretora e na literatura em inglês">
+                  {currentPresetDef.nomeTecnico}
+                </span>
+              )}
+              {currentPresetDef.capitulo != null && (
+                <span className="tag bg-term-panel2 text-term-dim whitespace-nowrap">cap. {currentPresetDef.capitulo}</span>
+              )}
             </div>
             <div className="flex items-center gap-2">
               <button

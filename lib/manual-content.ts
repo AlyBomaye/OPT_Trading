@@ -175,6 +175,56 @@ export const MAPA_INFORMACOES: LinhaMapa[] = [
 ];
 
 export const GLOSSARIO: Termo[] = [
+  /* --- WO-45: vocabulário do método ---------------------------------------
+   * Termos que o material usa o tempo todo e a plataforma não definia em lugar nenhum. Ficam no
+   * topo porque são a linguagem de decisão: quem não sabe o que é titular e lançador não consegue
+   * ler o resto do glossário.
+   * ---------------------------------------------------------------------- */
+  {
+    termo: "Titular / Lançador",
+    definicao: "Titular é quem COMPRA a opção: paga prêmio, tem risco limitado ao que pagou e direito — nunca obrigação. Lançador é quem VENDE: recebe prêmio, assume obrigação e precisa de margem; o ganho é limitado ao prêmio e a perda pode ser muito maior. O método começa pelo titular justamente porque o risco já vem travado pelo prêmio.",
+    ondeAparece: "Estratégia (Workbench), Carteira",
+  },
+  {
+    termo: "Regime (alta / baixa / lateral)",
+    definicao: "A leitura de tendência do ativo, e a PRIMEIRA das quatro camadas de decisão do método — antes da volatilidade, da estrutura e do tamanho. A plataforma NÃO calcula o regime: os parâmetros do indicador por ativo são proprietários do material. Você marca, e a plataforma guarda a marcação com a data do pregão observado para você conferir depois se a leitura estava certa.",
+    ondeAparece: "Histórico (Tendência), Watchlist, Cockpit",
+  },
+  {
+    termo: "As 3 perguntas",
+    definicao: "O que o método exige responder ANTES de abrir qualquer operação: (1) qual é a tese? (2) qual é o alvo? (3) qual é a regra de saída? Na plataforma são três campos próprios da posição, não texto livre — porque uma tese que não cabe num campo normalmente não existe.",
+    ondeAparece: "Carteira (registro da posição)",
+  },
+  {
+    termo: "Lei dos Grandes Números",
+    definicao: "A taxa de acerto de um método só significa alguma coisa depois de centenas de operações. Abaixo de ~100 fechamentos, o número é ruído: com 20 operações a 50% de acerto, a margem de erro passa de 20 pontos percentuais — a taxa real pode ser 30% ou 70%. É por isso que o dimensionamento fica em 1% fixo até 100 operações, antes de qualquer Kelly.",
+    ondeAparece: "Histórico (Amostra), Performance",
+  },
+  {
+    termo: "Lei da Potência",
+    definicao: "Poucas operações respondem pela maior parte do resultado. O método assume que você ERRA MAIS DO QUE ACERTA — a referência do material é 47,1% de acerto com payoff 2,31 — e vive da assimetria entre ganho médio e perda média. Uma sequência de perdas pequenas é o funcionamento esperado, não uma falha do método.",
+    ondeAparece: "Histórico (Amostra), Performance",
+  },
+  {
+    termo: "Convexo / Côncavo",
+    definicao: "Convexa é a estrutura cujo ganho cresce mais rápido que a perda: risco travado, retorno aberto — a compra a seco e as travas de débito. Côncava é o inverso: ganho limitado ao prêmio recebido e perda que pode ser muito maior — a venda a seco. O método prioriza convexidade enquanto a amostra do trader ainda é pequena.",
+    ondeAparece: "Estratégia (Workbench), Carteira",
+  },
+  {
+    termo: "A seco",
+    definicao: "Uma perna só, sem trava: comprar ou vender uma call ou uma put isolada. Comprada a seco, o risco é o prêmio. VENDIDA a seco, o risco é grande — ilimitado no caso da call descoberta — e exige margem.",
+    ondeAparece: "Estratégia (Workbench)",
+  },
+  {
+    termo: "Trava de Linha",
+    definicao: "Nome do método para o iron condor: vende um strangle interno e compra um externo, ganhando se o ativo permanecer dentro da linha até o vencimento. Crédito com risco definido pela largura; exige margem.",
+    ondeAparece: "Estratégia (Workbench)",
+  },
+  {
+    termo: "Booster",
+    definicao: "Nome do método para o call ratio backspread: vende 1 call ATM e compra 2 calls OTM, montando a estrutura a custo próximo de zero. Ganho aberto na alta forte; o pior caso fica no strike comprado, não nas pontas.",
+    ondeAparece: "Estratégia (Workbench)",
+  },
   {
     termo: "Δ Delta",
     definicao: "Exposição direcional da opção em ações equivalentes. Indica quanto o preço da opção varia em R$ para cada R$ 1,00 de movimentação no ativo objeto. O Delta Cash é calculado por Δ × Spot.",

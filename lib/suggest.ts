@@ -206,6 +206,17 @@ export function suggestStructures(
       }
       break;
     }
+    // Cap. 10 — straddle VENDIDO. Espelha o comprado invertendo as duas pernas; o metodo o indica
+    // em lateral com vol alta, que e exatamente onde o comprado perde.
+    case "straddleVendido": {
+      for (const off of offsetAnchors) {
+        const call = nearest(calls, spot * (1 + off));
+        if (!call) continue;
+        const put = nearest(puts, call.strike);
+        if (put) rawCandidateLegs.push([L(call, -1, 100), L(put, -1, 100)]);
+      }
+      break;
+    }
     case "straddle": {
       for (const off of offsetAnchors) {
         const call = nearest(calls, spot * (1 + off));

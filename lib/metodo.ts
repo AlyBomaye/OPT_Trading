@@ -96,7 +96,7 @@ export const ESTRUTURAS_METODO: EstruturaDoMetodo[] = [
   { capitulo: 7, nome: "Trava de baixa com put", preset: "bearPutSpread", regime: "baixa", volIdeal: "baixa", nivel: "intermediario", riscoIlimitado: false },
   { capitulo: 8, nome: "Trava de baixa com call", preset: "bearCallSpread", regime: "baixa", volIdeal: "alta", nivel: "intermediario", riscoIlimitado: false },
   { capitulo: 9, nome: "Trava de linha", preset: "ironCondor", regime: "lateral", volIdeal: "alta", nivel: "avancado", riscoIlimitado: false },
-  { capitulo: 10, nome: "Straddle vendido", preset: "straddle", regime: "lateral", volIdeal: "alta", nivel: "avancado", riscoIlimitado: true },
+  { capitulo: 10, nome: "Straddle vendido", preset: "straddleVendido", regime: "lateral", volIdeal: "alta", nivel: "avancado", riscoIlimitado: true },
   { capitulo: 11, nome: "Straddle sintético vendido", preset: null, regime: "lateral", volIdeal: "alta", nivel: "avancado", riscoIlimitado: true },
   { capitulo: 12, nome: "Straddle comprado", preset: "straddle", regime: "lateral", volIdeal: "baixa", nivel: "intermediario", riscoIlimitado: false },
   { capitulo: 13, nome: "Straddle sintético comprado", preset: null, regime: "lateral", volIdeal: "baixa", nivel: "avancado", riscoIlimitado: false },

@@ -36,6 +36,53 @@ interface ExplicacaoCurta {
 }
 
 export const EXPLICACOES: ExplicacaoCurta[] = [
+  /* WO-45 — vocabulário do método. Vem primeiro porque são os termos de DECISÃO: o leitor precisa
+   * deles antes das gregas. `comGlossario` percorre a lista em ordem, então a posição importa. */
+  {
+    padrao: /\btitular\b|\blançador\b/i,
+    curta: "quem compra a opção paga prêmio e trava o risco; quem vende recebe prêmio e assume obrigação",
+    verbete: "Titular / Lançador",
+  },
+  {
+    padrao: /\bregime\b|\btendência marcada\b/i,
+    curta: "a leitura de tendência que você marcou para o ativo, primeira camada de decisão do método",
+    verbete: "Regime (alta / baixa / lateral)",
+  },
+  {
+    padrao: /\bas 3 perguntas\b|\bas três perguntas\b|\btese, alvo e (regra de )?saída\b/i,
+    curta: "tese, alvo e regra de saída, respondidas antes de abrir a operação",
+    verbete: "As 3 perguntas",
+  },
+  {
+    padrao: /\bLei dos Grandes Números\b|\btamanho da amostra\b/i,
+    curta: "abaixo de algumas centenas de operações, taxa de acerto ainda é ruído",
+    verbete: "Lei dos Grandes Números",
+  },
+  {
+    padrao: /\bLei da Potência\b/i,
+    curta: "poucas operações respondem pela maior parte do resultado, e errar mais do que acertar é o esperado",
+    verbete: "Lei da Potência",
+  },
+  {
+    padrao: /\bconvex(a|o|idade)\b|\bcôncav(a|o)\b/i,
+    curta: "estrutura de risco travado e ganho aberto, contra a de ganho limitado e perda grande",
+    verbete: "Convexo / Côncavo",
+  },
+  {
+    padrao: /\ba seco\b/i,
+    curta: "uma perna só, sem trava",
+    verbete: "A seco",
+  },
+  {
+    padrao: /\bTrava de Linha\b/i,
+    curta: "vende um strangle interno e compra um externo; ganha se o ativo ficar dentro da linha",
+    verbete: "Trava de Linha",
+  },
+  {
+    padrao: /\bBooster\b/i,
+    curta: "vende 1 call ATM e compra 2 OTM, a custo perto de zero, para a alta forte",
+    verbete: "Booster",
+  },
   {
     padrao: /\bvolatilidade implícita\b|\bIV ATM\b|\bIV\b/i,
     curta: "o preço da incerteza embutido na opção",

@@ -2229,9 +2229,200 @@ async function testesWo33() {
   await testesWo42();
   await testesWo43();
   await testesWo44();
+  await testesWo45();
 }
 
 // ============ WO-44 — TENDENCIA, FISCAL, AMOSTRA E JOURNAL ============
+
+// ============ WO-45 — A LINGUAGEM DA PLATAFORMA E A DO METODO ============
+
+async function testesWo45() {
+  const fs = await import("fs");
+  const path = await import("path");
+  const raiz = path.resolve(__dirname, "..", "..");
+  const ler = (rel: string) => fs.readFileSync(path.join(raiz, rel), "utf-8");
+
+  const { PRESETS, findPreset } = await import("../strategies");
+  const { ESTRUTURAS_METODO, estruturasIndicadas } = await import("../metodo");
+
+  // ---- Teste 1: o nome de tela E o nome do manual
+  // ESTRUTURAS_METODO e a fonte unica. Se um preset do metodo exibir outro nome, sao duas linguas
+  // para a mesma estrutura — que e exatamente o que este WO veio remover.
+  const divergentes: string[] = [];
+  for (const e of ESTRUTURAS_METODO) {
+    if (!e.preset) continue;
+    const p = findPreset(e.preset);
+    if (!p) continue;
+    if (p.name.toLowerCase() !== e.nome.toLowerCase()) {
+      divergentes.push(`cap.${e.capitulo}: manual "${e.nome}" vs tela "${p.name}"`);
+    }
+  }
+  if (divergentes.length === 0) {
+    console.log("✔ WO-45 Teste 1: todo preset do metodo exibe o nome do capitulo, sem divergencia");
+  } else {
+    console.log(`✘ WO-45 Teste 1 falhou: ${divergentes.join(" | ")}`);
+    failures++;
+  }
+
+  // ---- Teste 2: os nomes de mercado que o metodo renomeia continuam visiveis
+  // Trocar "Iron Condor" por "Trava de Linha" resolve a consistencia interna; apagar o nome de
+  // mercado criaria um problema pior na hora de lancar a ordem na corretora.
+  const renomeadas = [
+    { key: "ironCondor", tecnico: "iron condor" },
+    { key: "callRatioBackspread", tecnico: "call ratio backspread" },
+    { key: "bullCallSpread", tecnico: "bull call spread" },
+  ];
+  const semTecnico = renomeadas.filter((r) => findPreset(r.key)?.nomeTecnico !== r.tecnico);
+  if (semTecnico.length === 0) {
+    console.log("✔ WO-45 Teste 2: estruturas renomeadas guardam o nome de mercado em nomeTecnico");
+  } else {
+    console.log(`✘ WO-45 Teste 2 falhou: sem nome de mercado em ${semTecnico.map((r) => r.key).join(", ")}`);
+    failures++;
+  }
+
+  // ---- Teste 3: a tela mostra o nome de mercado, nao so o do metodo
+  const srcEstrategia = ler("app/estrategia/page.tsx");
+  const exibeTecnico = /currentPresetDef\.nomeTecnico/.test(srcEstrategia);
+  const exibeCapitulo = /currentPresetDef\.capitulo/.test(srcEstrategia);
+  if (exibeTecnico && exibeCapitulo) {
+    console.log("✔ WO-45 Teste 3: o Workbench exibe o nome de mercado e o capitulo do metodo");
+  } else {
+    console.log(`✘ WO-45 Teste 3 falhou: tecnico=${exibeTecnico}, capitulo=${exibeCapitulo}`);
+    failures++;
+  }
+
+  // ---- Teste 4: toda estrutura indicada pelo metodo tem botao que a monta
+  // O WO-43 acrescentou 4 capitulos a ESTRUTURAS_METODO sem preset correspondente em PRESETS: o
+  // agente recomendava "Compra a seco de call" e o clique nao montava nada.
+  const semBotao = ESTRUTURAS_METODO.filter((e) => e.preset != null && findPreset(e.preset) == null);
+  if (semBotao.length === 0) {
+    const comPreset = ESTRUTURAS_METODO.filter((e) => e.preset).length;
+    console.log(`✔ WO-45 Teste 4: os ${comPreset} capitulos com preset tem botao que monta a estrutura`);
+  } else {
+    console.log(`✘ WO-45 Teste 4 falhou: sem botao para ${semBotao.map((e) => `cap.${e.capitulo}`).join(", ")}`);
+    failures++;
+  }
+
+  // ---- Teste 5: straddle vendido NAO pode montar um straddle comprado
+  // Era o estado anterior: o cap. 10 apontava para o preset do straddle comprado. Em vol alta,
+  // montaria exatamente a ponta oposta da que o metodo indica.
+  const cap10 = ESTRUTURAS_METODO.find((e) => e.capitulo === 10);
+  const vendido = cap10?.preset ? findPreset(cap10.preset) : null;
+  const comprado = findPreset("straddle");
+  const chainFake = fabricarChainWo45();
+  const pernasV = vendido?.build(chainFake, chainFake.expiries[0].date, 100) ?? [];
+  const pernasC = comprado?.build(chainFake, chainFake.expiries[0].date, 100) ?? [];
+  const vendidoVende = pernasV.length === 2 && pernasV.every((l: any) => l.side === -1);
+  const compradoCompra = pernasC.length === 2 && pernasC.every((l: any) => l.side === 1);
+  if (vendidoVende && compradoCompra && cap10?.preset !== "straddle") {
+    console.log("✔ WO-45 Teste 5: o cap. 10 monta pernas VENDIDAS; o cap. 12 monta compradas");
+  } else {
+    console.log(`✘ WO-45 Teste 5 falhou: vendido=${pernasV.map((l: any) => l.side)}, comprado=${pernasC.map((l: any) => l.side)}, preset=${cap10?.preset}`);
+    failures++;
+  }
+
+  // ---- Teste 6: estrutura fora do metodo e declarada como tal
+  // O material nao cobre butterfly nem calendario. Exibi-las como iguais as demais sugeriria uma
+  // cobertura do metodo que nao existe.
+  const fora = PRESETS.filter((p) => p.capitulo == null);
+  const naoDeclaradas = fora.filter((p) => !p.foraDoMetodo);
+  const marcadaNaTela = /foraDoMetodo/.test(srcEstrategia);
+  if (fora.length > 0 && naoDeclaradas.length === 0 && marcadaNaTela) {
+    console.log(`✔ WO-45 Teste 6: as ${fora.length} estruturas fora do metodo sao marcadas no dado e na tela`);
+  } else {
+    console.log(`✘ WO-45 Teste 6 falhou: naoDeclaradas=${naoDeclaradas.map((p) => p.key).join(",")}, naTela=${marcadaNaTela}`);
+    failures++;
+  }
+
+  // ---- Teste 7: o vocabulario de decisao do metodo existe no glossario
+  const { GLOSSARIO } = await import("../manual-content");
+  const exigidos = [
+    "Titular / Lançador",
+    "Regime (alta / baixa / lateral)",
+    "As 3 perguntas",
+    "Lei dos Grandes Números",
+    "Lei da Potência",
+    "Convexo / Côncavo",
+    "A seco",
+    "Trava de Linha",
+    "Booster",
+  ];
+  const ausentes = exigidos.filter((t) => !GLOSSARIO.some((g) => g.termo === t));
+  if (ausentes.length === 0) {
+    console.log(`✔ WO-45 Teste 7: os ${exigidos.length} termos de decisao do metodo estao definidos no glossario`);
+  } else {
+    console.log(`✘ WO-45 Teste 7 falhou: faltam ${ausentes.join(", ")}`);
+    failures++;
+  }
+
+  // ---- Teste 8: toda parafrase inline aponta para um verbete que existe
+  // E a invariante do WO-34: explicacao curta sem verbete completo deixa o leitor sem para onde ir
+  // quando a parafrase nao basta.
+  const { EXPLICACOES } = await import("../agents/didatica");
+  const orfas = EXPLICACOES.filter((e) => !GLOSSARIO.some((g) => g.termo === e.verbete));
+  if (orfas.length === 0) {
+    console.log(`✔ WO-45 Teste 8: as ${EXPLICACOES.length} parafrases inline apontam para verbetes existentes`);
+  } else {
+    console.log(`✘ WO-45 Teste 8 falhou: orfas ${orfas.map((e) => e.verbete).join(", ")}`);
+    failures++;
+  }
+
+  // ---- Teste 9: os termos do metodo sao de fato explicados no texto dos agentes
+  const { comGlossario } = await import("../agents/didatica");
+  const texto = "O regime segue de alta e a estrutura convexa protege o titular.";
+  const explicado = comGlossario(texto, new Set<string>());
+  const cobre = explicado.length > texto.length && explicado.includes("—");
+  if (cobre) {
+    console.log("✔ WO-45 Teste 9: regime, convexa e titular ganham parafrase na primeira ocorrencia");
+  } else {
+    console.log(`✘ WO-45 Teste 9 falhou: "${explicado}"`);
+    failures++;
+  }
+
+  // ---- Teste 10: a ordem dos botoes segue o sumario do manual
+  // Quem estuda o material encontra a estrutura na posicao em que ela aparece la.
+  const capitulados = PRESETS.filter((p) => p.capitulo != null).map((p) => p.capitulo!);
+  const ordenado = capitulados.every((c, i) => i === 0 || capitulados[i - 1] < c);
+  const ultimoDoMetodo = PRESETS.map((p) => p.capitulo != null).lastIndexOf(true);
+  const primeiroDeFora = PRESETS.findIndex((p) => p.foraDoMetodo);
+  const foraNoFim = primeiroDeFora > ultimoDoMetodo;
+  if (ordenado && foraNoFim) {
+    console.log(`✔ WO-45 Teste 10: os botoes seguem a ordem dos capitulos (${capitulados.join(", ")}) e as de fora vem depois`);
+  } else {
+    console.log(`✘ WO-45 Teste 10 falhou: ordem=${capitulados.join(",")}, foraNoFim=${foraNoFim}`);
+    failures++;
+  }
+
+  // ---- Teste 11: recomendar em regime lateral nao devolve estrutura sem botao
+  const indicadas = estruturasIndicadas("lateral", "alta");
+  const quebradas = indicadas.filter((e) => e.preset != null && findPreset(e.preset) == null);
+  if (indicadas.length > 0 && quebradas.length === 0) {
+    console.log(`✔ WO-45 Teste 11: as ${indicadas.length} indicacoes de lateral+vol alta sao todas montaveis`);
+  } else {
+    console.log(`✘ WO-45 Teste 11 falhou: ${quebradas.map((e) => e.nome).join(", ")}`);
+    failures++;
+  }
+}
+
+/** Chain minima para exercitar os builders sem depender de rede. */
+function fabricarChainWo45(): any {
+  const strikes = [30, 32, 34, 36, 38, 40, 42];
+  const opcoes = strikes.flatMap((k) =>
+    (["CALL", "PUT"] as const).map((tipo) => ({
+      opTicker: `XXXX${tipo === "CALL" ? "A" : "M"}${k}`,
+      underlying: "XXXX3",
+      type: tipo,
+      model: "EUROPEAN",
+      strike: k,
+      expiry: "2026-09-18",
+      du: 20,
+      last: 1.5,
+      trades: 100,
+      iv: 0.35,
+    }))
+  );
+  return { ticker: "XXXX3", spot: 36, expiries: [{ date: "2026-09-18", du: 20 }], options: opcoes };
+}
 
 async function testesWo44() {
   const fs = await import("fs");
