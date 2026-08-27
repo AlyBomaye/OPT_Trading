@@ -1563,9 +1563,17 @@ async function testesAssincronos(): Promise<void> {
     failures++;
   }
 
-  // Teste 8: UNIVERSE de 20 nomes exportado e estruturado por setor
-  if (Array.isArray(universeList) && universeList.length === 20 && universeList.every((u) => u.ticker && u.sector)) {
-    console.log("✔ WO-29 Teste 8: Universo de 20 ativos B3 verificado com 9 setores tipados");
+  // Teste 8: UNIVERSE exportado e estruturado por setor
+  // A CONTAGEM nao e a invariante. Ela era 20 e passou a 31 no WO-43, que acrescentou os 11 ativos
+  // do manual operacional que faltavam. O que este teste guarda e que toda entrada esta completa —
+  // ticker, setor e origem — porque e disso que a leitura setorial do Gestor depende.
+  const universoCompleto =
+    Array.isArray(universeList) &&
+    universeList.length >= 20 &&
+    universeList.every((u) => u.ticker && u.sector && (u as any).origem);
+  const setoresDistintos = new Set(universeList.map((u) => u.sector)).size;
+  if (universoCompleto && setoresDistintos >= 9) {
+    console.log(`✔ WO-29 Teste 8: universo com ${universeList.length} ativos em ${setoresDistintos} setores, todos com ticker, setor e origem`);
   } else {
     console.log("✘ WO-29 Teste 8 falhou ao validar UNIVERSE");
     failures++;
@@ -2219,7 +2227,162 @@ async function testesWo33() {
   await testesWo40();
   await testesWo41();
   await testesWo42();
+  await testesWo43();
 }
+
+// ============ WO-43 — A CAMADA DE METODO ============
+
+async function testesWo43() {
+  const fs = await import("fs");
+  const path = await import("path");
+  const raiz = path.resolve(__dirname, "..", "..");
+  const ler = (rel: string) => fs.readFileSync(path.join(raiz, rel), "utf-8");
+
+  const metodo = await import("../metodo");
+  const { UNIVERSE } = await import("../universe");
+
+  // ---- Teste 1: o universo cobre os 20 do manual, com origem rotulada
+  const doManual = ["PETR4","VALE3","CSNA3","USIM5","GGBR4","MGLU3","CMIN3","COGN3","PRIO3",
+                    "BRAP4","BRAV3","BRKM5","CASH3","JHSF3","LREN3","MRFG3","MRVE3","RENT3","SUZB3","VBBR3"];
+  const presentes = new Set(UNIVERSE.map((u) => u.ticker));
+  const faltando = doManual.filter((t) => !presentes.has(t));
+  const semOrigem = UNIVERSE.filter((u) => !["metodo", "plataforma", "ambos"].includes(u.origem));
+  const doMetodo = UNIVERSE.filter((u) => u.origem === "metodo" || u.origem === "ambos").length;
+  if (faltando.length === 0 && semOrigem.length === 0 && doMetodo === 20) {
+    console.log(`✔ WO-43 Teste 1: os 20 ativos do manual estao no universo (${UNIVERSE.length} no total), todos com origem`);
+  } else {
+    console.log(`✘ WO-43 Teste 1 falhou: faltam ${faltando.join(",")}; sem origem=${semOrigem.length}; do metodo=${doMetodo}`);
+    failures++;
+  }
+
+  // ---- Teste 2: o mapa de decisao do manual
+  // "NITRO virou pra ALTA + vol baixa: caps 1, 3 ou 16" — a funcao tem de reproduzir isso.
+  const altaBaixaVol = metodo.estruturasIndicadas("alta", "baixa").map((e) => e.capitulo).sort((a, b) => a - b);
+  const baixaAltaVol = metodo.estruturasIndicadas("baixa", "alta").map((e) => e.capitulo).sort((a, b) => a - b);
+  const semRegime = metodo.estruturasIndicadas("indefinido", "alta");
+  const bateAlta = altaBaixaVol.includes(1) && altaBaixaVol.includes(3);
+  const bateBaixa = baixaAltaVol.includes(6) && baixaAltaVol.includes(8);
+  if (bateAlta && bateBaixa && semRegime.length === 0) {
+    console.log("✔ WO-43 Teste 2: mapa de decisao reproduz o manual; sem regime marcado, nao indica nada");
+  } else {
+    console.log(`✘ WO-43 Teste 2 falhou: alta+volBaixa=${altaBaixaVol}, baixa+volAlta=${baixaAltaVol}, indefinido=${semRegime.length}`);
+    failures++;
+  }
+
+  // ---- Teste 3: o Pozinho nunca e indicado
+  // O manual inclui o capitulo 14 para DESENCORAJAR: 95-98% viram po.
+  const todos: number[] = [];
+  for (const rg of ["alta", "baixa", "lateral"] as const) {
+    for (const v of ["baixa", "media", "alta", "indefinida"] as const) {
+      todos.push(...metodo.estruturasIndicadas(rg, v).map((e) => e.capitulo));
+    }
+  }
+  if (!todos.includes(14)) {
+    console.log("✔ WO-43 Teste 3: o Pozinho nunca aparece como indicacao — o manual o inclui para desencorajar");
+  } else {
+    console.log("✘ WO-43 Teste 3 falhou: o Pozinho foi indicado em algum cenario");
+    failures++;
+  }
+
+  // ---- Teste 4: Kelly graduado pela maturidade da estatistica
+  // O manual e explicito: "nao e pra comecar usando Kelly". Com 10 ops, Kelly seria precisao falsa.
+  const novato = metodo.estagioDimensionamento(10);
+  const meio = metodo.estagioDimensionamento(250);
+  const maduro = metodo.estagioDimensionamento(600);
+  const graduado =
+    novato.fracaoKelly === null && novato.faltamParaProximo === 90 &&
+    meio.fracaoKelly === 0.25 && meio.faltamParaProximo === 250 &&
+    maduro.fracaoKelly === 0.5 && maduro.faltamParaProximo === null;
+  if (graduado) {
+    console.log("✔ WO-43 Teste 4: Kelly graduado — 1% fixo ate 100 ops, um quarto ate 500, metade como teto acima");
+  } else {
+    console.log(`✘ WO-43 Teste 4 falhou: ${JSON.stringify([novato.fracaoKelly, meio.fracaoKelly, maduro.fracaoKelly])}`);
+    failures++;
+  }
+
+  // ---- Teste 5: criterio sem dado e indefinido, nunca reprovado
+  // Reprovar por falta de medida diria algo falso sobre a estrutura (mesma regra do WO-30).
+  const { julgarEstrutura, resumirCriterios } = await import("../criterios-metodo");
+  const semTeto = julgarEstrutura({
+    netDebit: 100, maxProfit: null, maxLoss: -100,
+    strikes: [40, 44], quantidades: [100, 100], deltaVendido: null, spot: 40, du: 30,
+  });
+  const payoffSemTeto = semTeto.find((c) => c.chave === "payoff");
+  if (payoffSemTeto?.situacao === "indefinido") {
+    console.log("✔ WO-43 Teste 5: ganho sem teto deixa o payoff indefinido, nao reprovado");
+  } else {
+    console.log(`✘ WO-43 Teste 5 falhou: situacao=${payoffSemTeto?.situacao}`);
+    failures++;
+  }
+
+  // ---- Teste 6: os numeros do manual sao os que julgam
+  // Trava com payoff 3,13:1 (o exemplo do cap. 3) passa; 1,4:1 reprova.
+  const boa = julgarEstrutura({
+    netDebit: 121, maxProfit: 379, maxLoss: -121,
+    strikes: [47, 52], quantidades: [100, 100], deltaVendido: 0.28, spot: 47.16, du: 30,
+  });
+  const ruim = julgarEstrutura({
+    netDebit: 121, maxProfit: 170, maxLoss: -121,
+    strikes: [47, 48], quantidades: [100, 50], deltaVendido: 0.28, spot: 47.16, du: 8,
+  });
+  const rBoa = resumirCriterios(boa);
+  const rRuim = resumirCriterios(ruim);
+  const payoffBoa = boa.find((c) => c.chave === "payoff")?.situacao;
+  const payoffRuim = ruim.find((c) => c.chave === "payoff")?.situacao;
+  const loteRuim = ruim.find((c) => c.chave === "lote")?.situacao;
+  const janelaRuim = ruim.find((c) => c.chave === "janela")?.situacao;
+  if (payoffBoa === "ok" && payoffRuim === "fora" && loteRuim === "atencao" && janelaRuim === "fora" && rBoa.situacao === "ok" && rRuim.fora >= 2) {
+    console.log(`✔ WO-43 Teste 6: exemplo do manual (3,13:1) passa; estrutura ruim acusa ${rRuim.fora} criterios fora`);
+  } else {
+    console.log(`✘ WO-43 Teste 6 falhou: boa=${payoffBoa}/${rBoa.situacao}, ruim=${payoffRuim}, lote=${loteRuim}, janela=${janelaRuim}`);
+    failures++;
+  }
+
+  // ---- Teste 7: a quarta regra de saida existe e so dispara com regime marcado
+  const srcFlags = ler("lib/position-flags.ts");
+  const temRegra = /REGIME_VIROU/.test(srcFlags);
+  const soComMarcacao = /regimeAtivo && regimeAtivo !== "indefinido"/.test(srcFlags);
+  // As outras tres ja existiam com os limites do manual — o teste guarda que continuam iguais.
+  const { DEFAULT_THRESHOLDS } = await import("../position-flags");
+  const limitesDoManual =
+    DEFAULT_THRESHOLDS.takeProfitPct === 0.7 &&
+    DEFAULT_THRESHOLDS.rolarDu === 10 &&
+    DEFAULT_THRESHOLDS.vencimentoDu === 5;
+  if (temRegra && soComMarcacao && limitesDoManual) {
+    console.log("✔ WO-43 Teste 7: as 4 regras de saida do manual — 70%, 10 du, 5 du e virada de tendencia");
+  } else {
+    console.log(`✘ WO-43 Teste 7 falhou: regra=${temRegra}, guarda=${soComMarcacao}, limites=${limitesDoManual}`);
+    failures++;
+  }
+
+  // ---- Teste 8: os quatro presets simples existem
+  const srcSuggest = ler("lib/suggest.ts");
+  const simples = ["compraCallSeca", "compraPutSeca", "vendaPutSeca", "vendaCallSeca"];
+  const semPreset = simples.filter((k) => !new RegExp(`case "${k}"`).test(srcSuggest));
+  // E as 16 do manual apontam para presets que existem de fato (ou declaram null).
+  const orfas = metodo.ESTRUTURAS_METODO
+    .filter((e) => e.preset != null && !new RegExp(`case "${e.preset}"`).test(srcSuggest))
+    .map((e) => `${e.capitulo}:${e.preset}`);
+  if (semPreset.length === 0 && orfas.length === 0) {
+    console.log("✔ WO-43 Teste 8: as 4 estruturas de perna unica existem e nenhum preset do mapa aponta para o vazio");
+  } else {
+    console.log(`✘ WO-43 Teste 8 falhou: sem preset=${semPreset.join(",")}; orfas=${orfas.join(",")}`);
+    failures++;
+  }
+
+  // ---- Teste 9: idade do regime contada em PREGOES, nao em dias corridos
+  // Sexta e a segunda seguinte sao UM pregao de distancia, nao tres dias (WO-30).
+  const { idadeEmPregoes } = await import("../regime");
+  const sexta = "2026-08-21";
+  const segunda = new Date("2026-08-24T12:00:00");
+  if (idadeEmPregoes(sexta, segunda) === 1) {
+    console.log("✔ WO-43 Teste 9: idade da marcacao em pregoes — sexta para segunda e 1, nao 3");
+  } else {
+    console.log(`✘ WO-43 Teste 9 falhou: ${idadeEmPregoes(sexta, segunda)}`);
+    failures++;
+  }
+}
+
 
 // ============ WO-42 — POSTGRES: DURABILIDADE DO BOOK E HISTORICO DE IV ============
 

@@ -121,6 +121,11 @@ export function fallbackDeterministicoGestorGlobal(
     "Industrials": "Bens de Capital & Indústria",
     "Education": "Educação",
     "Index": "Índices",
+    // WO-43: setores que entraram com os 11 ativos do manual operacional.
+    "Pulp&Paper": "Papel & Celulose",
+    "Construction": "Construção & Incorporação",
+    "Chemicals": "Petroquímica",
+    "Food": "Alimentos & Frigoríficos",
   };
 
   for (const [secKey, entries] of Object.entries(sectorGroups) as [Sector, typeof UNIVERSE][]) {

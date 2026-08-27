@@ -65,6 +65,24 @@ function buildLabel(legs: Leg[], spot: number): string {
  * Gera e ranqueia até `top` candidatas de uma estrutura por EV ajustado a risco
  * (score = ev / |maxLoss|).
  */
+/**
+ * WO-43 — a série cujo delta (em módulo) mais se aproxima do alvo.
+ *
+ * O manual escolhe strike por DELTA, não por distância percentual do spot: delta é probabilidade
+ * aproximada de terminar dentro do dinheiro, e é isso que ele quer controlar. Séries sem delta
+ * calculado ficam de fora — chutar um delta seria inventar a própria medida do critério.
+ */
+function porDelta(opcoes: OptionQuote[], alvoDelta: number): OptionQuote | null {
+  let melhor: OptionQuote | null = null;
+  let menorDist = Infinity;
+  for (const o of opcoes) {
+    if (o.delta == null || !Number.isFinite(o.delta)) continue;
+    const d = Math.abs(Math.abs(o.delta) - alvoDelta);
+    if (d < menorDist) { menorDist = d; melhor = o; }
+  }
+  return melhor;
+}
+
 export function suggestStructures(
   chain: ChainData,
   expiry: string,
@@ -84,6 +102,44 @@ export function suggestStructures(
   const widths = [0.025, 0.05, 0.075, 0.1];
 
   switch (presetKey) {
+    /* ====================================================================
+     * WO-43 — as quatro estruturas de perna única do método.
+     *
+     * Eram justamente as que faltavam: capítulos 1, 2, 5 e 6 do manual, que ele classifica como
+     * porta de entrada e nível iniciante. Sem preset, o trader tinha de montar à mão a operação
+     * mais simples do método enquanto as complexas vinham prontas.
+     *
+     * Os deltas são os que o manual prescreve: ATM 40–65% na compra seca (equilíbrio entre prêmio
+     * e probabilidade), OTM 25–40% na venda seca (prêmio bom com baixa chance de exercício).
+     * ==================================================================== */
+    case "compraCallSeca": {
+      for (const alvoDelta of [0.65, 0.55, 0.45, 0.40]) {
+        const o = porDelta(calls, alvoDelta);
+        if (o) rawCandidateLegs.push([L(o, 1, 100)]);
+      }
+      break;
+    }
+    case "compraPutSeca": {
+      for (const alvoDelta of [0.65, 0.55, 0.45, 0.40]) {
+        const o = porDelta(puts, alvoDelta);
+        if (o) rawCandidateLegs.push([L(o, 1, 100)]);
+      }
+      break;
+    }
+    case "vendaPutSeca": {
+      for (const alvoDelta of [0.40, 0.35, 0.30, 0.25]) {
+        const o = porDelta(puts, alvoDelta);
+        if (o) rawCandidateLegs.push([L(o, -1, 100)]);
+      }
+      break;
+    }
+    case "vendaCallSeca": {
+      for (const alvoDelta of [0.40, 0.35, 0.30, 0.25]) {
+        const o = porDelta(calls, alvoDelta);
+        if (o) rawCandidateLegs.push([L(o, -1, 100)]);
+      }
+      break;
+    }
     case "bullCallSpread": {
       for (const off of offsetAnchors) {
         const a = nearest(calls, spot * (1 + off));

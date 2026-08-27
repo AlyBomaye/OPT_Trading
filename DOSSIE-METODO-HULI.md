@@ -115,7 +115,14 @@ O manual define saídas **numéricas e repetidas** em praticamente toda estraté
 - **5 du** → fecha a estrutura inteira
 - **NITRO virou** → stop, sem discussão
 
-A plataforma tem `lib/position-flags.ts`, mas **nenhuma das quatro está implementada**.
+> **Correção (apurada na execução do WO-43).** A primeira versão deste dossiê afirmou que nenhuma
+> das quatro estava implementada. **Estava errado, e a fonte do erro foi minha:** procurei por
+> `type:` em `lib/position-flags.ts` quando o campo se chama `kind:`. Três das quatro já existiam,
+> com exatamente os limites do manual — `TAKE_PROFIT` a **70%** (`takeProfitPct: 0.7`), `ROLAR` a
+> **10 du** (`rolarDu: 10`) e `VENCIMENTO` a **5 du** (`vencimentoDu: 5`).
+>
+> Faltava só a quarta: o stop por virada de tendência, que depende do campo de regime que não
+> existia. Ela foi implementada no WO-43 como `REGIME_VIROU`.
 
 ### 2.6 Critérios de aceitação que a plataforma poderia impor
 
@@ -206,15 +213,14 @@ próximos demais** e **lotes diferentes entre pernas**.
 
 ### 3.4 As quatro regras de saída como alertas
 
-| Alerta | Gatilho | Severidade |
+| Alerta | Gatilho | Situação |
 |---|---|---|
-| Realizar ganho | posição atingiu **70% do lucro máximo** | atenção |
-| Janela fechando | faltam **10 du** — rolar ou realizar | atenção |
-| Fechar estrutura | faltam **5 du** | urgente |
-| Regime virou | o campo de 3.1 mudou contra a posição | urgente |
+| Realizar ganho | posição atingiu **70% do lucro máximo** | **já existia** (`TAKE_PROFIT`) |
+| Janela fechando | faltam **10 du** — rolar ou realizar | **já existia** (`ROLAR`) |
+| Fechar estrutura | faltam **5 du** | **já existia** (`VENCIMENTO`) |
+| Tendência virou | o campo de regime (3.1) contradiz o lado da posição | **acrescentado** (`REGIME_VIROU`) |
 
-A plataforma já reavalia posições contra o chain; falta comparar com o `maxProfit` que
-`StrategyMetrics` já calcula.
+Só a quarta faltava, e ela depende do campo de regime — sem ele não havia contra o que comparar.
 
 **Ganho:** o manual insiste que a maior parte do dinheiro se perde por não sair. Isto ataca isso.
 

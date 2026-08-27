@@ -66,3 +66,25 @@ CREATE TABLE IF NOT EXISTS uso_llm (
 );
 
 CREATE INDEX IF NOT EXISTS uso_llm_criado_idx ON uso_llm (criado_em DESC);
+
+-- ---------------------------------------------------------------------------
+-- WO-43 — Regime de mercado por ativo.
+--
+-- É a camada 1 do método: o portão que decide se opera e com o quê. A plataforma NÃO calcula isto
+-- — o manual declara que os parâmetros do indicador por ativo são proprietários. Aqui guardamos a
+-- MARCAÇÃO DO TRADER, com data, para que a Watchlist, a Estratégia e o Cockpit possam usá-la.
+--
+-- Versionado: saber quando o regime virou é o que permite responder depois "as operações abertas
+-- logo após a virada rendem mais?". Sobrescrever apagaria essa pergunta.
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS regime_ativo (
+  id          bigserial   PRIMARY KEY,
+  ticker      text        NOT NULL,
+  regime      text        NOT NULL CHECK (regime IN ('alta','baixa','lateral','indefinido')),
+  -- Data do PREGÃO em que o trader observou a virada — não a data em que ele digitou.
+  observado_em date       NOT NULL,
+  nota        text,
+  criado_em   timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS regime_ativo_ticker_idx ON regime_ativo (ticker, observado_em DESC, id DESC);

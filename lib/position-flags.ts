@@ -11,6 +11,7 @@ import { fmtBRL, fmtNum, fmtPct } from "./format";
 export type FlagSeverity = "urgente" | "atencao" | "info";
 export type FlagKind =
   | "TAKE_PROFIT"
+  | "REGIME_VIROU"
   | "STOP"
   | "VENCIMENTO"
   | "ROLAR"
@@ -90,7 +91,12 @@ export function evaluateFlags(
   chainCache: Record<string, ChainData> = {},
   divsByTicker: Record<string, DividendEvent[]> = {},
   capitalTotal = 100000,
-  th: FlagThresholds = DEFAULT_THRESHOLDS
+  th: FlagThresholds = DEFAULT_THRESHOLDS,
+  /**
+   * WO-43 — regime marcado pelo trader, por ativo. Sem marcação, a regra não dispara: ausência de
+   * dado não é sinal, e inventar um regime seria pior que não ter nenhum.
+   */
+  regimePorTicker: Record<string, "alta" | "baixa" | "lateral" | "indefinido"> = {}
 ): PositionFlag[] {
   const flags: PositionFlag[] = [];
 
@@ -105,6 +111,35 @@ export function evaluateFlags(
     const spot = chain?.spot;
     const liveOpt = p.kind === "OPTION" && chain ? chain.options.find((o) => o.opTicker === p.opTicker) : null;
     const totalCost = Math.abs(p.price * p.qty);
+
+    /**
+     * 0. REGIME_VIROU — a quarta regra de saída do método.
+     *
+     * As outras três (70% do lucro, 10 du para rolar, 5 du para fechar) já existiam. Esta faltava,
+     * e é a que o manual trata como inegociável: "o preço virou, sai — não importa que ainda dê
+     * tempo". A posição direcional só é comparada com o regime; estrutura neutra não tem lado.
+     */
+    const regimeAtivo = regimePorTicker[p.underlying];
+    if (regimeAtivo && regimeAtivo !== "indefinido" && p.kind === "OPTION") {
+      // Lado da tese: comprar call ou vender put aposta na alta; o espelho aposta na baixa.
+      const apostaAlta = (p.type === "CALL" && p.side === 1) || (p.type === "PUT" && p.side === -1);
+      const apostaBaixa = (p.type === "PUT" && p.side === 1) || (p.type === "CALL" && p.side === -1);
+      const contra =
+        (apostaAlta && regimeAtivo === "baixa") || (apostaBaixa && regimeAtivo === "alta");
+
+      if (contra) {
+        flags.push({
+          kind: "REGIME_VIROU",
+          severity: "urgente",
+          positionId: p.id,
+          ticker: p.underlying,
+          opTicker: p.opTicker,
+          titulo: "Tendência virou contra a posição",
+          detalhe: `Você marcou ${p.underlying} como tendência de ${regimeAtivo}, e esta posição aposta na direção oposta.`,
+          acao: "O método manda sair quando a tendência vira — a primeira perda é a melhor perda.",
+        });
+      }
+    }
 
     // 1. TAKE_PROFIT
     if (pnl != null && totalCost > 0) {

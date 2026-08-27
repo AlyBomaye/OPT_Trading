@@ -20,6 +20,11 @@ const SECTOR_COLORS: Record<Sector, string> = {
   "Airlines": "#ec4899",      // rosa
   "Education": "#06b6d4",     // ciano
   "Index": "#64748b",         // cinza
+  // WO-43: setores que entraram com os 11 ativos do manual operacional.
+  "Pulp&Paper": "#84cc16",    // verde-limão
+  "Construction": "#f59e0b",  // âmbar
+  "Chemicals": "#8b5cf6",     // violeta
+  "Food": "#14b8a6",          // turquesa
 };
 
 export function MapaOportunidades() {
