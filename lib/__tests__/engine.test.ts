@@ -2234,9 +2234,248 @@ async function testesWo33() {
   await testesWo44();
   await testesWo45();
   await testesWo46();
+  await testesWo47();
 }
 
 // ============ WO-44 — TENDENCIA, FISCAL, AMOSTRA E JOURNAL ============
+
+// ============ WO-47 — A MESA QUE CABE NA TELA E A CARTEIRA QUE FECHA O CICLO ============
+
+async function testesWo47() {
+  const fs = await import("fs");
+  const path = await import("path");
+  const raiz = path.resolve(__dirname, "..", "..");
+  const ler = (rel: string) => fs.readFileSync(path.join(raiz, rel), "utf-8");
+
+  const srcCock = ler("app/page.tsx");
+  const srcEstr = ler("app/estrategia/page.tsx");
+  const srcNot = ler("app/noticias/page.tsx");
+  const srcWatch = ler("components/PainelWatchlist.tsx");
+  const srcMapa = ler("components/agents/MapaOportunidades.tsx");
+
+  // ---- Teste 1: a Watchlist do Cockpit NAO esta dentro de uma grade de colunas
+  // Regressao do defeito do WO-46: uma tabela de 11 colunas com a largura de uma.
+  const iWatch = srcCock.indexOf("<PainelWatchlist");
+  const antes = srcCock.slice(Math.max(0, iWatch - 400), iWatch);
+  const ultimoDivAberto = antes.lastIndexOf("<div");
+  const ultimoDivFechado = antes.lastIndexOf("</div>");
+  const dentroDeGrade = ultimoDivAberto > ultimoDivFechado && /grid-cols/.test(antes.slice(ultimoDivAberto));
+  if (iWatch > 0 && !dentroDeGrade) {
+    console.log("✔ WO-47 Teste 1: a Watchlist do Cockpit fica fora de qualquer grade de colunas");
+  } else {
+    console.log(`✘ WO-47 Teste 1 falhou: iWatch=${iWatch}, dentroDeGrade=${dentroDeGrade}`);
+    failures++;
+  }
+
+  // ---- Teste 2: ordem dos blocos do Cockpit
+  const ordemCock = ["<PreMarketPanel", "<GexProfileChart", "{/* Foco do dia */}", "<PainelWatchlist", "choque-portfolio", 'id="gex"', "Pozinhos do dia"]
+    .map((m) => srcCock.indexOf(m));
+  const cockOk = ordemCock.every((v, i) => v > 0 && (i === 0 || v > ordemCock[i - 1]));
+  if (cockOk) {
+    console.log("✔ WO-47 Teste 2: Cockpit na ordem Pre-Abertura > GEX > Foco > Watchlist > Choque > Skew > Pozinhos");
+  } else {
+    console.log(`✘ WO-47 Teste 2 falhou: ${ordemCock.join(",")}`);
+    failures++;
+  }
+
+  // ---- Teste 3: a Estrategia deixou a grade 4/8; a chain e linha inteira e recolhivel
+  const semGrade = !/xl:col-span-4/.test(srcEstr) && !/xl:col-span-8/.test(srcEstr);
+  const chainRecolhivel = /"wb-chain-open"/.test(srcEstr) && /chainAberta && \(/.test(srcEstr);
+  if (semGrade && chainRecolhivel) {
+    console.log("✔ WO-47 Teste 3: a chain e uma linha inteira recolhivel (wb-chain-open), sem a grade 4/8");
+  } else {
+    console.log(`✘ WO-47 Teste 3 falhou: semGrade=${semGrade}, recolhivel=${chainRecolhivel}`);
+    failures++;
+  }
+
+  // ---- Teste 4: o grafico de HV e um componente compartilhado, sem duplicacao
+  const srcVol = ler("components/GraficoVolHistorica.tsx");
+  const srcCtx = ler("components/PainelContexto.tsx");
+  const compartilhado = /<GraficoVolHistorica/.test(srcEstr) && /<GraficoVolHistorica/.test(srcCtx);
+  const semDuplicata = !/dataKey="hv21"/.test(srcCtx) && /dataKey="hv21"/.test(srcVol);
+  if (compartilhado && semDuplicata) {
+    console.log("✔ WO-47 Teste 4: GraficoVolHistorica e usado na Montagem e no Contexto; o Contexto nao tem mais HV proprio");
+  } else {
+    console.log(`✘ WO-47 Teste 4 falhou: compartilhado=${compartilhado}, semDuplicata=${semDuplicata}`);
+    failures++;
+  }
+
+  // ---- Teste 5: o formulario das 3 perguntas vem antes do payoff, nao no fim
+  const iForm = srcEstr.indexOf("<FormularioAbertura");
+  const iPayoff = srcEstr.indexOf("<PayoffChart");
+  if (iForm > 0 && iPayoff > iForm) {
+    console.log("✔ WO-47 Teste 5: o formulario das 3 perguntas abre junto das pernas, antes do payoff");
+  } else {
+    console.log(`✘ WO-47 Teste 5 falhou: form=${iForm}, payoff=${iPayoff}`);
+    failures++;
+  }
+
+  // ---- Teste 6: aoSelecionar no Mapa, com o comportamento antigo preservado sem a prop
+  const temProp = /aoSelecionar\?: \(ticker: string\) => void/.test(srcMapa);
+  const preserva = /router\.push\("\/estrategia\?modo=cadeia"\)/.test(srcMapa);
+  if (temProp && preserva) {
+    console.log("✔ WO-47 Teste 6: MapaOportunidades aceita aoSelecionar e, sem ela, ainda navega");
+  } else {
+    console.log(`✘ WO-47 Teste 6 falhou: prop=${temProp}, preserva=${preserva}`);
+    failures++;
+  }
+
+  // ---- Teste 7: o Mapa e recolhivel na Noticias, chave por secao
+  if (/"noticias-mapa-open"/.test(srcNot) && /mapaOpen && \(/.test(srcNot)) {
+    console.log("✔ WO-47 Teste 7: o Mapa e recolhivel na Noticias com a chave noticias-mapa-open");
+  } else {
+    console.log("✘ WO-47 Teste 7 falhou: Mapa nao e recolhivel ou a chave nao e por secao");
+    failures++;
+  }
+
+  // ---- Teste 8: dentro do Cockpit, clicar na Watchlist SELECIONA — nao navega
+  const cockPassa = /<PainelWatchlist aoSelecionar=\{setTicker\}/.test(srcCock);
+  const watchRespeita = /if \(aoSelecionar\) \{\s*aoSelecionar\(t\);\s*return;/.test(srcWatch);
+  if (cockPassa && watchRespeita) {
+    console.log("✔ WO-47 Teste 8: no Cockpit, clicar numa linha da Watchlist chama setTicker e nao router.push");
+  } else {
+    console.log(`✘ WO-47 Teste 8 falhou: cockpit=${cockPassa}, watchlist=${watchRespeita}`);
+    failures++;
+  }
+
+  // ---- Teste 9: TAKE_PROFIT sobre o lucro maximo da ESTRUTURA, nao sobre o premio
+  // Trava de alta: debito 140, maximo 260. Metodo: realizar em 182. A regua antiga disparava em 98.
+  const { evaluateFlags } = await import("../position-flags");
+  const chain: any = {
+    ticker: "XXXX3", spot: 33, expiries: [{ date: "2026-09-18", du: 20 }],
+    options: [
+      { opTicker: "XA30", underlying: "XXXX3", type: "CALL", model: "EUROPEAN", strike: 30, expiry: "2026-09-18", du: 20, last: 3.0, trades: 10, iv: 0.35, delta: 0.7, vega: 0.05, theta: -0.02, markQuality: "fresh" },
+      { opTicker: "XA34", underlying: "XXXX3", type: "CALL", model: "EUROPEAN", strike: 34, expiry: "2026-09-18", du: 20, last: 0.62, trades: 10, iv: 0.33, delta: 0.3, vega: 0.05, theta: -0.02, markQuality: "fresh" },
+    ],
+  };
+  const abertaEm = "2026-08-20T13:00:00.000Z";
+  const base = (opTicker: string, strike: number, side: 1 | -1, price: number): any => ({
+    id: `pos-${opTicker}`, kind: "OPTION", opTicker, underlying: "XXXX3", type: "CALL", model: "EUROPEAN",
+    strike, expiry: "2026-09-18", du: 20, side, qty: 100, price, iv: 0.35, openedAt: abertaEm, fees: 0,
+  });
+  const trava = [base("XA30", 30, 1, 2.0), base("XA34", 34, -1, 0.6)];
+  // Marca atual: comprada 3,00 / vendida 0,62 -> P&L = (3.00-2.00)*100 - (0.62-0.60)*100 = 98.
+  const flags98 = evaluateFlags(trava, { XXXX3: chain }, {}, 100_000, undefined, {}, 0.1425);
+  const tp98 = flags98.filter((f) => f.kind === "TAKE_PROFIT");
+  // Marca que entrega 182: comprada a 3,84 e vendida a 0,62 -> (3.84-2.00)*100 - 2 = 182.
+  const chain182: any = { ...chain, options: chain.options.map((o: any) => (o.opTicker === "XA30" ? { ...o, last: 3.84 } : o)) };
+  const flags182 = evaluateFlags(trava, { XXXX3: chain182 }, {}, 100_000, undefined, {}, 0.1425);
+  const tp182 = flags182.filter((f) => f.kind === "TAKE_PROFIT");
+  // Caso folgado (72%): comprada a 3,90 -> P&L 188.
+  const chain188: any = { ...chain, options: chain.options.map((o: any) => (o.opTicker === "XA30" ? { ...o, last: 3.9 } : o)) };
+  const tp188 = evaluateFlags(trava, { XXXX3: chain188 }, {}, 100_000, undefined, {}, 0.1425).filter((f) => f.kind === "TAKE_PROFIT");
+  if (tp98.length === 0 && tp182.length === 1 && tp188.length === 1 && /estrutura/i.test(tp182[0].titulo)) {
+    console.log("✔ WO-47 Teste 9: com P&L 98 (70% do premio) nao ha flag; com 182 (70% do maximo 260) a estrutura dispara");
+  } else {
+    console.log(`✘ WO-47 Teste 9 falhou: em98=${tp98.length}, em182=${tp182.length}, em188=${tp188.length} (${tp182[0]?.titulo})`);
+    failures++;
+  }
+
+  // ---- Teste 10: perna unica mantem a regua por perna, nos dois lados
+  const seca = [base("XA30", 30, 1, 2.0)];
+  const chainSeca: any = { ...chain, options: chain.options.map((o: any) => (o.opTicker === "XA30" ? { ...o, last: 3.5 } : o)) };
+  const flagsSeca = evaluateFlags(seca, { XXXX3: chainSeca }, {}, 100_000, undefined, {}, 0.1425);
+  if (flagsSeca.some((f) => f.kind === "TAKE_PROFIT" && /compra/i.test(f.titulo))) {
+    console.log("✔ WO-47 Teste 10: perna unica comprada com +75% sobre o premio ainda dispara a regua individual");
+  } else {
+    console.log("✘ WO-47 Teste 10 falhou: a regua por perna deixou de valer para perna unica");
+    failures++;
+  }
+
+  // ---- Teste 11: a Carteira agrupa por underlying|openedAt e o P&L e a soma exata das pernas
+  const { estruturasAbertas } = await import("../position-flags");
+  const { unrealizedPnl } = await import("../portfolio");
+  const { markInfo } = await import("../../store/market");
+  const est = estruturasAbertas(trava, { XXXX3: chain }, 0.1425);
+  const soma = trava.reduce((a, p) => a + (unrealizedPnl(p, markInfo(p, { XXXX3: chain }).price) ?? 0), 0);
+  if (est.length === 1 && est[0].chave === `XXXX3|${abertaEm}` && Math.abs((est[0].pnl ?? 0) - soma) < 1e-9 && Math.abs((est[0].maxProfit ?? 0) - 260) < 1e-6) {
+    console.log("✔ WO-47 Teste 11: uma estrutura, chave underlying|openedAt, P&L = soma das pernas, lucro maximo 260");
+  } else {
+    console.log(`✘ WO-47 Teste 11 falhou: n=${est.length}, chave=${est[0]?.chave}, pnl=${est[0]?.pnl} vs ${soma}, max=${est[0]?.maxProfit}`);
+    failures++;
+  }
+
+  // ---- Teste 12: closePosition grava motivoSaida; closeStructure fecha N pernas de uma vez
+  const srcStore = ler("store/market.ts");
+  const gravaMotivo = /closedAt: new Date\(\)\.toISOString\(\), closePrice, motivoSaida \}/.test(srcStore);
+  const temEstrutura = /closeStructure: \(fechamentos, motivoSaida\)/.test(srcStore);
+  const srcPainel = ler("components/PainelEstruturas.tsx");
+  const sugerePeloFlag = /function motivoSugerido/.test(srcPainel) && /REGIME_VIROU/.test(srcPainel) && /TAKE_PROFIT/.test(srcPainel);
+  if (gravaMotivo && temEstrutura && sugerePeloFlag) {
+    console.log("✔ WO-47 Teste 12: o fechamento grava o motivo, fecha a estrutura inteira e sugere o motivo pela flag ativa");
+  } else {
+    console.log(`✘ WO-47 Teste 12 falhou: motivo=${gravaMotivo}, estrutura=${temEstrutura}, sugere=${sugerePeloFlag}`);
+    failures++;
+  }
+
+  // ---- Teste 13: preco de fechamento pre-preenchido pela marcacao; sem marcacao fica VAZIO
+  const vazioSemMarca = /m != null \? m\.toFixed\(2\) : ""/.test(srcPainel) && /placeholder="sem marca"/.test(srcPainel);
+  if (vazioSemMarca) {
+    console.log("✔ WO-47 Teste 13: perna sem marcacao fica com preco vazio no fechamento — nunca zero");
+  } else {
+    console.log("✘ WO-47 Teste 13 falhou: o fechamento pode estar preenchendo zero");
+    failures++;
+  }
+
+  // ---- Teste 14: a Amostra mostra resultado por motivo de saida
+  const srcApur = ler("components/PainelApuracao.tsx");
+  if (/motivoSaida \?\? "não registrado"/.test(srcApur) && /Resultado por motivo de saída/.test(srcApur)) {
+    console.log("✔ WO-47 Teste 14: a Amostra apura resultado por motivo de saida");
+  } else {
+    console.log("✘ WO-47 Teste 14 falhou: sem quadro por motivo");
+    failures++;
+  }
+
+  // ---- Teste 15: o plano da entrada aparece ao lado da posicao
+  if (/lider\.tese/.test(srcPainel) && /lider\.regraSaida/.test(srcPainel) && /lider\.alvo/.test(srcPainel)) {
+    console.log("✔ WO-47 Teste 15: tese, alvo e regra de saida aparecem na linha da estrutura");
+  } else {
+    console.log("✘ WO-47 Teste 15 falhou: o plano da entrada continua invisivel");
+    failures++;
+  }
+
+  // ---- Teste 16: o detector fala a lingua do metodo
+  const { detectStrategy } = await import("../strategy-detect");
+  const nome = detectStrategy(trava as any)?.name;
+  const condor = detectStrategy([
+    base("XA36", 36, -1, 0.5), base("XA38", 38, 1, 0.2),
+    { ...base("XM30", 30, -1, 0.5), type: "PUT" }, { ...base("XM28", 28, 1, 0.2), type: "PUT" },
+  ] as any)?.name;
+  if (nome === "Trava de Alta com Call" && condor === "Trava de Linha") {
+    console.log("✔ WO-47 Teste 16: o detector devolve os nomes do metodo — Trava de Alta com Call, Trava de Linha");
+  } else {
+    console.log(`✘ WO-47 Teste 16 falhou: ${nome} / ${condor}`);
+    failures++;
+  }
+
+  // ---- Teste 17: nenhum novo localStorage e nomeado por numero
+  const novasChaves = ["wb-chain-open", "noticias-mapa-open"];
+  const porNumero = novasChaves.filter((k) => /\d/.test(k));
+  if (porNumero.length === 0 && /"wb-chain-open"/.test(srcEstr) && /"noticias-mapa-open"/.test(srcNot)) {
+    console.log("✔ WO-47 Teste 17: as chaves novas de localStorage sao nomeadas por secao");
+  } else {
+    console.log(`✘ WO-47 Teste 17 falhou: ${porNumero.join(",")}`);
+    failures++;
+  }
+
+  // ---- Teste 18: os scripts PowerShell nao repetem os quatro defeitos de 01/09
+  // BOM em arquivo de config, :'v' dentro de $$, e Get-Content sem @( ) antes de +=.
+  const scripts = ["scripts/setup-db.ps1", "scripts/reset-senha-postgres.ps1"];
+  const ofensas: string[] = [];
+  for (const f of scripts) {
+    const src = ler(f).split("\n").filter((l) => !l.trim().startsWith("#"));
+    const txt = src.join("\n");
+    if (/Set-Content[^\n]*-Encoding UTF8/.test(txt)) ofensas.push(`${f}: Set-Content -Encoding UTF8 (BOM)`);
+    if (/\$\$[\s\S]*?:'[a-z_]+'[\s\S]*?\$\$/.test(txt)) ofensas.push(`${f}: :'v' dentro de $$`);
+    if (/\$linhas = Get-Content/.test(txt)) ofensas.push(`${f}: Get-Content sem @( )`);
+  }
+  if (ofensas.length === 0) {
+    console.log("✔ WO-47 Teste 18: os scripts gravam sem BOM, nao interpolam dentro de $$ e forcam array");
+  } else {
+    console.log(`✘ WO-47 Teste 18 falhou: ${ofensas.join(" | ")}`);
+    failures++;
+  }
+}
 
 // ============ WO-46 — CONSOLIDACAO DE ABAS E ANALISE DE P&L ============
 

@@ -281,7 +281,19 @@ interface MarketState {
    * presa a posicao. Opcional na assinatura para nao quebrar chamadas antigas (WO-46 §E.2).
    */
   openPositions: (ls: Leg[], journal?: Pick<Position, "tese" | "alvo" | "regraSaida" | "regimeNaEntrada">) => void;
-  closePosition: (id: string, closePrice: number) => void;
+  /**
+   * Encerra uma perna. `motivoSaida` (WO-47 §5.4) registra QUAL regra disparou — alvo, stop,
+   * regime, vencimento ou manual. É o que permite, depois, medir resultado por motivo.
+   */
+  closePosition: (id: string, closePrice: number, motivoSaida?: Position["motivoSaida"]) => void;
+  /**
+   * Encerra várias pernas de uma vez, cada uma ao seu preço, com o mesmo motivo (WO-47 §5.5).
+   * Uma estrutura de quatro pernas deixa de exigir quatro diálogos.
+   */
+  closeStructure: (
+    fechamentos: { id: string; closePrice: number }[],
+    motivoSaida?: Position["motivoSaida"]
+  ) => void;
   removePosition: (id: string) => void;
   initHydrate: () => void;
 }
@@ -461,13 +473,26 @@ export const useMarket = create<MarketState>()(
             }),
           ],
         })),
-      closePosition: (id, closePrice) =>
+      closePosition: (id, closePrice, motivoSaida) =>
         set((st) => {
           const pos = st.positions.find((p) => p.id === id);
           if (!pos) return st;
           return {
             positions: st.positions.filter((p) => p.id !== id),
-            closed: [...st.closed, { ...pos, closedAt: new Date().toISOString(), closePrice }],
+            closed: [...st.closed, { ...pos, closedAt: new Date().toISOString(), closePrice, motivoSaida }],
+          };
+        }),
+      closeStructure: (fechamentos, motivoSaida) =>
+        set((st) => {
+          const agora = new Date().toISOString();
+          const porId = new Map(fechamentos.map((f) => [f.id, f.closePrice]));
+          const fechadas = st.positions
+            .filter((p) => porId.has(p.id))
+            .map((p) => ({ ...p, closedAt: agora, closePrice: porId.get(p.id)!, motivoSaida }));
+          if (fechadas.length === 0) return st;
+          return {
+            positions: st.positions.filter((p) => !porId.has(p.id)),
+            closed: [...st.closed, ...fechadas],
           };
         }),
       removePosition: (id) =>

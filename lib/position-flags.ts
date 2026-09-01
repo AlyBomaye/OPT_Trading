@@ -4,6 +4,7 @@ import type { ChainData, Position } from "./types";
 import type { DividendEvent } from "./universe";
 import { markInfo } from "@/store/market";
 import { allocatedCapital, unrealizedPnl } from "./portfolio";
+import { strategyMetrics } from "./payoff";
 import { divsBeforeExpiry, effectiveDividends } from "./dividends";
 import { sectorOf } from "./universe";
 import { fmtBRL, fmtNum, fmtPct } from "./format";
@@ -86,6 +87,66 @@ const SEVERITY_RANK: Record<FlagSeverity, number> = {
   info: 2,
 };
 
+/**
+ * WO-47 §5.1 — lucro máximo e P&L por ESTRUTURA.
+ *
+ * As pernas abertas juntas (mesmo `underlying|openedAt`, a chave de `groupTrades`) formam uma
+ * estrutura. O lucro máximo vem de `strategyMetrics` — o mesmo que a Estratégia mostra ao montar —
+ * e é contra ele que a regra dos 70% do método se mede. Sem chain do ativo não há spot, e sem
+ * spot não há lucro máximo: a estrutura fica de fora e cada perna cai na régua individual.
+ */
+export interface EstruturaAberta {
+  chave: string;
+  underlying: string;
+  pernas: Position[];
+  pnl: number | null;
+  maxProfit: number | null;
+  maxLoss: number | null;
+  /** P&L ÷ lucro máximo. `null` sem lucro máximo finito. */
+  fracaoDoMaximo: number | null;
+}
+
+export function estruturasAbertas(
+  positions: Position[],
+  chainCache: Record<string, ChainData>,
+  r: number
+): EstruturaAberta[] {
+  const porChave = new Map<string, Position[]>();
+  for (const p of positions) {
+    if (p.closedAt != null) continue;
+    const chave = `${p.underlying}|${p.openedAt}`;
+    porChave.set(chave, [...(porChave.get(chave) ?? []), p]);
+  }
+  const saida: EstruturaAberta[] = [];
+  porChave.forEach((pernas, chave) => {
+    const chain = chainCache[pernas[0].underlying];
+    const spot = chain?.spot ?? null;
+    let pnl: number | null = 0;
+    for (const p of pernas) {
+      const v = unrealizedPnl(p, markInfo(p, chainCache).price);
+      if (v == null) { pnl = null; break; }
+      pnl += v;
+    }
+    let maxProfit: number | null = null;
+    let maxLoss: number | null = null;
+    if (spot != null && spot > 0) {
+      const m = strategyMetrics(pernas, spot, r);
+      maxProfit = m.maxProfit;
+      maxLoss = m.maxLoss;
+    }
+    saida.push({
+      chave,
+      underlying: pernas[0].underlying,
+      pernas,
+      pnl,
+      maxProfit,
+      maxLoss,
+      fracaoDoMaximo: pnl != null && maxProfit != null && maxProfit > 0 ? pnl / maxProfit : null,
+    });
+  });
+  return saida;
+}
+
 export function evaluateFlags(
   positions: Position[],
   chainCache: Record<string, ChainData> = {},
@@ -96,9 +157,36 @@ export function evaluateFlags(
    * WO-43 — regime marcado pelo trader, por ativo. Sem marcação, a regra não dispara: ausência de
    * dado não é sinal, e inventar um regime seria pior que não ter nenhum.
    */
-  regimePorTicker: Record<string, "alta" | "baixa" | "lateral" | "indefinido"> = {}
+  regimePorTicker: Record<string, "alta" | "baixa" | "lateral" | "indefinido"> = {},
+  /** Taxa livre de risco em fração, do contexto. Sem ela a régua por estrutura fica desligada. */
+  selic: number | null = null
 ): PositionFlag[] {
   const flags: PositionFlag[] = [];
+
+  // WO-47 §5.1 — a regra dos 70% do método é sobre o lucro MÁXIMO DA ESTRUTURA. Avaliada aqui,
+  // uma vez por estrutura com 2+ pernas; essas pernas ficam fora da régua individual abaixo.
+  const pernasEmEstrutura = new Set<string>();
+  if (selic != null) {
+    for (const e of estruturasAbertas(positions, chainCache, selic)) {
+      if (e.pernas.length < 2) continue;
+      for (const p of e.pernas) pernasEmEstrutura.add(p.id);
+      // Tolerancia: strategyMetrics varre uma grade e devolve 260,00000000000045 onde a conta
+      // fechada da 260; sem o epsilon, 182/260 (exatos 70%) ficaria 0,6999... e nao dispararia.
+      if (e.fracaoDoMaximo != null && e.fracaoDoMaximo >= th.takeProfitPct - 1e-9) {
+        const lider = e.pernas[0];
+        flags.push({
+          kind: "TAKE_PROFIT",
+          severity: "atencao",
+          positionId: lider.id,
+          ticker: e.underlying,
+          opTicker: lider.opTicker,
+          titulo: "Realizar lucro (estrutura)",
+          detalhe: `A estrutura de ${e.pernas.length} pernas já capturou ${fmtBRL(e.pnl ?? 0)} — ${fmtPct(e.fracaoDoMaximo)} do lucro máximo de ${fmtBRL(e.maxProfit ?? 0)}.`,
+          acao: `O método manda realizar em ${fmtPct(th.takeProfitPct)} do máximo — o que falta não paga o risco restante.`,
+        });
+      }
+    }
+  }
 
   // A. Avaliação por posição aberta
   for (const p of positions) {
@@ -141,8 +229,8 @@ export function evaluateFlags(
       }
     }
 
-    // 1. TAKE_PROFIT
-    if (pnl != null && totalCost > 0) {
+    // 1. TAKE_PROFIT — régua por perna, só para quem NÃO está numa estrutura avaliada acima.
+    if (pnl != null && totalCost > 0 && !pernasEmEstrutura.has(p.id)) {
       const pnlPct = pnl / totalCost;
       if (p.side === 1 && pnlPct >= th.takeProfitPct) {
         flags.push({

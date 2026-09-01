@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Database, FileJson, FileSpreadsheet, RefreshCw, Trash2, Upload, XCircle } from "lucide-react";
 import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { markInfo, useMarket } from "@/store/market";
@@ -21,6 +21,8 @@ import { downloadText, fmtBRL, fmtDateBR, fmtNum, fmtPct, pnlColor } from "@/lib
 import { evaluateFlags, useFlagSettings } from "@/lib/position-flags";
 import { groupTrades, performanceStats } from "@/lib/performance";
 import { PainelApuracao } from "@/components/PainelApuracao";
+import { PainelEstruturas } from "@/components/PainelEstruturas";
+import type { Regime } from "@/lib/metodo";
 import { ActionFlags } from "@/components/ActionFlags";
 import { PerformanceCharts } from "@/components/PerformanceCharts";
 import { AgentPanel } from "@/components/AgentPanel";
@@ -50,9 +52,30 @@ export default function CarteiraPage() {
   const thresholds = useFlagSettings((st) => st.thresholds);
 
   // WO-17: Avaliação de flags de ação do book
+  // WO-47 §5: regimes marcados (do banco) — sem eles a flag REGIME_VIROU do WO-43 nunca disparava
+  // aqui, porque a Carteira não os passava. Sem banco, fica vazio e a regra simplesmente não roda.
+  const [regimes, setRegimes] = useState<Record<string, { regime: Regime; observadoEm: string }>>({});
+  useEffect(() => {
+    let vivo = true;
+    fetch("/api/regime", { signal: AbortSignal.timeout(10_000) })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((j) => {
+        if (vivo && j?.regimes && typeof j.regimes === "object") setRegimes(j.regimes);
+      })
+      .catch(() => {});
+    return () => {
+      vivo = false;
+    };
+  }, [positions.length]);
+  const regimePorTicker = useMemo(
+    () => Object.fromEntries(Object.entries(regimes).map(([t, m]) => [t, m.regime])),
+    [regimes]
+  );
+
   const allFlags = useMemo(
-    () => evaluateFlags(positions, chainCache, divsByTicker, capitalTotal, thresholds),
-    [positions, chainCache, divsByTicker, capitalTotal, thresholds]
+    // WO-47 §5.1: a taxa entra para a régua dos 70% ser sobre o lucro máximo da ESTRUTURA.
+    () => evaluateFlags(positions, chainCache, divsByTicker, capitalTotal, thresholds, regimePorTicker, selic),
+    [positions, chainCache, divsByTicker, capitalTotal, thresholds, regimePorTicker, selic]
   );
 
   // WO-17: Agrupamento de trades e estatísticas de performance do journal
@@ -289,10 +312,15 @@ export default function CarteiraPage() {
         </div>
       ))}
 
-      {/* Posições abertas */}
+      {/* WO-47 §5.2 — a Carteira pensa por estrutura: % do lucro máximo, DU, alvo, regime e o
+          plano da entrada, com fechamento da estrutura inteira numa ação. A tabela por perna
+          continua abaixo para editar taxas e notas. */}
+      <PainelEstruturas flags={allFlags} regimes={regimes} />
+
+      {/* Posições abertas (por perna) */}
       <div className="panel">
         <div className="flex items-center px-3 pt-2">
-          <span className="panel-title !p-0">Posições abertas</span>
+          <span className="panel-title !p-0">Pernas abertas</span>
           <div className="flex-1" />
           <button
             className="btn flex items-center gap-1 mr-1"

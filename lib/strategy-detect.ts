@@ -40,6 +40,10 @@ const custom: DetectedStrategy = {
   note: "Combinação fora do catálogo — leia o payoff e as gregas abaixo.",
 };
 
+/**
+ * WO-47: os nomes devolvidos sao os do METODO (WO-45), os mesmos dos botoes da Estrategia.
+ * Antes o botao dizia "Trava de Linha" e o cabecalho da estrutura montada dizia "Iron Condor".
+ */
 export function detectStrategy(legs: Leg[]): DetectedStrategy | null {
   const active = legs.filter((l) => l.qty > 0);
   if (!active.length) return null;
@@ -55,11 +59,11 @@ export function detectStrategy(legs: Leg[]): DetectedStrategy | null {
         : { name: "Ação vendida", bias: "BAIXA", note: "Short de ação — Δ = −1 por ação." };
     if (l.type === "CALL")
       return l.side === 1
-        ? { name: "Call comprada (seca)", bias: "ALTA", note: "Risco = prêmio; theta corre contra." }
-        : { name: "Call vendida (descoberta)", bias: "BAIXA", note: "⚠ Risco ilimitado na alta — exige margem." };
+        ? { name: "Compra a Seco de Call", bias: "ALTA", note: "Risco = prêmio; theta corre contra." }
+        : { name: "Venda a Seco de Call", bias: "BAIXA", note: "⚠ Risco ilimitado na alta — exige margem." };
     return l.side === 1
-      ? { name: "Put comprada (seca)", bias: "BAIXA", note: "Risco = prêmio; ganha na queda e com vol." }
-      : { name: "Put vendida (descoberta)", bias: "ALTA", note: "Risco alto na queda — estratégia de renda/entrada." };
+      ? { name: "Compra a Seco de Put", bias: "BAIXA", note: "Risco = prêmio; ganha na queda e com vol." }
+      : { name: "Venda a Seco de Put", bias: "ALTA", note: "Risco alto na queda — estratégia de renda/entrada." };
   }
 
   // ---------- ação + opção ----------
@@ -89,11 +93,11 @@ export function detectStrategy(legs: Leg[]): DetectedStrategy | null {
       const [lo, hi] = s.calls;
       if (lo.side !== hi.side && ratioOf(lo) === ratioOf(hi)) {
         if (lo.side === 1)
-          return { name: "Trava de Alta (calls)", bias: "ALTA", note: "Débito; ganho máx entre os strikes acima do BE." };
-        return { name: "Trava de Baixa (calls) — crédito", bias: "BAIXA", note: "Crédito; lucra se ficar abaixo do strike vendido." };
+          return { name: "Trava de Alta com Call", bias: "ALTA", note: "Débito; ganho máx entre os strikes acima do BE." };
+        return { name: "Trava de Baixa com Call", bias: "BAIXA", note: "Crédito; lucra se ficar abaixo do strike vendido." };
       }
       if (lo.side === -1 && hi.side === 1 && hi.qty > lo.qty)
-        return { name: "Call Ratio Backspread", bias: "ALTA", note: "Vol comprada na alta; pior caso no strike comprado." };
+        return { name: "Booster", bias: "ALTA", note: "Vol comprada na alta; pior caso no strike comprado." };
       if (lo.side === 1 && hi.side === -1 && hi.qty > lo.qty)
         return { name: "Ratio Call Spread (venda)", bias: "NEUTRO", note: "⚠ Vende mais do que compra — cauda descoberta na alta." };
     }
@@ -102,11 +106,11 @@ export function detectStrategy(legs: Leg[]): DetectedStrategy | null {
       const [lo, hi] = s.puts;
       if (lo.side !== hi.side && ratioOf(lo) === ratioOf(hi)) {
         if (hi.side === 1)
-          return { name: "Trava de Baixa (puts)", bias: "BAIXA", note: "Débito; ganho máx entre os strikes abaixo do BE." };
-        return { name: "Trava de Alta (puts) — crédito", bias: "ALTA", note: "Crédito; lucra se ficar acima do strike vendido." };
+          return { name: "Trava de Baixa com Put", bias: "BAIXA", note: "Débito; ganho máx entre os strikes abaixo do BE." };
+        return { name: "Trava de Alta com Put", bias: "ALTA", note: "Crédito; lucra se ficar acima do strike vendido." };
       }
       if (hi.side === -1 && lo.side === 1 && lo.qty > hi.qty)
-        return { name: "Put Ratio Backspread", bias: "BAIXA", note: "Vol comprada na queda; financia com a put vendida." };
+        return { name: "Booster de Queda", bias: "BAIXA", note: "Vol comprada na queda; financia com a put vendida." };
     }
     // Call + put
     if (s.calls.length === 1 && s.puts.length === 1) {
@@ -115,12 +119,12 @@ export function detectStrategy(legs: Leg[]): DetectedStrategy | null {
       const sameStrike = Math.abs((c.strike ?? 0) - (p.strike ?? 0)) < 0.01;
       if (c.side === 1 && p.side === 1)
         return sameStrike
-          ? { name: "Straddle comprado", bias: "VOL COMPRADA", note: "Precisa andar mais que o prêmio total — gamma positivo." }
-          : { name: "Strangle comprado", bias: "VOL COMPRADA", note: "Mais barato que straddle; precisa de movimento maior." };
+          ? { name: "Straddle Comprado", bias: "VOL COMPRADA", note: "Precisa andar mais que o prêmio total — gamma positivo." }
+          : { name: "Strangle Comprado", bias: "VOL COMPRADA", note: "Mais barato que straddle; precisa de movimento maior." };
       if (c.side === -1 && p.side === -1)
         return sameStrike
-          ? { name: "Straddle vendido", bias: "VOL VENDIDA", note: "⚠ Risco ilimitado dos dois lados — theta a favor." }
-          : { name: "Strangle vendido", bias: "VOL VENDIDA", note: "⚠ Risco ilimitado — zona de lucro entre os strikes." };
+          ? { name: "Straddle Vendido", bias: "VOL VENDIDA", note: "⚠ Risco ilimitado dos dois lados — theta a favor." }
+          : { name: "Strangle Vendido", bias: "VOL VENDIDA", note: "⚠ Risco ilimitado — zona de lucro entre os strikes." };
       if (c.side === 1 && p.side === -1)
         return { name: "Risk Reversal (compra)", bias: "ALTA", note: "Sintético direcional — financia a call vendendo a put." };
       if (c.side === -1 && p.side === 1)
@@ -162,10 +166,10 @@ export function detectStrategy(legs: Leg[]): DetectedStrategy | null {
       const sameBody = Math.abs((pHi.strike ?? 0) - (cLo.strike ?? 0)) < 0.01;
       return sameBody
         ? { name: "Iron Butterfly", bias: "VOL VENDIDA", note: "Crédito maior, zona estreita no corpo — risco definido." }
-        : { name: "Iron Condor", bias: "VOL VENDIDA", note: "Crédito com risco definido; lucra no range entre os vendidos." };
+        : { name: "Trava de Linha", bias: "VOL VENDIDA", note: "Crédito com risco definido; lucra no range entre os vendidos." };
     }
     if (pLo.side === -1 && pHi.side === 1 && cLo.side === 1 && cHi.side === -1)
-      return { name: "Iron Condor invertido", bias: "VOL COMPRADA", note: "Compra o range — lucra no rompimento." };
+      return { name: "Trava de Linha invertida", bias: "VOL COMPRADA", note: "Compra o range — lucra no rompimento." };
   }
 
   return custom;

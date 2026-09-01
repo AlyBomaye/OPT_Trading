@@ -40,6 +40,25 @@ export function PainelApuracao({ fechadas, taxaAcerto, payoff }: Props) {
 
   const esperanca =
     taxaAcerto != null && payoff != null ? esperancaPorOperacao(taxaAcerto, payoff) : null;
+
+  // WO-47 §5.4 — resultado por motivo de saída. É a pergunta que mais melhora um trader: qual
+  // regra está me dando dinheiro e qual está me tirando. Só existe se o fechamento registrou o
+  // motivo; posições fechadas antes do WO-47 não têm e ficam em "não registrado".
+  const porMotivo = useMemo(() => {
+    const acc = new Map<string, { n: number; pnl: number; ganhos: number }>();
+    for (const p of fechadas) {
+      if (p.closePrice == null) continue;
+      const res = p.side * p.qty * (p.closePrice - p.price) - (p.fees ?? 0);
+      const k = p.motivoSaida ?? "não registrado";
+      const a = acc.get(k) ?? { n: 0, pnl: 0, ganhos: 0 };
+      a.n += 1;
+      a.pnl += res;
+      if (res > 0) a.ganhos += 1;
+      acc.set(k, a);
+    }
+    return Array.from(acc.entries()).sort((x, y) => y[1].pnl - x[1].pnl);
+  }, [fechadas]);
+  const temMotivo = porMotivo.some(([k]) => k !== "não registrado");
   const minimo = payoff != null ? acertoMinimoParaEmpatar(payoff) : null;
 
   return (
@@ -80,6 +99,35 @@ export function PainelApuracao({ fechadas, taxaAcerto, payoff }: Props) {
               <div className="text-term-dim text-[9px] mt-0.5">
                 marcos do método: {MARCOS.join(" · ")}
               </div>
+            </div>
+          )}
+
+          {temMotivo && (
+            <div className="border-t border-term-line/40 pt-2">
+              <div className="text-term-dim uppercase tracking-wider text-[9px] mb-1">Resultado por motivo de saída</div>
+              <table className="w-full font-mono">
+                <thead>
+                  <tr className="text-term-dim">
+                    <th className="text-left font-normal py-0.5">Motivo</th>
+                    <th className="text-right font-normal py-0.5">Pernas</th>
+                    <th className="text-right font-normal py-0.5">Acerto</th>
+                    <th className="text-right font-normal py-0.5">P&amp;L</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {porMotivo.map(([k, v]) => (
+                    <tr key={k} className="border-t border-term-line/20">
+                      <td className="py-0.5">{k}</td>
+                      <td className="text-right py-0.5">{v.n}</td>
+                      <td className="text-right py-0.5">{fmtPct(v.ganhos / v.n)}</td>
+                      <td className={clsx("text-right py-0.5", v.pnl >= 0 ? "text-term-up" : "text-term-down")}>{fmtBRL(v.pnl)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              <p className="text-term-dim mt-1">
+                Cada perna conta uma vez. Regra que aparece com P&amp;L negativo repetido é regra a rever — ou a obedecer.
+              </p>
             </div>
           )}
 
