@@ -63,7 +63,7 @@ export function buildChainReport(ctx: ChainInputContext): AgentReport {
           asOf,
         },
       ],
-      deepLink: "/chain#mark-quality",
+      deepLink: "/estrategia?modo=cadeia#mark-quality",
     }));
   }
 
@@ -105,7 +105,7 @@ export function buildChainReport(ctx: ChainInputContext): AgentReport {
             asOf,
           },
         ],
-        deepLink: "/chain#skew",
+        deepLink: "/estrategia?modo=cadeia#skew",
       }));
 
       if (isPuts) {
@@ -150,7 +150,7 @@ export function buildChainReport(ctx: ChainInputContext): AgentReport {
             asOf,
           },
         ],
-        deepLink: "/historico#iv-vs-hv",
+        deepLink: "/estrategia?modo=contexto#iv-vs-hv",
       }));
     }
   }
@@ -172,7 +172,7 @@ export function buildChainReport(ctx: ChainInputContext): AgentReport {
           asOf,
         },
       ],
-      deepLink: "/chain",
+      deepLink: "/estrategia?modo=cadeia",
     }));
   }
 

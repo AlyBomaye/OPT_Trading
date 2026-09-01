@@ -884,7 +884,7 @@ export default function MacroPage() {
                                 key={t}
                                 onClick={() => {
                                   setTicker(t);
-                                  router.push("/chain");
+                                  router.push("/estrategia?modo=cadeia");
                                 }}
                                 className="tag bg-term-line hover:bg-term-cyan hover:text-term-bg cursor-pointer transition-colors font-bold text-xxs"
                                 title={`Carregar chain de ${t}`}

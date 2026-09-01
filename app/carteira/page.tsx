@@ -20,6 +20,7 @@ import { divsBeforeExpiry, effectiveDividends, useDividends } from "@/lib/divide
 import { downloadText, fmtBRL, fmtDateBR, fmtNum, fmtPct, pnlColor } from "@/lib/format";
 import { evaluateFlags, useFlagSettings } from "@/lib/position-flags";
 import { groupTrades, performanceStats } from "@/lib/performance";
+import { PainelApuracao } from "@/components/PainelApuracao";
 import { ActionFlags } from "@/components/ActionFlags";
 import { PerformanceCharts } from "@/components/PerformanceCharts";
 import { AgentPanel } from "@/components/AgentPanel";
@@ -237,11 +238,17 @@ export default function CarteiraPage() {
         />
       </div>
 
-      {perf.totalClosedGroups > 0 && perf.totalClosedGroups < 20 && (
-        <div className="text-xxs font-mono text-term-dim px-1">
-          💡 Nota: amostragem pequena ({perf.totalClosedGroups} operações encerradas de 20 recomendadas) — estatísticas de expectancy e profit factor ainda não são conclusivas.
-        </div>
-      )}
+      {/* WO-46 §E.3: apuração fiscal e leitura da amostra — os dois módulos que o WO-44
+          construiu e testou sem que nenhuma tela os consumisse.
+
+          A nota antiga aqui recomendava 20 operações para a estatística ser conclusiva. O método
+          pede centenas, e o painel abaixo diz isso com o número e a margem de erro. Manter as duas
+          seria a plataforma se contradizendo na mesma tela. */}
+      <PainelApuracao
+        fechadas={closed}
+        taxaAcerto={journal?.winRate ?? null}
+        payoff={journal?.payoffRatio ?? null}
+      />
 
       {closed.length > 0 && (
         <div className="panel">

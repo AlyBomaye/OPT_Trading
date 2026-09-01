@@ -1,13 +1,18 @@
+/**
+ * WO-46: Chain, Histórico e Watchlist deixaram de ser rotas. Os destinos passam a carregar
+ * `?modo=` porque a Estratégia monta um modo por vez — âncora sem o modo certo aponta para
+ * conteúdo não renderizado, e o link falha sem avisar.
+ */
 export const DEEP_LINKS = {
   "carteira.flags": "/carteira#acao-do-dia",
   "carteira.baldes": "/carteira#capital",
   "carteira.journal": "/carteira#journal",
   "carteira.greeks": "/carteira#greeks",
   "carteira.risk": "/carteira#risk-profile",
-  "chain.skew": "/chain#skew",
-  "chain.termo": "/chain#estrutura-a-termo",
-  "chain.smile": "/chain#smile",
-  "chain.markQuality": "/chain#mark-quality",
+  "chain.skew": "/estrategia?modo=cadeia#skew",
+  "chain.termo": "/estrategia?modo=cadeia#estrutura-a-termo",
+  "chain.smile": "/estrategia?modo=cadeia#smile",
+  "chain.markQuality": "/estrategia?modo=cadeia#mark-quality",
   "cockpit.gex": "/#gex",
   "cockpit.shock": "/#choque-portfolio",
   "cockpit.focus": "/#foco-dia",
@@ -21,9 +26,9 @@ export const DEEP_LINKS = {
   "scanner.pozinhos": "/scanner#pozinhos-tabela",
   "estrategia.workbench": "/estrategia",
   "estrategia.payoff": "/estrategia#payoff",
-  "historico.cone": "/historico#cone",
-  "historico.iv-vs-hv": "/historico#iv-vs-hv",
-  "watchlist.tabela": "/watchlist#watchlist-tabela",
+  "historico.cone": "/estrategia?modo=contexto#cone",
+  "historico.iv-vs-hv": "/estrategia?modo=contexto#iv-vs-hv",
+  "watchlist.tabela": "/#watchlist-tabela",
   "consultor.gateway": "/consultor#gateway",
   "consultor.pipeline": "/consultor#pipeline",
 } as const;

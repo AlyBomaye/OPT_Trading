@@ -18,6 +18,9 @@ import type { Candle } from "@/app/api/history/route";
  * concorrentes contra /api/opcoes (respeita o cache de 60 s da rota).
  * Última varredura persiste para a página abrir instantânea com tag STALE.
  * Hotkey 8.
+ *
+ * WO-46 §5: deixou de ser rota propria e passou a abrir o Cockpit. E o mapa de onde o
+ * trader escolhe o papel — os blocos abaixo dela ja falam do ativo selecionado.
  * ==========================================================================*/
 
 import { useWatchlist } from "@/lib/sector-dashboard";
@@ -126,7 +129,7 @@ async function scanTicker(ticker: string, r: number): Promise<WatchRow> {
   return base;
 }
 
-export default function WatchlistPage() {
+export function PainelWatchlist() {
   const router = useRouter();
   const { selic, setTicker } = useMarket();
   const snapshots = useSnapshots((st) => st.snapshots);
@@ -165,7 +168,7 @@ export default function WatchlistPage() {
 
   const openChain = (t: string) => {
     setTicker(t);
-    router.push("/chain");
+    router.push("/estrategia?modo=cadeia");
   };
 
   const staleRun =

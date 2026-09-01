@@ -272,7 +272,15 @@ interface MarketState {
   setLegs: (ls: Leg[]) => void;
   clearLegs: () => void;
 
-  openPositions: (ls: Leg[]) => void;
+  /**
+   * Registra as pernas como posicoes abertas.
+   *
+   * `journal` carrega as 3 perguntas do metodo (tese, alvo, regra de saida) e o regime marcado
+   * no momento da entrada. Sao gravadas na posicao, nao num diario separado, porque a pergunta
+   * que importa depois e "o que eu disse que ia acontecer?" — e ela so tem resposta se estiver
+   * presa a posicao. Opcional na assinatura para nao quebrar chamadas antigas (WO-46 §E.2).
+   */
+  openPositions: (ls: Leg[], journal?: Pick<Position, "tese" | "alvo" | "regraSaida" | "regimeNaEntrada">) => void;
   closePosition: (id: string, closePrice: number) => void;
   removePosition: (id: string) => void;
   initHydrate: () => void;
@@ -436,7 +444,7 @@ export const useMarket = create<MarketState>()(
       setLegs: (ls) => set({ legs: ls }),
       clearLegs: () => set({ legs: [] }),
 
-      openPositions: (ls) =>
+      openPositions: (ls, journal) =>
         set((st) => ({
           positions: [
             ...st.positions,
@@ -449,7 +457,7 @@ export const useMarket = create<MarketState>()(
                 const o = chain?.ticker === l.underlying ? chain.options.find((x) => x.opTicker === l.opTicker) : undefined;
                 entryGreeks = o ? { delta: o.delta, vega: o.vega, theta: o.theta } : undefined;
               }
-              return { ...l, id: `pos-${l.id}`, openedAt: new Date().toISOString(), fees: 0, entryGreeks };
+              return { ...l, id: `pos-${l.id}`, openedAt: new Date().toISOString(), fees: 0, entryGreeks, ...journal };
             }),
           ],
         })),

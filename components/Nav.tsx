@@ -14,22 +14,23 @@ import { fmtDateBR } from "@/lib/format";
 
 /**
  * WO-36: o Consultor abre a barra — é a tela que consolida as outras.
+ * WO-46: o Cockpit vem logo depois, já contendo a Watchlist; Chain e Histórico foram absorvidos
+ * pela Estratégia. Onze abas viraram oito.
  *
  * A tecla de atalho de cada aba NÃO acompanha a posição: o Consultor continua em `C` e as demais
- * mantêm 1–0. Renumerar por causa da ordem visual trocaria o significado de teclas que já estão
- * na memória muscular, e a ordem da barra é uma escolha de leitura, não um contrato de atalho.
+ * mantêm o número que sempre tiveram. Renumerar por causa da ordem visual trocaria o significado
+ * de teclas que já estão na memória muscular, e a ordem da barra é uma escolha de leitura, não um
+ * contrato de atalho. Por isso 5, 8 e 9 (Watchlist, Chain, Histórico) simplesmente deixam de
+ * existir em vez de serem reaproveitadas pelas abas seguintes.
  */
 const ITEMS = [
   { href: "/consultor", label: "Consultor", key: "C", icon: Bot },
+  { href: "/", label: "Cockpit", key: "4", icon: Gauge },
   { href: "/carteira", label: "Carteira", key: "1", icon: Briefcase },
   { href: "/noticias", label: "Notícias", key: "2", icon: Newspaper },
   { href: "/macro", label: "Macro", key: "3", icon: Globe },
-  { href: "/", label: "Cockpit", key: "4", icon: Gauge },
-  { href: "/watchlist", label: "Watchlist", key: "5", icon: LayoutGrid },
   { href: "/scanner", label: "Scanner", key: "6", icon: Search },
   { href: "/estrategia", label: "Estratégia", key: "7", icon: GitBranch },
-  { href: "/chain", label: "Chain", key: "8", icon: Table2 },
-  { href: "/historico", label: "Histórico", key: "9", icon: History },
   { href: "/manual", label: "Manual", key: "0", icon: BookOpen },
 ];
 

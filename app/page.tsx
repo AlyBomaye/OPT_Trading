@@ -19,6 +19,7 @@ import { sessionInfo } from "@/lib/session";
 import { getIvRank, useSnapshots } from "@/lib/snapshots";
 import { AgentPanel } from "@/components/AgentPanel";
 import { TruthBar } from "@/components/TruthBar";
+import { PainelWatchlist } from "@/components/PainelWatchlist";
 import { useSkewAtm } from "@/lib/hooks/useSkewAtm";
 
 /** Valores manuais de GEX + carimbo de edição (WO-14), persistidos por ticker. */
@@ -281,6 +282,10 @@ export default function CockpitPage() {
       />
       <PreMarketPanel />
       <div className="grid md:grid-cols-3 gap-3">
+        {/* WO-46 §5: a Watchlist abre o Cockpit. Ela traz o proprio AgentPanel do agente
+            `watchlist`, que continua registrado — o que mudou foi so onde a saida aparece. */}
+        <PainelWatchlist />
+
         {/* [1] Choque do portfólio */}
         <div id="choque-portfolio" className="panel">
           <div className="panel-title">[1] Choque do Portfólio</div>

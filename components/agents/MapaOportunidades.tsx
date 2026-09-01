@@ -76,7 +76,7 @@ export function MapaOportunidades() {
 
   const handleSelectTicker = (t: string) => {
     setTicker(t);
-    router.push("/chain");
+    router.push("/estrategia?modo=cadeia");
   };
 
   // Ordenação da tabela
@@ -132,7 +132,7 @@ export function MapaOportunidades() {
             className="btn bg-cyan-600 hover:bg-cyan-500 text-white text-xs px-4 py-2 font-mono rounded flex items-center"
           >
             <RefreshCw size={14} className={clsx("mr-2", scanning && "animate-spin")} />
-            Varrer Universo Agora (20 ativos B3)
+            Varrer Universo Agora ({UNIVERSE.length} ativos B3)
           </button>
         </div>
       ) : (

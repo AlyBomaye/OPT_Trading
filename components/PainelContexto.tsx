@@ -27,7 +27,10 @@ import { PainelTendencia } from "@/components/PainelTendencia";
 /* ============================================================================
  * Histórico — dados históricos e vol realizada do universo monitorado
  * (Config da planilha TradingOpt). HV 10/21/63d, Parkinson, IV vs HV,
- * cone de vol, estatísticas de retornos. Hotkey 7.
+ * cone de vol, estatísticas de retornos.
+ *
+ * WO-46 §4: deixou de ser a aba Histórico e virou o modo Contexto da Estratégia — a leitura
+ * de volatilidade e tendência que sustenta a escolha da estrutura, a um clique da montagem.
  * ==========================================================================*/
 
 /** Universo da planilha (Config!B5:B24) via lib/universe. */
@@ -49,7 +52,7 @@ interface HistBody {
   error?: string;
 }
 
-export default function HistoricoPage() {
+export function PainelContexto() {
   const { chain, ticker, setTicker } = useMarket();
   const snapshots = useSnapshots((st) => st.snapshots);
   const [range, setRange] = useState<string>("1y");

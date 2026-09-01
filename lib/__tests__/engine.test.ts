@@ -2190,8 +2190,11 @@ async function testesWo33() {
   const ordemLinhas = ["Pré (Tesouro)", "Treasuries US", "Cupom cambial", "BRL/USD", "NTN-B", "IPCA & IGP-M"];
   const idx = ordemLinhas.map((t) => bloco.indexOf(t));
   const linhasEmOrdem = idx.every((v, i) => v > 0 && (i === 0 || v > idx[i - 1]));
-  if (iImpacto > 0 && iRates > iImpacto && linhasEmOrdem) {
-    console.log("✔ WO-33 Teste 6: Impacto antes de Rates & FX, e as seis linhas na ordem pedida");
+  // WO-46 §3 inverteu a ordem das secoes (Rates antes do Impacto, que agora fecha a pagina).
+  // A ordem das secoes e afirmada pelo WO-46 Teste 8; aqui fica so o que este teste sempre
+  // guardou de verdade: as seis linhas do Rates & FX na ordem pedida.
+  if (iImpacto > 0 && iRates > 0 && linhasEmOrdem) {
+    console.log("✔ WO-33 Teste 6: as seis linhas do Rates & FX seguem na ordem pedida");
   } else {
     console.log(`✘ WO-33 Teste 6 falhou: impacto=${iImpacto}, rates=${iRates}, linhas=${JSON.stringify(idx)}`);
     failures++;
@@ -2230,9 +2233,378 @@ async function testesWo33() {
   await testesWo43();
   await testesWo44();
   await testesWo45();
+  await testesWo46();
 }
 
 // ============ WO-44 — TENDENCIA, FISCAL, AMOSTRA E JOURNAL ============
+
+// ============ WO-46 — CONSOLIDACAO DE ABAS E ANALISE DE P&L ============
+
+async function testesWo46() {
+  const fs = await import("fs");
+  const path = await import("path");
+  const raiz = path.resolve(__dirname, "..", "..");
+  const ler = (rel: string) => fs.readFileSync(path.join(raiz, rel), "utf-8");
+  const existe = (rel: string) => fs.existsSync(path.join(raiz, rel));
+
+  const srcNav = ler("components/Nav.tsx");
+
+  // ---- Teste 1: oito abas, na ordem acordada
+  const abas = Array.from(srcNav.matchAll(/href: "([^"]*)", label: "([^"]*)"/g)).map((m) => m[2]);
+  const esperada = ["Consultor", "Cockpit", "Carteira", "Notícias", "Macro", "Scanner", "Estratégia", "Manual"];
+  if (abas.length === 8 && abas.every((a, i) => a === esperada[i])) {
+    console.log("✔ WO-46 Teste 1: 8 abas na ordem Consultor > Cockpit > Carteira > Noticias > Macro > Scanner > Estrategia > Manual");
+  } else {
+    console.log(`✘ WO-46 Teste 1 falhou: ${abas.join(" > ")}`);
+    failures++;
+  }
+
+  // ---- Teste 2: as rotas absorvidas deixaram de existir e ganharam redirect
+  const rotasMortas = ["app/chain/page.tsx", "app/historico/page.tsx", "app/watchlist/page.tsx"];
+  const aindaExistem = rotasMortas.filter((r) => existe(r));
+  const cfg = ler("next.config.mjs");
+  const temRedirects =
+    /source: "\/chain"[\s\S]*?destination: "\/estrategia\?modo=cadeia"[\s\S]*?permanent: true/.test(cfg) &&
+    /source: "\/historico"[\s\S]*?destination: "\/estrategia\?modo=contexto"/.test(cfg) &&
+    /source: "\/watchlist"/.test(cfg);
+  if (aindaExistem.length === 0 && temRedirects) {
+    console.log("✔ WO-46 Teste 2: /chain, /historico e /watchlist saem por redirect permanente");
+  } else {
+    console.log(`✘ WO-46 Teste 2 falhou: rotas=${aindaExistem.join(",")}, redirects=${temRedirects}`);
+    failures++;
+  }
+
+  // ---- Teste 3: nenhum link interno aponta para rota que nao existe mais
+  // Varredura, nao lista escrita a mao: e o unico jeito de isto continuar valendo depois.
+  const rotasVivas = new Set(abas.length ? Array.from(srcNav.matchAll(/href: "([^"]*)"/g)).map((m) => m[1]) : []);
+  const arquivos: string[] = [];
+  const varrer = (dir: string) => {
+    for (const e of fs.readdirSync(path.join(raiz, dir), { withFileTypes: true })) {
+      if (e.isDirectory()) {
+        if (e.name === "node_modules" || e.name === ".next" || e.name === "__tests__") continue;
+        varrer(`${dir}/${e.name}`);
+      } else if (/\.tsx?$/.test(e.name)) {
+        arquivos.push(`${dir}/${e.name}`);
+      }
+    }
+  };
+  varrer("lib");
+  varrer("components");
+  varrer("app");
+
+  const quebrados: string[] = [];
+  for (const f of arquivos) {
+    const src = ler(f);
+    for (const m of Array.from(src.matchAll(/(?:deepLink|href|aba|router\.push\()\s*[:(]?\s*"(\/[a-z-]*)(?:\?[^"#]*)?(?:#[^"]*)?"/g))) {
+      const rota = m[1];
+      if (rota.startsWith("/api")) continue;
+      if (!rotasVivas.has(rota)) quebrados.push(`${f}: ${m[1]}`);
+    }
+  }
+  if (quebrados.length === 0) {
+    console.log(`✔ WO-46 Teste 3: os ${arquivos.length} arquivos varridos so apontam para rotas que existem na navegacao`);
+  } else {
+    console.log(`✘ WO-46 Teste 3 falhou: ${quebrados.slice(0, 6).join(" | ")}`);
+    failures++;
+  }
+
+  // ---- Teste 4: os deep links carregam o modo, senao a ancora cai em bloco nao montado
+  const srcLinks = ler("lib/agents/deeplinks.ts");
+  const comAncora = Array.from(srcLinks.matchAll(/"[a-z.-]+": "(\/estrategia[^"]*#[^"]*)"/g)).map((m) => m[1]);
+  const semModo = comAncora.filter((l) => !/\?modo=(cadeia|contexto)#/.test(l) && !/^\/estrategia#payoff/.test(l));
+  if (comAncora.length > 0 && semModo.length === 0) {
+    console.log(`✔ WO-46 Teste 4: os ${comAncora.length} deep links da Estrategia declaram o modo junto da ancora`);
+  } else {
+    console.log(`✘ WO-46 Teste 4 falhou: sem modo em ${semModo.join(", ")}`);
+    failures++;
+  }
+
+  // ---- Teste 5: as ancoras existem no novo destino
+  const destinos = [
+    ["#skew", "components/PainelCadeia.tsx"],
+    ["#mark-quality", "components/PainelCadeia.tsx"],
+    ["#estrutura-a-termo", "components/PainelCadeia.tsx"],
+    ["#smile", "components/PainelCadeia.tsx"],
+    ["#iv-vs-hv", "components/PainelContexto.tsx"],
+    ["#cone", "components/PainelContexto.tsx"],
+    ["#payoff", "app/estrategia/page.tsx"],
+    ["#watchlist-tabela", "components/PainelWatchlist.tsx"],
+  ] as const;
+  const ausentes = destinos.filter(([anc, arq]) => !ler(arq).includes(`id="${anc.slice(1)}"`));
+  if (ausentes.length === 0) {
+    console.log(`✔ WO-46 Teste 5: as ${destinos.length} ancoras sobreviveram a mudanca de endereco`);
+  } else {
+    console.log(`✘ WO-46 Teste 5 falhou: ${ausentes.map(([a]) => a).join(", ")}`);
+    failures++;
+  }
+
+  // ---- Teste 6: a Estrategia le o modo da URL e monta UM de cada vez
+  // Montar os tres passaria de dez graficos Recharts simultaneos mais a tabela da chain.
+  const srcEstr = ler("app/estrategia/page.tsx");
+  const leUrl = /useSearchParams\(\)/.test(srcEstr) && /searchParams\.get\("modo"\)/.test(srcEstr);
+  const exclusivo =
+    /\{modo === "cadeia" && <PainelCadeia \/>\}/.test(srcEstr) &&
+    /\{modo === "contexto" && <PainelContexto \/>\}/.test(srcEstr) &&
+    /\{modo === "montagem" && \(/.test(srcEstr);
+  // Suspense: sem ele o `next build` recusa a pagina inteira por causa do useSearchParams.
+  const comSuspense = /<Suspense/.test(srcEstr);
+  if (leUrl && exclusivo && comSuspense) {
+    console.log("✔ WO-46 Teste 6: a Estrategia le ?modo=, monta um modo por vez e tem fronteira de Suspense");
+  } else {
+    console.log(`✘ WO-46 Teste 6 falhou: url=${leUrl}, exclusivo=${exclusivo}, suspense=${comSuspense}`);
+    failures++;
+  }
+
+  // ---- Teste 7: os 13 agentes continuam registrados
+  // Fundir chain+historico+estrategia daria um agente generico pior que os tres, e derrubaria a
+  // cobertura que o Consultor mede.
+  const { AGENTS } = await import("../agents/registry");
+  const ids = AGENTS.map((a: any) => a.id);
+  const preservados = ["chain", "historico", "watchlist", "estrategia", "cockpit"].filter((i) => ids.includes(i));
+  if (ids.length === 13 && preservados.length === 5) {
+    console.log("✔ WO-46 Teste 7: os 13 agentes seguem registrados — as telas se juntaram, as especializacoes nao");
+  } else {
+    console.log(`✘ WO-46 Teste 7 falhou: ${ids.length} agentes, preservados=${preservados.join(",")}`);
+    failures++;
+  }
+
+  // ---- Teste 8: ordem das secoes da Macro
+  const srcMacro = ler("app/macro/page.tsx");
+  const secoes = Array.from(srcMacro.matchAll(/\[(\d)\] ([A-ZÀ-Ü][^<—]*)/g)).map((m) => `${m[1]}:${m[2].trim()}`);
+  const ordemOk =
+    secoes.length === 5 &&
+    secoes[0].includes("Estado das Sessões") &&
+    secoes[1].includes("Painéis de Mercado") &&
+    secoes[2].includes("Rates") &&
+    secoes[3].includes("Boletim Focus") &&
+    secoes[4].includes("Impacto no Meu Universo");
+  if (ordemOk) {
+    console.log("✔ WO-46 Teste 8: Macro na ordem Sessoes > Paineis > Rates & FX > Focus > Impacto");
+  } else {
+    console.log(`✘ WO-46 Teste 8 falhou: ${secoes.join(" | ")}`);
+    failures++;
+  }
+
+  // ---- Teste 9: as chaves da Macro continuam nomeadas por secao
+  // Reordenar nao pode apagar o estado de aberto/fechado dos paineis (WO-35 Teste 10).
+  const chaves = Array.from(new Set(Array.from(srcMacro.matchAll(/"(macro-[a-z]+-open)"/g)).map((m) => m[1])));
+  const porNumero = chaves.filter((c) => /\d/.test(c));
+  if (chaves.length === 5 && porNumero.length === 0) {
+    console.log("✔ WO-46 Teste 9: as 5 chaves da Macro seguem nomeadas por secao, nao por numero");
+  } else {
+    console.log(`✘ WO-46 Teste 9 falhou: ${chaves.join(", ")}`);
+    failures++;
+  }
+
+  // ---- Teste 10: o Mapa saiu do Consultor e esta na Noticias, ainda derivado do UNIVERSE
+  const noConsultor = /MapaOportunidades/.test(ler("app/consultor/page.tsx"));
+  const srcNot = ler("app/noticias/page.tsx");
+  const naNoticias = /<MapaOportunidades \/>/.test(srcNot);
+  const posMapa = srcNot.indexOf("MAPA DE OPORTUNIDADES");
+  const posSetorial = srcNot.indexOf("Dashboard Setorial");
+  const posRadar = srcNot.indexOf("RADAR DE EVENTOS");
+  const noMeio = posSetorial > 0 && posMapa > posSetorial && posRadar > posMapa;
+  const derivaUniverse = /UNIVERSE\.map\(/.test(ler("components/agents/MapaOportunidades.tsx"));
+  if (!noConsultor && naNoticias && noMeio && derivaUniverse) {
+    console.log("✔ WO-46 Teste 10: o Mapa esta na Noticias entre o Setorial e o Radar, derivado do UNIVERSE");
+  } else {
+    console.log(`✘ WO-46 Teste 10 falhou: consultor=${noConsultor}, noticias=${naNoticias}, meio=${noMeio}, universe=${derivaUniverse}`);
+    failures++;
+  }
+
+  // ---- Teste 11: o titulo do Mapa nao crava a contagem do universo
+  // Dizia "20 Ativos B3" desde antes do WO-43, que levou o universo a 31.
+  const srcMapa = ler("components/agents/MapaOportunidades.tsx");
+  const cravado = /\(\d+ [Aa]tivos/.test(srcMapa);
+  const derivado = /\{UNIVERSE\.length\}/.test(srcMapa);
+  if (!cravado && derivado) {
+    console.log("✔ WO-46 Teste 11: a contagem do universo no titulo do Mapa vem de UNIVERSE.length");
+  } else {
+    console.log(`✘ WO-46 Teste 11 falhou: cravado=${cravado}, derivado=${derivado}`);
+    failures++;
+  }
+
+  // ---- Teste 12: o semaforo de criterios chegou a tela, e nao reprova o que nao mediu
+  const srcSem = ler("components/SemaforoCriterios.tsx");
+  const usaJulgar = /julgarEstrutura\(/.test(srcSem) && /resumirCriterios\(/.test(srcSem);
+  const naTela = /<SemaforoCriterios/.test(srcEstr);
+  // `indefinido` tem de ser cinza (term-dim), nunca vermelho (term-down).
+  const indefinidoCinza = /indefinido: \{ icone: CircleHelp, cor: "text-term-dim"/.test(srcSem);
+  const dizQueAvisa = /avisa,? (não|nao) impede/i.test(srcSem);
+  if (usaJulgar && naTela && indefinidoCinza && dizQueAvisa) {
+    console.log("✔ WO-46 Teste 12: o semaforo renderiza julgarEstrutura, pinta indefinido de cinza e declara que avisa sem impedir");
+  } else {
+    console.log(`✘ WO-46 Teste 12 falhou: julga=${usaJulgar}, naTela=${naTela}, cinza=${indefinidoCinza}, declara=${dizQueAvisa}`);
+    failures++;
+  }
+
+  // ---- Teste 13: as 3 perguntas sao a porta do "Abrir posicao"
+  const srcForm = ler("components/FormularioAbertura.tsx");
+  const abreForm = /onClick=\{\(\) => setAbrindo\(true\)\}/.test(srcEstr);
+  const gravaDireto = /openPositions\(legs\)\s*\}/.test(srcEstr);
+  const grava = /openPositions\(legs, d\)/.test(srcEstr);
+  const teseObrigatoria = /if \(teseVazia\) return;/.test(srcForm);
+  if (abreForm && !gravaDireto && grava && teseObrigatoria) {
+    console.log("✔ WO-46 Teste 13: abrir posicao passa pelo formulario, e a tese e obrigatoria");
+  } else {
+    console.log(`✘ WO-46 Teste 13 falhou: abre=${abreForm}, direto=${gravaDireto}, grava=${grava}, tese=${teseObrigatoria}`);
+    failures++;
+  }
+
+  // ---- Teste 14: o alvo gravado e PRECO, nao texto
+  // `Position.alvo` e numero desde o WO-44: e o que vira ordem limitada.
+  const alvoNumerico = /alvo: number \| undefined/.test(srcForm) && /Number\.isFinite\(alvoNum\)/.test(srcForm);
+  if (alvoNumerico) {
+    console.log("✔ WO-46 Teste 14: o alvo e capturado como preco numerico, nao como texto livre");
+  } else {
+    console.log("✘ WO-46 Teste 14 falhou: o alvo nao esta sendo convertido para numero");
+    failures++;
+  }
+
+  /* ---------------- Analise de P&L ---------------- */
+
+  const { analisarPnl, precoParaLucro, valorEsperado } = await import("../pnl-operacao");
+  const { REALIZAR_PCT_LUCRO_MAXIMO, TETO_POR_OPERACAO } = await import("../metodo");
+
+  // Trava de alta com call: compra 30, vende 34, premio 2,00 e 0,60. Debito 1,40/acao.
+  const trava: any[] = [
+    { id: "a", kind: "OPTION", underlying: "XXXX3", type: "CALL", strike: 30, du: 30, side: 1, qty: 100, price: 2.0, iv: 0.35 },
+    { id: "b", kind: "OPTION", underlying: "XXXX3", type: "CALL", strike: 34, du: 30, side: -1, qty: 100, price: 0.6, iv: 0.33 },
+  ];
+
+  // ---- Teste 15: o preco-alvo dos 70% e coerente com o payoff
+  // O numero so vale se, NAQUELE preco, o P&L realmente bater o alvo.
+  const maxLucro = 400 - 140; // (34-30)*100 - debito
+  const alvo70 = maxLucro * REALIZAR_PCT_LUCRO_MAXIMO;
+  const preco = precoParaLucro(trava, 30, 0.1425, alvo70, 20);
+  const { pnlAtDay } = await import("../payoff");
+  const conferido = preco != null ? pnlAtDay(trava, preco, 20, 0.1425) : null;
+  if (preco != null && conferido != null && conferido >= alvo70 - 1) {
+    console.log(`✔ WO-46 Teste 15: o preco de realizacao (${preco.toFixed(2)}) entrega de fato ${alvo70.toFixed(0)} de lucro`);
+  } else {
+    console.log(`✘ WO-46 Teste 15 falhou: preco=${preco}, pnl=${conferido}, alvo=${alvo70}`);
+    failures++;
+  }
+
+  // ---- Teste 16: o alvo de uma estrutura de BAIXA fica ABAIXO do spot
+  // Escolher o lado por suposicao daria o numero errado justamente onde ele mais importa.
+  const travaBaixa: any[] = [
+    { id: "a", kind: "OPTION", underlying: "XXXX3", type: "PUT", strike: 30, du: 30, side: 1, qty: 100, price: 2.0, iv: 0.35 },
+    { id: "b", kind: "OPTION", underlying: "XXXX3", type: "PUT", strike: 26, du: 30, side: -1, qty: 100, price: 0.6, iv: 0.33 },
+  ];
+  const precoBaixa = precoParaLucro(travaBaixa, 30, 0.1425, 180, 20);
+  if (precoBaixa != null && precoBaixa < 30) {
+    console.log(`✔ WO-46 Teste 16: numa estrutura de baixa o alvo cai abaixo do spot (${precoBaixa.toFixed(2)} < 30)`);
+  } else {
+    console.log(`✘ WO-46 Teste 16 falhou: alvo=${precoBaixa}`);
+    failures++;
+  }
+
+  // ---- Teste 17: o teto de 1% dispara pelo patrimonio, nao pelo valor absoluto
+  const pequeno = analisarPnl({ legs: trava, spot: 30, r: 0.1425, maxProfit: 260, maxLoss: -140, netDebit: 140, sigma: 0.35, patrimonio: 100_000 });
+  const grande = analisarPnl({ legs: trava, spot: 30, r: 0.1425, maxProfit: 260, maxLoss: -140, netDebit: 140, sigma: 0.35, patrimonio: 10_000 });
+  if (!pequeno.acimaDoTeto && grande.acimaDoTeto && grande.pctDoPatrimonio! > TETO_POR_OPERACAO) {
+    console.log(`✔ WO-46 Teste 17: R$140 e 0,14% de 100 mil (dentro) e 1,4% de 10 mil (acima do teto)`);
+  } else {
+    console.log(`✘ WO-46 Teste 17 falhou: pequeno=${pequeno.pctDoPatrimonio}, grande=${grande.pctDoPatrimonio}`);
+    failures++;
+  }
+
+  // ---- Teste 18: sem patrimonio informado o campo e null, nunca zero
+  // Zero diria "nao arrisca nada", que e o oposto de "nao sei" (WO-30).
+  const semPatrimonio = analisarPnl({ legs: trava, spot: 30, r: 0.1425, maxProfit: 260, maxLoss: -140, netDebit: 140, sigma: null, patrimonio: null });
+  if (semPatrimonio.pctDoPatrimonio === null && !semPatrimonio.acimaDoTeto && semPatrimonio.valorEsperado === null) {
+    console.log("✔ WO-46 Teste 18: sem patrimonio e sem IV medida os campos ficam null, nunca zero");
+  } else {
+    console.log(`✘ WO-46 Teste 18 falhou: pct=${semPatrimonio.pctDoPatrimonio}, ve=${semPatrimonio.valorEsperado}`);
+    failures++;
+  }
+
+  // ---- Teste 19: o acerto minimo bate com a relacao risco:retorno
+  // Payoff 260/140 = 1,857 -> minimo = 1/(1+1,857) = 35%.
+  const esperadoMin = 1 / (1 + 260 / 140);
+  if (pequeno.acertoMinimo != null && Math.abs(pequeno.acertoMinimo - esperadoMin) < 1e-9) {
+    console.log(`✔ WO-46 Teste 19: com payoff 1,86:1 o empate exige ${(pequeno.acertoMinimo * 100).toFixed(0)}% de acerto`);
+  } else {
+    console.log(`✘ WO-46 Teste 19 falhou: ${pequeno.acertoMinimo} vs ${esperadoMin}`);
+    failures++;
+  }
+
+  // ---- Teste 20: ponta ilimitada nao inventa razao finita
+  const seca: any[] = [
+    { id: "a", kind: "OPTION", underlying: "XXXX3", type: "CALL", strike: 30, du: 30, side: 1, qty: 100, price: 2.0, iv: 0.35 },
+  ];
+  const aberta = analisarPnl({ legs: seca, spot: 30, r: 0.1425, maxProfit: null, maxLoss: -200, netDebit: 200, sigma: 0.35, patrimonio: 100_000 });
+  if (aberta.payoffRatio === null && aberta.acertoMinimo === null && aberta.alvoRealizacao === null) {
+    console.log("✔ WO-46 Teste 20: com ganho sem teto nao ha razao, nem acerto minimo, nem alvo de 70%");
+  } else {
+    console.log(`✘ WO-46 Teste 20 falhou: payoff=${aberta.payoffRatio}, min=${aberta.acertoMinimo}, alvo=${aberta.alvoRealizacao}`);
+    failures++;
+  }
+
+  // ---- Teste 21: os cenarios batem com o payoff plotado
+  // Se divergirem, a tabela contradiz o grafico ao lado — e uma das duas esta mentindo.
+  const { pnlAtExpiry } = await import("../payoff");
+  const divergentes = pequeno.cenarios.filter(
+    (c) => Math.abs(c.vencimento - pnlAtExpiry(trava, c.spot)) > 1e-6
+  );
+  if (pequeno.cenarios.length === 7 && divergentes.length === 0) {
+    console.log("✔ WO-46 Teste 21: os 7 cenarios usam o mesmo payoff do grafico, sem divergencia");
+  } else {
+    console.log(`✘ WO-46 Teste 21 falhou: ${divergentes.length} cenario(s) divergentes`);
+    failures++;
+  }
+
+  // ---- Teste 22: valor esperado e PoP podem discordar — e o painel tem de permitir isso
+  // Uma vendida a seco ganha quase sempre um pouco e perde raramente muito: PoP alta, VE que pode
+  // ser negativo. Se o codigo forcasse os dois a concordarem, esconderia exatamente esse caso.
+  const vendida: any[] = [
+    { id: "a", kind: "OPTION", underlying: "XXXX3", type: "PUT", strike: 27, du: 30, side: -1, qty: 100, price: 0.4, iv: 0.35 },
+  ];
+  const ve = valorEsperado(vendida, 30, 0.1425, 0.35, 30);
+  const veTrava = valorEsperado(trava, 30, 0.1425, 0.35, 30);
+  if (ve != null && veTrava != null && Number.isFinite(ve) && Number.isFinite(veTrava)) {
+    console.log(`✔ WO-46 Teste 22: valor esperado calculado independentemente da PoP (vendida ${ve.toFixed(2)}, trava ${veTrava.toFixed(2)})`);
+  } else {
+    console.log(`✘ WO-46 Teste 22 falhou: ${ve} / ${veTrava}`);
+    failures++;
+  }
+
+  // ---- Teste 23: fiscal e amostra chegaram a Carteira
+  const srcCart = ler("app/carteira/page.tsx");
+  const srcApur = ler("components/PainelApuracao.tsx");
+  const montado = /<PainelApuracao/.test(srcCart);
+  const usaOsDois = /apurarMeses\(/.test(srcApur) && /avaliarAmostra\(/.test(srcApur);
+  const declaraLimite = /apuração, não assessoria contábil/i.test(srcApur);
+  // A nota antiga recomendava 20 operacoes; o metodo pede centenas. As duas juntas se contradizem.
+  const semContradicao = !/de 20 recomendadas/.test(srcCart);
+  if (montado && usaOsDois && declaraLimite && semContradicao) {
+    console.log("✔ WO-46 Teste 23: apuracao fiscal e amostra na Carteira, com o limite declarado e sem a nota das 20 operacoes");
+  } else {
+    console.log(`✘ WO-46 Teste 23 falhou: montado=${montado}, usa=${usaOsDois}, declara=${declaraLimite}, semContradicao=${semContradicao}`);
+    failures++;
+  }
+
+  // ---- Teste 24: nenhuma das telas novas usa taxa literal (WO-37 §A)
+  const novos = [
+    "components/PainelPnl.tsx",
+    "components/SemaforoCriterios.tsx",
+    "components/PainelApuracao.tsx",
+    "lib/pnl-operacao.ts",
+  ];
+  const comLiteral = novos.filter((f) =>
+    ler(f)
+      .split("\n")
+      .filter((l) => !l.trim().startsWith("*") && !l.trim().startsWith("//"))
+      .some((l) => /\b0\.1[0-9]{2,}\b/.test(l))
+  );
+  if (comLiteral.length === 0) {
+    console.log("✔ WO-46 Teste 24: as telas novas recebem a taxa do contexto, nenhuma a crava");
+  } else {
+    console.log(`✘ WO-46 Teste 24 falhou: taxa literal em ${comLiteral.join(", ")}`);
+    failures++;
+  }
+}
 
 // ============ WO-45 — A LINGUAGEM DA PLATAFORMA E A DO METODO ============
 
@@ -2576,7 +2948,8 @@ async function testesWo44() {
   const srcPainel = ler("components/PainelTendencia.tsx");
   const naoEstima = !/calcularRegime|estimarTendencia|sugerirRegime/.test(srcPainel);
   const dizNaTela = /não estima tendência|nao estima tendencia/i.test(srcPainel);
-  const noHistorico = /<PainelTendencia/.test(ler("app/historico/page.tsx"));
+  // WO-46: a aba Historico virou o modo Contexto da Estrategia (components/PainelContexto.tsx).
+  const noHistorico = /<PainelTendencia/.test(ler("components/PainelContexto.tsx"));
   if (naoEstima && dizNaTela && noHistorico) {
     console.log("✔ WO-44 Teste 11: o painel plota a marcacao do trader e declara que nao estima tendencia");
   } else {
@@ -3020,7 +3393,8 @@ async function testesWo39() {
   // ---- Teste 1: Rates & FX logo abaixo do Impacto
   const ordem = Array.from(srcMacro.matchAll(/<span className="font-bold">\[(\d)\] ([^<—]+)/g))
     .map((m) => `${m[1]}:${m[2].trim().split(" ")[0]}`);
-  const esperada = ["1:Estado", "2:Impacto", "3:Rates", "4:Painéis", "5:Boletim"];
+  // WO-46 §3 reordenou: Paineis > Rates > Focus > Impacto, com as Sessoes mantidas no topo.
+  const esperada = ["1:Estado", "2:Painéis", "3:Rates", "4:Boletim", "5:Impacto"];
   if (JSON.stringify(ordem) === JSON.stringify(esperada)) {
     console.log("✔ WO-39 Teste 1: Sessões → Impacto → Rates & FX → Painéis → Focus");
   } else {
@@ -3531,7 +3905,9 @@ async function testesWo36() {
   const consultorKeepsC = itens.find((i) => i.href === "/consultor")?.key === "C";
   const carteiraKeeps1 = itens.find((i) => i.href === "/carteira")?.key === "1";
   const manualKeeps0 = itens.find((i) => i.href === "/manual")?.key === "0";
-  if (primeiro?.href === "/consultor" && consultorKeepsC && carteiraKeeps1 && manualKeeps0 && itens.length === 11) {
+  // WO-46: 11 abas viraram 8 (Watchlist, Chain e Historico foram absorvidas). As teclas das que
+  // sobraram nao mudaram — que e o invariante deste teste.
+  if (primeiro?.href === "/consultor" && consultorKeepsC && carteiraKeeps1 && manualKeeps0 && itens.length === 8) {
     console.log("✔ WO-36 Teste 6: Consultor abre a barra; atalhos preservados (C, 1–0)");
   } else {
     console.log(`✘ WO-36 Teste 6 falhou: primeiro=${primeiro?.href}, C=${consultorKeepsC}, 1=${carteiraKeeps1}, 0=${manualKeeps0}, n=${itens.length}`);
@@ -3902,7 +4278,8 @@ async function testesWo34() {
   }
 
   // ---- Teste 9: derivação de skew centralizada no hook
-  const paginas = ["app/carteira/page.tsx", "app/chain/page.tsx", "app/estrategia/page.tsx", "app/page.tsx", "components/TickerBar.tsx"];
+  // WO-46: app/chain/page.tsx virou components/PainelCadeia.tsx.
+  const paginas = ["app/carteira/page.tsx", "components/PainelCadeia.tsx", "app/estrategia/page.tsx", "app/page.tsx", "components/TickerBar.tsx"];
   const aindaDuplica = paginas.filter((f) => /skewInfo\(chain/.test(ler(f)));
   if (aindaDuplica.length === 0) {
     console.log("✔ WO-34 Teste 9: skewInfo não é mais chamado direto nas páginas — tudo via useSkewAtm");

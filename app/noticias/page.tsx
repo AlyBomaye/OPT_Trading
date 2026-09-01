@@ -735,7 +735,7 @@ export default function NoticiasPage() {
                     <button
                       onClick={() => {
                         setTicker(selectedTicker);
-                        router.push("/chain");
+                        router.push("/estrategia?modo=cadeia");
                       }}
                       className="btn btn-primary text-xxs !py-1 !px-2 flex items-center gap-1"
                     >

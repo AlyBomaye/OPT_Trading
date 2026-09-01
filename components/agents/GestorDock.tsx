@@ -14,15 +14,14 @@ interface ChatMessage {
 }
 
 const SUGGESTED_BY_ROUTE: Record<string, string[]> = {
-  "/chain": ["Esse skew justifica um backspread?", "A IV ATM está cara ou barata vs HV?", "Qual vencimento tem melhor liquidez?"],
   "/carteira": ["Qual posição está fora do meu perfil de risco?", "Preciso rebalancear os baldes?", "Como está meu theta carry?"],
   "/scanner": ["Esse pozinho cabe no meu ¼-Kelly?", "Qual setor está mais barato em vol?", "Tem convexidade boa pra comprar?"],
-  "/estrategia": ["Essa estrutura tem EV positivo?", "Qual o risco máximo dessa operação?", "Devo trocar por uma trava?"],
-  "/": ["Como está meu VaR hoje?", "Qual o regime GEX atual?", "Preciso de hedge?"],
+  // WO-46: a Estratégia absorveu Chain e Histórico, então as perguntas das três se juntam aqui.
+  "/estrategia": ["Essa estrutura tem EV positivo?", "Qual o risco máximo dessa operação?", "Esse skew justifica um backspread?", "Em que quantil está a vol atual?"],
+  // WO-46: o Cockpit absorveu a Watchlist.
+  "/": ["Como está meu VaR hoje?", "Qual o regime GEX atual?", "Preciso de hedge?", "Tem skew extremo em algum ativo?"],
   "/noticias": ["Alguma notícia impacta minhas posições?", "Tem spike de atenção em algum ativo?", "O que o macro está dizendo?"],
   "/macro": ["A curva de juros está invertida?", "Qual driver macro domina hoje?", "O Brent afeta minha carteira?"],
-  "/watchlist": ["Tem skew extremo em algum ativo?", "Qual o maior spread IV-HV?", "Preciso atualizar algum scan?"],
-  "/historico": ["Em que quantil está a vol atual?", "HV21 diverge de Parkinson?", "A vol está em tendência de alta?"],
   "/consultor": ["Por que a alocação está desviada?", "Qual o custo do gestor hoje?", "Resuma o relatório em 3 pontos."],
   "/manual": ["Como funciona o Kelly?", "O que são baldes de risco?", "Como leio o skew?"],
 };
@@ -32,11 +31,8 @@ const ROUTE_LABELS: Record<string, string> = {
   "/carteira": "Carteira",
   "/noticias": "Notícias",
   "/macro": "Macro",
-  "/watchlist": "Watchlist",
   "/scanner": "Scanner",
   "/estrategia": "Estratégia",
-  "/chain": "Chain",
-  "/historico": "Histórico",
   "/consultor": "Consultor",
   "/manual": "Manual",
 };
@@ -47,11 +43,8 @@ function getAgentIdForRoute(path: string): string | null {
     "/carteira": "carteira",
     "/noticias": "noticias",
     "/macro": "macro",
-    "/watchlist": "watchlist",
     "/scanner": "scanner",
     "/estrategia": "estrategia",
-    "/chain": "chain",
-    "/historico": "historico",
     "/consultor": "gestor-global",
   };
   return map[path] ?? null;

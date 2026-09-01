@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import { Trash2, Plus, Save, Copy, Sparkles, X, Check } from "lucide-react";
+import { Suspense, useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "next/navigation";
+import { Trash2, Plus, Save, Copy, Sparkles, X, Check, Table2, History, Wrench } from "lucide-react";
 import clsx from "clsx";
 import { useMarket } from "@/store/market";
 import { PRESETS } from "@/lib/strategies";
@@ -19,12 +20,41 @@ import { PriceHistoryPanel } from "@/components/PriceHistoryPanel";
 import { AgentPanel } from "@/components/AgentPanel";
 import { TruthBar } from "@/components/TruthBar";
 import { useSkewAtm } from "@/lib/hooks/useSkewAtm";
+import { PainelCadeia } from "@/components/PainelCadeia";
+import { PainelContexto } from "@/components/PainelContexto";
+import { PainelPnl } from "@/components/PainelPnl";
+import { SemaforoCriterios } from "@/components/SemaforoCriterios";
+import { FormularioAbertura, type DadosAbertura } from "@/components/FormularioAbertura";
+import { analisarPnl } from "@/lib/pnl-operacao";
+import { performanceStats, groupTrades } from "@/lib/performance";
 
 /* ============================================================================
- * Workbench de Estratégia — one-stop shop do trader de opções: chain à
- * esquerda, pernas + diagrama + métricas + payoff à direita. Monta, ajusta e
- * testa a operação inteira sem trocar de tela. Hotkey 3.
+ * Estratégia — a tela onde a operação nasce e sai para a carteira.
+ *
+ * WO-46: absorveu as abas Chain e Histórico. São TRÊS MODOS, e só o ativo é
+ * montado:
+ *
+ *   · Montagem  — a tela da missão: chain reduzida, pernas, payoff, critérios
+ *                 do método, análise de P&L e a porta das 3 perguntas.
+ *   · Cadeia    — a chain completa, estrutura a termo e smile.
+ *   · Contexto  — tendência marcada, vol realizada, IV×HV e cone.
+ *
+ * Montar os três de uma vez passaria de dez gráficos Recharts simultâneos mais
+ * a tabela inteira da chain — foi medido antes de decidir. Ticker, vencimento e
+ * pernas são estado do store, então trocar de modo não perde nada.
+ *
+ * Cada modo traz o AgentPanel do SEU agente: `estrategia`, `chain` e
+ * `historico` continuam registrados e separados. Os agentes são
+ * especializações analíticas, não telas. Hotkey 7.
  * ==========================================================================*/
+
+type Modo = "montagem" | "cadeia" | "contexto";
+
+const MODOS: { valor: Modo; rotulo: string; icone: typeof Wrench; dica: string }[] = [
+  { valor: "montagem", rotulo: "Montagem", icone: Wrench, dica: "Monte a estrutura e mande para a carteira" },
+  { valor: "cadeia", rotulo: "Cadeia", icone: Table2, dica: "Chain completa, estrutura a termo e smile" },
+  { valor: "contexto", rotulo: "Contexto", icone: History, dica: "Tendência, vol realizada, IV×HV e cone" },
+];
 
 const BIAS_CLS: Record<string, string> = {
   ALTA: "bg-term-up/15 text-term-up",
@@ -35,7 +65,19 @@ const BIAS_CLS: Record<string, string> = {
   "—": "bg-term-panel2 text-term-dim",
 };
 
+/**
+ * `useSearchParams` (o `?modo=` dos deep links) precisa de fronteira de Suspense no App Router:
+ * sem ela o `next build` recusa a pagina inteira. O conteudo real vive em `Workbench`.
+ */
 export default function EstrategiaPage() {
+  return (
+    <Suspense fallback={<div className="panel px-3 py-4 text-xxs text-term-dim">Carregando a mesa…</div>}>
+      <Workbench />
+    </Suspense>
+  );
+}
+
+function Workbench() {
   const {
     chain,
     ticker,
@@ -51,6 +93,14 @@ export default function EstrategiaPage() {
     closed,
     capitalTotal,
   } = useMarket();
+  const searchParams = useSearchParams();
+  // O modo vem da URL para os deep links dos agentes caírem no bloco certo: sem isso, uma âncora
+  // como #skew apontaria para conteúdo não renderizado e o link morreria em silêncio.
+  const modoDaUrl = searchParams.get("modo");
+  const [modo, setModo] = useState<Modo>(
+    modoDaUrl === "cadeia" || modoDaUrl === "contexto" ? modoDaUrl : "montagem"
+  );
+  const [abrindo, setAbrindo] = useState(false);
   const [tnDay, setTnDay] = useState(5);
   const [showPresets, setShowPresets] = useState(true);
 
@@ -147,11 +197,75 @@ export default function EstrategiaPage() {
     if (l) setLegs([...legs, { ...l, id: `leg-${Date.now()}-dup` }]);
   };
 
+  // Taxa de acerto real do trader, para a análise de P&L comparar contra o mínimo da estrutura.
+  // Vem das operações FECHADAS: posição aberta não tem resultado realizado.
+  const acerto = useMemo(() => {
+    const grupos = groupTrades(positions, closed).filter((g) => g.pnl != null && g.closedAt != null);
+    if (grupos.length === 0) return { taxa: null as number | null, n: 0 };
+    const ganhos = grupos.filter((g) => (g.pnl ?? 0) > 0).length;
+    return { taxa: ganhos / grupos.length, n: grupos.length };
+  }, [positions, closed]);
+
+  // O alvo dos 70% também alimenta a sugestão de alvo do formulário de abertura.
+  const analise = useMemo(
+    () =>
+      chain && metrics && legs.length
+        ? analisarPnl({
+            legs,
+            spot: chain.spot,
+            r: selic,
+            maxProfit: metrics.maxProfit,
+            maxLoss: metrics.maxLoss,
+            netDebit: metrics.netDebit,
+            sigma: atmIvStruct,
+            patrimonio: capitalTotal,
+          })
+        : null,
+    [chain, metrics, legs, selic, atmIvStruct, capitalTotal]
+  );
+
+  const confirmarAbertura = (d: DadosAbertura) => {
+    openPositions(legs, d);
+    setAbrindo(false);
+  };
+
   const currentPresetDef = suggestPreset ? PRESETS.find((p) => p.key === suggestPreset) : null;
 
   return (
     <>
       <TruthBar />
+
+      {/* WO-46 §4: um controle, três modos, só o ativo montado. */}
+      <div className="panel px-3 py-2 flex flex-wrap items-center gap-1.5">
+        {MODOS.map((m) => {
+          const I = m.icone;
+          return (
+            <button
+              key={m.valor}
+              onClick={() => setModo(m.valor)}
+              title={m.dica}
+              className={clsx(
+                "flex items-center gap-1.5 px-2.5 py-1 text-xxs font-mono rounded border transition-colors",
+                modo === m.valor
+                  ? "bg-term-cyan/15 border-term-cyan/50 text-term-cyan font-bold"
+                  : "bg-term-panel2 border-term-line text-term-dim hover:text-term-text"
+              )}
+            >
+              <I size={12} />
+              {m.rotulo}
+            </button>
+          );
+        })}
+        <span className="text-xxs text-term-dim ml-auto hidden md:inline">
+          As pernas montadas e o vencimento seguem você entre os modos.
+        </span>
+      </div>
+
+      {modo === "cadeia" && <PainelCadeia />}
+      {modo === "contexto" && <PainelContexto />}
+
+      {modo === "montagem" && (
+        <>
       <AgentPanel
         agentId="estrategia"
         title="Agente Especialista de Estratégias & Workbench"
@@ -200,7 +314,11 @@ export default function EstrategiaPage() {
               <button className="btn text-term-down" onClick={clearLegs}>
                 Limpar
               </button>
-              <button className="btn-primary flex items-center gap-1" onClick={() => openPositions(legs)} title="Registrar na carteira (congela gregas de entrada)">
+              <button
+                className="btn-primary flex items-center gap-1"
+                onClick={() => setAbrindo(true)}
+                title="Responder as 3 perguntas do método e registrar na carteira (congela gregas de entrada)"
+              >
                 <Save size={12} /> Abrir posição
               </button>
             </>
@@ -484,6 +602,46 @@ export default function EstrategiaPage() {
             </div>
           )}
 
+          {/* WO-46 §E.1 — os critérios do método, no momento em que a estrutura ainda pode mudar. */}
+          {chain && metrics && legs.length > 0 && (
+            <SemaforoCriterios
+              legs={legs}
+              r={selic}
+              netDebit={metrics.netDebit}
+              maxProfit={metrics.maxProfit}
+              maxLoss={metrics.maxLoss}
+              spot={chain.spot}
+            />
+          )}
+
+          {/* WO-46 — P&L da operação: risco contra patrimônio, acerto necessário, preço da
+              realização e cenários. É a tradução das métricas para a decisão da ordem. */}
+          {chain && metrics && legs.length > 0 && (
+            <PainelPnl
+              legs={legs}
+              spot={chain.spot}
+              r={selic}
+              maxProfit={metrics.maxProfit}
+              maxLoss={metrics.maxLoss}
+              netDebit={metrics.netDebit}
+              sigma={atmIvStruct}
+              patrimonio={capitalTotal}
+              acertoHistorico={acerto.taxa}
+              operacoesFechadas={acerto.n}
+            />
+          )}
+
+          {/* WO-46 §E.2 — a porta das 3 perguntas. */}
+          {abrindo && chain && (
+            <FormularioAbertura
+              ticker={chain.ticker}
+              precoAlvoSugerido={analise?.alvoRealizacao?.precoAlvo ?? null}
+              lucroAlvoSugerido={analise?.alvoRealizacao?.lucroAlvo ?? null}
+              onConfirmar={confirmarAbertura}
+              onCancelar={() => setAbrindo(false)}
+            />
+          )}
+
           {/* WO-11: governança de Kelly amarrada ao bankroll */}
           {chain && metrics && excedeKelly && (
             <div className="panel px-3 py-2 text-xs text-term-down font-semibold border border-term-down/40">
@@ -535,6 +693,8 @@ export default function EstrategiaPage() {
           )}
         </div>
       </div>
+        </>
+      )}
     </>
   );
 }
