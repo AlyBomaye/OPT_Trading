@@ -76,6 +76,45 @@ $t2 = [Runtime.InteropServices.Marshal]::PtrToStringAuto([Runtime.InteropService
 if ($t1 -ne $t2) { throw "As senhas nao conferem." }
 if ([string]::IsNullOrWhiteSpace($t1)) { throw "A senha nao pode ficar vazia." }
 
+# --- recarregar / reiniciar com seguranca ------------------------------------
+# Mudanca em pg_hba.conf so precisa de RELOAD (SIGHUP): o pg_ctl faz isso sem senha e sem
+# derrubar o servico. Restart-Service -Force mandava subir antes de o postmaster anterior
+# terminar de descer, o pg_ctl desistia cedo ("Tempo de espera esgotado") e o SCM reportava
+# falha — foi exatamente o que aconteceu em 01/09/2026 18:23:24.
+function Recarregar-Postgres {
+  param([string]$PgCtl, [string]$Dados)
+  & $PgCtl reload -D $Dados 2>&1 | Out-Null
+  return ($LASTEXITCODE -eq 0)
+}
+
+function Porta-Ouvindo {
+  param([int]$Porta)
+  return [bool](Get-NetTCPConnection -LocalPort $Porta -State Listen -ErrorAction SilentlyContinue)
+}
+
+# Reserva: so e usado se o reload falhar. Para, ESPERA a porta liberar, sobe, ESPERA a porta
+# ouvir. Uma excecao do Start-Service nao e tratada como falha se a porta subir em seguida —
+# o pg_ctl pode desistir de esperar antes de o postmaster ficar pronto.
+function Reiniciar-Postgres {
+  param([string]$Servico, [int]$Porta)
+  Stop-Service -Name $Servico -Force -ErrorAction SilentlyContinue
+  $t = 0
+  while ((Porta-Ouvindo -Porta $Porta) -and $t -lt 30) { Start-Sleep -Seconds 1; $t++ }
+  try { Start-Service -Name $Servico -ErrorAction Stop } catch { }
+  $t = 0
+  while (-not (Porta-Ouvindo -Porta $Porta) -and $t -lt 60) { Start-Sleep -Seconds 1; $t++ }
+  if (-not (Porta-Ouvindo -Porta $Porta)) { throw "O servico $Servico nao voltou a ouvir na porta $Porta em 60 s." }
+}
+
+function Aplicar-Hba {
+  param([string]$PgCtl, [string]$Dados, [string]$Servico, [int]$Porta)
+  if (Recarregar-Postgres -PgCtl $PgCtl -Dados $Dados) { return "reload" }
+  Reiniciar-Postgres -Servico $Servico -Porta $Porta
+  return "restart"
+}
+
+$pgctl  = Join-Path (Split-Path $alvo.Psql) "pg_ctl.exe"
+if (-not (Test-Path -LiteralPath $pgctl)) { throw "pg_ctl.exe nao encontrado ao lado do psql." }
 $hba    = Join-Path $alvo.Dados "pg_hba.conf"
 $backup = "$hba.antes-do-reset"
 if (-not (Test-Path -LiteralPath $hba)) { throw "pg_hba.conf nao encontrado em $($alvo.Dados)." }
@@ -92,9 +131,10 @@ try {
   }
   Set-Content -LiteralPath $hba -Value $novo -Encoding UTF8
 
-  Write-Host "`nLiberando autenticacao temporariamente e reiniciando o servico..." -ForegroundColor Yellow
-  Restart-Service -Name $alvo.Servico -Force
-  Start-Sleep -Seconds 3
+  Write-Host "`nLiberando autenticacao temporariamente (reload do pg_hba)..." -ForegroundColor Yellow
+  $como = Aplicar-Hba -PgCtl $pgctl -Dados $alvo.Dados -Servico $alvo.Servico -Porta $alvo.Porta
+  Write-Host "  aplicado via $como"
+  Start-Sleep -Seconds 1
 
   # --- trocar a senha -------------------------------------------------------
   # A senha entra por variavel do psql (:'v'), nunca interpolada no texto do comando — assim ela
@@ -111,10 +151,9 @@ finally {
   # roda mesmo em erro ou Ctrl+C — e por isso que ele existe.
   if (Test-Path -LiteralPath $backup) {
     Move-Item -LiteralPath $backup -Destination $hba -Force
-    Restart-Service -Name $alvo.Servico -Force
-    Start-Sleep -Seconds 2
+    $como = Aplicar-Hba -PgCtl $pgctl -Dados $alvo.Dados -Servico $alvo.Servico -Porta $alvo.Porta
     $restaurado = $true
-    Write-Host "pg_hba.conf restaurado e servico reiniciado." -ForegroundColor Green
+    Write-Host "pg_hba.conf restaurado e aplicado via $como." -ForegroundColor Green
   }
   $env:PGPASSWORD = $null
 }
