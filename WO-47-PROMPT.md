@@ -1,5 +1,15 @@
 # WO-47 — A mesa que cabe na tela, e a carteira que fecha o ciclo do método
 
+> **Executado em 01/09/2026** — commits `18bb5b0` (P3+P4), `a39f9d1` (P2), `ff5a51a` (P5).
+> 282 verificações verdes, typecheck limpo, 8 rotas em 200, console sem erros.
+> Fora do escopo original e feito no caminho: o detector de estruturas falava a língua antiga
+> ("Iron Condor") — 16 nomes alinhados ao método; a Carteira não passava os regimes marcados,
+> então `REGIME_VIROU` (WO-43) nunca disparava lá — ligado; quatro defeitos nos scripts PowerShell
+> de banco (BOM em `pg_hba.conf` e `.env.local`, corrida no reinício, `:'v'` dentro de `$$`,
+> `Get-Content` sem `@()`), cada um com teste estático agora.
+> Correção de fato neste documento: §5.1 dizia que a perna vendida nunca disparava — errado; ela
+> tem ramo próprio. O defeito real (régua por perna sobre o prêmio) era o que valia, e foi corrigido.
+
 > **Como usar.** Este é o prompt de execução. A seção 1 avalia o que o WO-46 entregou e o que
 > ele errou — inclusive dois defeitos de layout que os seus prints mostraram e que este WO corrige.
 > As seções 2 a 5 são as quatro abas pedidas. A seção 6 é a avaliação da Carteira, que vira a parte
