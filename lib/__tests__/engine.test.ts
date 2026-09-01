@@ -2325,7 +2325,7 @@ async function testesWo46() {
     ["#mark-quality", "components/PainelCadeia.tsx"],
     ["#estrutura-a-termo", "components/PainelCadeia.tsx"],
     ["#smile", "components/PainelCadeia.tsx"],
-    ["#iv-vs-hv", "components/PainelContexto.tsx"],
+    ["#iv-vs-hv", "components/GraficoVolHistorica.tsx"], // WO-47 §2: componente compartilhado
     ["#cone", "components/PainelContexto.tsx"],
     ["#payoff", "app/estrategia/page.tsx"],
     ["#watchlist-tabela", "components/PainelWatchlist.tsx"],

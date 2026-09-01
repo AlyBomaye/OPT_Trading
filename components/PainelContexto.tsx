@@ -23,6 +23,7 @@ import { tickers } from "@/lib/universe";
 import { fmtBRL, fmtNum, fmtPct, fmtCompact, fmtDateBR } from "@/lib/format";
 import { AgentPanel } from "@/components/AgentPanel";
 import { PainelTendencia } from "@/components/PainelTendencia";
+import { GraficoVolHistorica } from "@/components/GraficoVolHistorica";
 
 /* ============================================================================
  * Histórico — dados históricos e vol realizada do universo monitorado
@@ -240,39 +241,8 @@ export function PainelContexto() {
           </div>
         </div>
 
-        {/* Vol realizada + IV live */}
-        <div id="iv-vs-hv" className="panel">
-          <div className="panel-title">Vol Realizada (anualizada) — HV10 / HV21 / HV63</div>
-          <div className="h-64 px-2 pb-2">
-            <ResponsiveContainer width="100%" height="100%">
-              <ComposedChart data={volData} margin={{ top: 5, right: 5, bottom: 5, left: 5 }}>
-                <CartesianGrid stroke="#232a38" strokeDasharray="2 4" />
-                <XAxis dataKey="date" tick={{ fontSize: 9, fill: "#6b7689" }} tickFormatter={(d) => fmtDateBR(String(d)).slice(0, 5)} minTickGap={40} />
-                <YAxis tick={{ fontSize: 9, fill: "#6b7689" }} width={36} tickFormatter={(v: number) => `${v.toFixed(0)}%`} />
-                <Tooltip
-                  contentStyle={{ background: "#151922", border: "1px solid #232a38", fontSize: 11 }}
-                  labelFormatter={(d) => fmtDateBR(String(d))}
-                  formatter={(v: number, name: string) => [`${fmtNum(v, 1)}%`, name]}
-                />
-                <Legend wrapperStyle={{ fontSize: 10 }} />
-                <Line type="monotone" dataKey="hv10" name="HV 10d" stroke="#6b7689" dot={false} strokeWidth={1} connectNulls />
-                <Line type="monotone" dataKey="hv21" name="HV 21d" stroke="#38bdf8" dot={false} strokeWidth={1.5} connectNulls />
-                <Line type="monotone" dataKey="hv63" name="HV 63d" stroke="#eab308" dot={false} strokeWidth={1} connectNulls />
-                {liveAtmIv != null && (
-                  <ReferenceLine
-                    y={liveAtmIv * 100}
-                    stroke="#22d3ee"
-                    strokeDasharray="6 3"
-                    label={{ value: `IV ATM ${fmtNum(liveAtmIv * 100, 1)}%`, fill: "#22d3ee", fontSize: 10, position: "insideTopRight" }}
-                  />
-                )}
-              </ComposedChart>
-            </ResponsiveContainer>
-          </div>
-          <div className="px-3 pb-2 text-xxs text-term-dim">
-            IV ATM live = média das IVs na banda ±5% do spot no chain carregado (marcações stale excluídas).
-          </div>
-        </div>
+        {/* WO-47 §2: o gráfico de HV virou componente compartilhado com a Montagem. */}
+        <GraficoVolHistorica ticker={ticker} chain={chain} candles={candles} />
       </div>
 
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-3">

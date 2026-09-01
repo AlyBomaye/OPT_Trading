@@ -148,8 +148,11 @@ ou seja, **70% de retorno sobre o prêmio pago, por perna comprada.** O manual m
 - Trava de alta com call, débito R$ 140, lucro máximo R$ 260. Método: realizar em R$ 182. Flag
   atual: dispara em R$ 98 — **46% cedo demais**, e o trader sai antes da hora achando que seguiu
   o método.
-- Perna **vendida** (`side === -1`) **nunca dispara** — a condição é `p.side === 1`. Um credit
-  spread não recebe aviso de realização nenhum.
+- Perna **vendida** tem ramo próprio (70% do crédito capturado). *Correção: a primeira versão
+  deste documento dizia que ela nunca disparava — estava errado; há um `else if (p.side === -1)`
+  em `position-flags.ts:157`.* O que vale para as duas pontas é o mesmo defeito: a régua é **por
+  perna, sobre o prêmio**, e não sobre o lucro máximo da estrutura — num credit spread, os 70% do
+  crédito de uma perna não são os 70% do lucro máximo da trava.
 
 O lucro máximo da estrutura já existe: `strategyMetrics()` em `lib/payoff.ts` o calcula para
 qualquer conjunto de pernas. A Carteira só não agrupa as pernas abertas em estrutura antes de
@@ -235,8 +238,8 @@ Escopo proibido adicional: `lib/pnl-operacao.ts`, `lib/criterios-metodo.ts`, `li
 7. Na Notícias, o Mapa tem cabeçalho recolhível e a chave é `noticias-mapa-open`.
 8. Clique numa linha da Watchlist dentro do Cockpit chama `setTicker` e **não** `router.push`.
 9. **`TAKE_PROFIT` dispara sobre o lucro máximo da estrutura**, não sobre o prêmio: trava de alta
-   (débito 140, máx 260) com P&L 98 → sem flag; com P&L 182 → flag. Perna vendida com lucro →
-   também dispara. (Corrige 5.1.)
+   (débito 140, máx 260) com P&L 98 → sem flag; com P&L 182 → flag. Perna única (sem estrutura)
+   mantém a régua por perna, nos dois lados. (Corrige 5.1.)
 10. A tabela da Carteira agrupa por `underlying|openedAt` — a mesma chave de `groupTrades` — e o
     P&L da linha é a soma exata das pernas.
 11. `closePosition` aceita `motivoSaida` e o grava; o seletor de fechamento pré-marca o motivo pela

@@ -2,7 +2,7 @@
 
 import { Suspense, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { Trash2, Plus, Save, Copy, Sparkles, X, Check, Table2, History, Wrench } from "lucide-react";
+import { Trash2, Plus, Save, Copy, Sparkles, X, Check, Table2, History, Wrench, ChevronDown, ChevronRight } from "lucide-react";
 import clsx from "clsx";
 import { useMarket } from "@/store/market";
 import { PRESETS } from "@/lib/strategies";
@@ -17,6 +17,8 @@ import { LegDiagram } from "@/components/LegDiagram";
 import { PayoffChart } from "@/components/PayoffChart";
 import { SensitivityMatrix } from "@/components/SensitivityMatrix";
 import { PriceHistoryPanel } from "@/components/PriceHistoryPanel";
+import { GraficoVolHistorica } from "@/components/GraficoVolHistorica";
+import { usePersistedState } from "@/lib/use-persisted-state";
 import { AgentPanel } from "@/components/AgentPanel";
 import { TruthBar } from "@/components/TruthBar";
 import { useSkewAtm } from "@/lib/hooks/useSkewAtm";
@@ -101,6 +103,8 @@ function Workbench() {
     modoDaUrl === "cadeia" || modoDaUrl === "contexto" ? modoDaUrl : "montagem"
   );
   const [abrindo, setAbrindo] = useState(false);
+  // WO-47 §2: a chain e uma linha recolhivel no topo. Chave por secao (WO-35/39).
+  const [chainAberta, setChainAberta] = usePersistedState<boolean>("wb-chain-open", true);
   const [tnDay, setTnDay] = useState(5);
   const [showPresets, setShowPresets] = useState(true);
 
@@ -468,14 +472,35 @@ function Workbench() {
       )}
 
       {/* Grid principal: chain à esquerda, operação à direita */}
-      <div className="grid grid-cols-1 xl:grid-cols-12 gap-3 items-start">
-        {/* Coluna esquerda: MiniChain */}
-        <div className="xl:col-span-4 xl:sticky xl:top-3">
-          <MiniChain legs={legs} />
+      {/* WO-47 §2 — linhas na ordem da decisão, em vez da grade 4/8 que empilhava dez blocos
+          numa coluna. A chain fica no topo, recolhível; as pernas vêm logo abaixo para preservar
+          o "clico C/V e a perna aparece". */}
+      <div className="space-y-3">
+        {/* 1. Cadeia — largura inteira, recolhível */}
+        <div className="panel">
+          <div
+            onClick={() => setChainAberta(!chainAberta)}
+            className="panel-title flex items-center justify-between cursor-pointer select-none"
+          >
+            <div className="flex items-center gap-2">
+              {chainAberta ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+              <Table2 size={14} className="text-term-cyan" />
+              <span className="font-bold">Cadeia — {ticker}{selectedExpiry ? ` · venc. ${selectedExpiry}` : ""}</span>
+            </div>
+            <span className="tag bg-term-panel2 text-term-dim whitespace-nowrap">
+              {legs.length === 0 ? "nenhuma perna" : `${legs.length} perna(s) montada(s)`}
+            </span>
+          </div>
+          {chainAberta && (
+            <div className="p-2">
+              <MiniChain legs={legs} />
+            </div>
+          )}
         </div>
 
-        {/* Coluna direita: pernas, diagrama, métricas, payoff */}
-        <div className="xl:col-span-8 space-y-3 min-w-0">
+        {/* 2. Pernas + Diagrama */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 items-start">
+          <div className="space-y-3 min-w-0">
           {/* Editor de pernas */}
           <div className="panel">
             <div className="panel-title">Pernas da estrutura ({legs.length})</div>
@@ -559,9 +584,117 @@ function Workbench() {
             </div>
           </div>
 
+            {!chainAberta && (
+              <button className="btn text-xxs flex items-center gap-1" onClick={() => setChainAberta(true)}>
+                <Table2 size={11} /> Trocar pernas (abrir a cadeia)
+              </button>
+            )}
+          </div>
+          <div className="min-w-0">
           {/* Diagrama visual das pernas */}
           {chain && legs.length > 0 && <LegDiagram legs={legs} spot={chain.spot} breakevens={metrics?.breakevens ?? []} />}
 
+          </div>
+        </div>
+
+        {/* A porta das 3 perguntas abre AQUI, junto do botão — não no fim da página. */}
+          {/* WO-46 §E.2 — a porta das 3 perguntas. */}
+          {abrindo && chain && (
+            <FormularioAbertura
+              ticker={chain.ticker}
+              precoAlvoSugerido={analise?.alvoRealizacao?.precoAlvo ?? null}
+              lucroAlvoSugerido={analise?.alvoRealizacao?.lucroAlvo ?? null}
+              onConfirmar={confirmarAbertura}
+              onCancelar={() => setAbrindo(false)}
+            />
+          )}
+
+
+        {/* 3. Preço histórico + Vol histórica (WO-47 §2, pedido explícito) */}
+        {chain && (
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 items-start">
+            <div className="min-w-0">
+          {/* WO-16 Feature 1: Painel de histórico de preços colapsável com overlays */}
+          {chain && (
+            <PriceHistoryPanel
+              ticker={chain.ticker}
+              chain={chain}
+              selectedExpiry={selectedExpiry}
+              legs={legs}
+              breakevens={metrics?.breakevens ?? []}
+            />
+          )}
+
+            </div>
+            <div className="min-w-0">
+              <GraficoVolHistorica ticker={chain.ticker} chain={chain} altura={240} comRodape={false} />
+            </div>
+          </div>
+        )}
+
+        {/* 4. Payoff + P&L da operação */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 items-start">
+          <div className="min-w-0 space-y-2">
+          {/* Payoff + sensibilidade */}
+          {chain && (
+            <>
+              <div className="flex items-center gap-2">
+                <label className="text-xxs text-term-dim">
+                  Curva T+n:
+                  <input
+                    type="number"
+                    min={0}
+                    value={tnDay}
+                    onChange={(e) => setTnDay(Number(e.target.value) || 0)}
+                    className="cell-input !w-14 ml-1"
+                  />
+                  du
+                </label>
+              </div>
+              <div id="payoff">
+                <PayoffChart legs={legs} spot={chain.spot} r={selic} tnDay={tnDay} breakevens={metrics?.breakevens ?? []} />
+              </div>
+            </>
+          )}
+          </div>
+          <div className="min-w-0">
+          {/* WO-46 — P&L da operação: risco contra patrimônio, acerto necessário, preço da
+              realização e cenários. É a tradução das métricas para a decisão da ordem. */}
+          {chain && metrics && legs.length > 0 && (
+            <PainelPnl
+              legs={legs}
+              spot={chain.spot}
+              r={selic}
+              maxProfit={metrics.maxProfit}
+              maxLoss={metrics.maxLoss}
+              netDebit={metrics.netDebit}
+              sigma={atmIvStruct}
+              patrimonio={capitalTotal}
+              acertoHistorico={acerto.taxa}
+              operacoesFechadas={acerto.n}
+            />
+          )}
+
+          </div>
+        </div>
+
+        {/* 5. Critérios do método + Métricas e Gregas */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 items-start">
+          <div className="min-w-0">
+          {/* WO-46 §E.1 — os critérios do método, no momento em que a estrutura ainda pode mudar. */}
+          {chain && metrics && legs.length > 0 && (
+            <SemaforoCriterios
+              legs={legs}
+              r={selic}
+              netDebit={metrics.netDebit}
+              maxProfit={metrics.maxProfit}
+              maxLoss={metrics.maxLoss}
+              spot={chain.spot}
+            />
+          )}
+
+          </div>
+          <div className="min-w-0 space-y-2">
           {/* Métricas da operação */}
           {chain && metrics && (
             <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
@@ -602,46 +735,6 @@ function Workbench() {
             </div>
           )}
 
-          {/* WO-46 §E.1 — os critérios do método, no momento em que a estrutura ainda pode mudar. */}
-          {chain && metrics && legs.length > 0 && (
-            <SemaforoCriterios
-              legs={legs}
-              r={selic}
-              netDebit={metrics.netDebit}
-              maxProfit={metrics.maxProfit}
-              maxLoss={metrics.maxLoss}
-              spot={chain.spot}
-            />
-          )}
-
-          {/* WO-46 — P&L da operação: risco contra patrimônio, acerto necessário, preço da
-              realização e cenários. É a tradução das métricas para a decisão da ordem. */}
-          {chain && metrics && legs.length > 0 && (
-            <PainelPnl
-              legs={legs}
-              spot={chain.spot}
-              r={selic}
-              maxProfit={metrics.maxProfit}
-              maxLoss={metrics.maxLoss}
-              netDebit={metrics.netDebit}
-              sigma={atmIvStruct}
-              patrimonio={capitalTotal}
-              acertoHistorico={acerto.taxa}
-              operacoesFechadas={acerto.n}
-            />
-          )}
-
-          {/* WO-46 §E.2 — a porta das 3 perguntas. */}
-          {abrindo && chain && (
-            <FormularioAbertura
-              ticker={chain.ticker}
-              precoAlvoSugerido={analise?.alvoRealizacao?.precoAlvo ?? null}
-              lucroAlvoSugerido={analise?.alvoRealizacao?.lucroAlvo ?? null}
-              onConfirmar={confirmarAbertura}
-              onCancelar={() => setAbrindo(false)}
-            />
-          )}
-
           {/* WO-11: governança de Kelly amarrada ao bankroll */}
           {chain && metrics && excedeKelly && (
             <div className="panel px-3 py-2 text-xs text-term-down font-semibold border border-term-down/40">
@@ -658,40 +751,11 @@ function Workbench() {
             </div>
           )}
 
-          {/* WO-16 Feature 1: Painel de histórico de preços colapsável com overlays */}
-          {chain && (
-            <PriceHistoryPanel
-              ticker={chain.ticker}
-              chain={chain}
-              selectedExpiry={selectedExpiry}
-              legs={legs}
-              breakevens={metrics?.breakevens ?? []}
-            />
-          )}
-
-          {/* Payoff + sensibilidade */}
-          {chain && (
-            <>
-              <div className="flex items-center gap-2">
-                <label className="text-xxs text-term-dim">
-                  Curva T+n:
-                  <input
-                    type="number"
-                    min={0}
-                    value={tnDay}
-                    onChange={(e) => setTnDay(Number(e.target.value) || 0)}
-                    className="cell-input !w-14 ml-1"
-                  />
-                  du
-                </label>
-              </div>
-              <div id="payoff">
-                <PayoffChart legs={legs} spot={chain.spot} r={selic} tnDay={tnDay} breakevens={metrics?.breakevens ?? []} />
-              </div>
-              <SensitivityMatrix legs={legs} spot={chain.spot} r={selic} dayOffset={tnDay} />
-            </>
-          )}
+          </div>
         </div>
+
+        {/* 6. Sensibilidade */}
+          {chain && <SensitivityMatrix legs={legs} spot={chain.spot} r={selic} dayOffset={tnDay} />}
       </div>
         </>
       )}
