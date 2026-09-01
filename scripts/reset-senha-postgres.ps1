@@ -129,7 +129,9 @@ try {
       $_ -replace '(scram-sha-256|md5|password|peer|sspi|ident)\s*$', 'trust'
     } else { $_ }
   }
-  Set-Content -LiteralPath $hba -Value $novo -Encoding UTF8
+  # SEM BOM: o -Encoding UTF8 do PowerShell 5.1 grava EF BB BF no inicio, e o Postgres le isso
+  # como um tipo de conexao invalido na linha 1 e recusa o arquivo inteiro (log de 01/09 18:27).
+  [System.IO.File]::WriteAllLines($hba, [string[]]$novo, (New-Object System.Text.UTF8Encoding($false)))
 
   Write-Host "`nLiberando autenticacao temporariamente (reload do pg_hba)..." -ForegroundColor Yellow
   $como = Aplicar-Hba -PgCtl $pgctl -Dados $alvo.Dados -Servico $alvo.Servico -Porta $alvo.Porta

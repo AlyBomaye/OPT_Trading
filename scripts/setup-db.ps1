@@ -99,7 +99,9 @@ if (Test-Path -LiteralPath $envPath) {
   $linhas = Get-Content -LiteralPath $envPath | Where-Object { $_ -notmatch '^\s*DATABASE_URL\s*=' }
 }
 $linhas += "DATABASE_URL=$url"
-Set-Content -LiteralPath $envPath -Value $linhas -Encoding UTF8
+# SEM BOM: -Encoding UTF8 do PowerShell 5.1 poe EF BB BF no inicio e o dotenv passa a ler a
+# primeira chave com o BOM colado no nome — a variavel some sem nenhum erro.
+[System.IO.File]::WriteAllLines($envPath, [string[]]$linhas, (New-Object System.Text.UTF8Encoding($false)))
 
 Write-Host "`nDATABASE_URL gravada em .env.local (ignorado pelo git)." -ForegroundColor Green
 $env:PGPASSWORD = $null
