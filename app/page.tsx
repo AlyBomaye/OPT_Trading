@@ -188,7 +188,7 @@ function PreMarketPanel() {
 
 /** Cockpit Pré-Market — réplica web do diagnóstico matinal da planilha. */
 export default function CockpitPage() {
-  const { chain, selic, positions, selectedExpiry, ticker, capitalTotal } = useMarket();
+  const { chain, selic, positions, selectedExpiry, ticker, capitalTotal, setTicker } = useMarket();
   const closed = useMarket((st) => (st as any).closedPositions ?? []);
 
   // WO-18: Estado da busca de Posições em Aberto da B3
@@ -281,11 +281,40 @@ export default function CockpitPage() {
         }}
       />
       <PreMarketPanel />
-      <div className="grid md:grid-cols-3 gap-3">
-        {/* WO-46 §5: a Watchlist abre o Cockpit. Ela traz o proprio AgentPanel do agente
-            `watchlist`, que continua registrado — o que mudou foi so onde a saida aparece. */}
-        <PainelWatchlist />
+      {/* WO-47 §3 — ordem do panorama para o específico:
+          Pré-Abertura > GEX por strike > Foco do dia > Watchlist (largura inteira) >
+          Choque | Skew > Pozinhos. A Watchlist fica FORA de qualquer grade: no WO-46 ela
+          entrou dentro da grade de três colunas e uma tabela de 11 colunas ficou com a
+          largura de uma. Os rótulos [1]/[2]/[3] não mudam: há textos e deep links que os citam. */}
+      {/* WO-18: Gráfico do Perfil de GEX por Strike */}
+      <GexProfileChart
+        chain={chain}
+        series={oiData?.series ?? {}}
+        fileDate={oiData?.fileDate ?? null}
+        stale={oiData?.stale}
+        selectedExpiry={selectedExpiry}
+      />
 
+      {/* Foco do dia */}
+      <div className="panel border-l-2 !border-l-term-cyan">
+        <div className="panel-title">Foco do dia — leitura combinada (regime × skew × book)</div>
+        <div className="px-3 pb-2 text-sm">{foco}</div>
+        {suggestion && (
+          <div className="px-3 pb-3 text-xs text-term-dim">
+            Estrutura favorecida: <b className="text-term-text">{suggestion.title}</b> — {suggestion.reason}{" "}
+            <Link href="/estrategia" className="text-term-cyan">montar na Estratégia (3) →</Link>
+          </div>
+        )}
+        <div className="px-3 pb-2 text-xxs text-term-dim">
+          Diagnóstico educacional gerado a partir dos dados carregados — não é recomendação de investimento.
+        </div>
+      </div>
+
+      {/* Watchlist — o mapa de onde o trader escolhe o papel. Clicar SELECIONA; os blocos
+          acima e abaixo já seguem o ticker, então navegar para fora seria o oposto do Cockpit. */}
+      <PainelWatchlist aoSelecionar={setTicker} />
+
+      <div className="grid md:grid-cols-2 gap-3">
         {/* [1] Choque do portfólio */}
         <div id="choque-portfolio" className="panel">
           <div className="panel-title">[1] Choque do Portfólio</div>
@@ -414,6 +443,8 @@ export default function CockpitPage() {
           </div>
         </div>
 
+      </div>
+
         {/* [3] Pozinhos */}
         <div className="panel">
           <div className="panel-title">[3] Pozinhos do dia (top Δ/R$)</div>
@@ -434,31 +465,6 @@ export default function CockpitPage() {
             <Link href="/scanner" className="text-term-cyan text-xxs">abrir scanner completo →</Link>
           </div>
         </div>
-      </div>
-
-      {/* WO-18: Gráfico do Perfil de GEX por Strike */}
-      <GexProfileChart
-        chain={chain}
-        series={oiData?.series ?? {}}
-        fileDate={oiData?.fileDate ?? null}
-        stale={oiData?.stale}
-        selectedExpiry={selectedExpiry}
-      />
-
-      {/* Foco do dia */}
-      <div className="panel border-l-2 !border-l-term-cyan">
-        <div className="panel-title">Foco do dia — leitura combinada (regime × skew × book)</div>
-        <div className="px-3 pb-2 text-sm">{foco}</div>
-        {suggestion && (
-          <div className="px-3 pb-3 text-xs text-term-dim">
-            Estrutura favorecida: <b className="text-term-text">{suggestion.title}</b> — {suggestion.reason}{" "}
-            <Link href="/estrategia" className="text-term-cyan">montar na Estratégia (3) →</Link>
-          </div>
-        )}
-        <div className="px-3 pb-2 text-xxs text-term-dim">
-          Diagnóstico educacional gerado a partir dos dados carregados — não é recomendação de investimento.
-        </div>
-      </div>
     </>
   );
 }

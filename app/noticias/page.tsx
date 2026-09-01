@@ -76,6 +76,7 @@ export default function NoticiasPage() {
 
   // Estados de layout colapsável (persistidos em localStorage)
   const [setorialOpen, setSetorialOpen] = useState(true);
+  const [mapaOpen, setMapaOpen] = useState(true);
   const [radarOpen, setRadarOpen] = useState(true);
   const [coberturaOpen, setCoberturaOpen] = useState(true);
 
@@ -98,9 +99,11 @@ export default function NoticiasPage() {
       const sOpen = localStorage.getItem("noticias-setorial-open");
       const rOpen = localStorage.getItem("noticias-radar-open");
       const cOpen = localStorage.getItem("noticias-cobertura-open");
+      const mOpen = localStorage.getItem("noticias-mapa-open");
       if (sOpen !== null) setSetorialOpen(sOpen === "true");
       if (rOpen !== null) setRadarOpen(rOpen === "true");
       if (cOpen !== null) setCoberturaOpen(cOpen === "true");
+      if (mOpen !== null) setMapaOpen(mOpen === "true");
     } catch {}
   }, []);
 
@@ -114,6 +117,20 @@ export default function NoticiasPage() {
     const next = !radarOpen;
     setRadarOpen(next);
     localStorage.setItem("noticias-radar-open", String(next));
+  };
+
+  const toggleMapa = () => {
+    const next = !mapaOpen;
+    setMapaOpen(next);
+    localStorage.setItem("noticias-mapa-open", String(next));
+  };
+
+  // WO-47 §4: clicar num ponto do Mapa seleciona o ativo e leva à Cobertura por Ação. A seleção
+  // já propagava (Cobertura e Radar leem o mesmo ticker do store); o que atrapalhava era a
+  // navegação para fora da aba.
+  const selecionarPeloMapa = (t: string) => {
+    setSelectedTicker(t);
+    document.getElementById("cobertura-acoes")?.scrollIntoView({ behavior: "smooth", block: "start" });
   };
 
   const toggleCobertura = () => {
@@ -466,8 +483,25 @@ export default function NoticiasPage() {
       {/* 2. MAPA DE OPORTUNIDADES DO UNIVERSO (WO-46 §2, vindo do Consultor)
           Largura inteira de propósito: é uma dispersão com quadrantes, legenda de 9 setores e
           tabela — dividir a linha comprime o scatter e a leitura se perde. */}
-      <div id="mapa-info">
-        <MapaOportunidades />
+      <div id="mapa-info" className="panel">
+        <div
+          onClick={toggleMapa}
+          className="panel-title flex items-center justify-between cursor-pointer select-none"
+        >
+          <div className="flex items-center gap-2">
+            {mapaOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+            <Layers size={14} className="text-term-cyan" />
+            <span className="font-bold">[2] Mapa de Oportunidades do Universo</span>
+            {selectedTicker && (
+              <span className="tag bg-term-cyan/20 text-term-cyan">Selecionado: {selectedTicker}</span>
+            )}
+          </div>
+        </div>
+        {mapaOpen && (
+          <div className="p-2">
+            <MapaOportunidades aoSelecionar={selecionarPeloMapa} />
+          </div>
+        )}
       </div>
 
       {/* 3. RADAR DE EVENTOS POR VENCIMENTO */}

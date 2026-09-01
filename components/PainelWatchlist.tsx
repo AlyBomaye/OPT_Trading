@@ -129,7 +129,16 @@ async function scanTicker(ticker: string, r: number): Promise<WatchRow> {
   return base;
 }
 
-export function PainelWatchlist() {
+interface PropsWatchlist {
+  /**
+   * WO-47 §3: dentro de uma aba, selecionar não é navegar. O Cockpit passa uma função que só
+   * troca o ativo — os blocos GEX, Skew e Foco já seguem o ticker. Sem a prop, mantém o
+   * comportamento antigo (ir para a cadeia na Estratégia).
+   */
+  aoSelecionar?: (ticker: string) => void;
+}
+
+export function PainelWatchlist({ aoSelecionar }: PropsWatchlist = {}) {
   const router = useRouter();
   const { selic, setTicker } = useMarket();
   const snapshots = useSnapshots((st) => st.snapshots);
@@ -167,6 +176,10 @@ export function PainelWatchlist() {
   }, [running, selic, setRow, markRun]);
 
   const openChain = (t: string) => {
+    if (aoSelecionar) {
+      aoSelecionar(t);
+      return;
+    }
     setTicker(t);
     router.push("/estrategia?modo=cadeia");
   };
@@ -220,7 +233,7 @@ export function PainelWatchlist() {
       )}
 
       <div id="watchlist-tabela" className="panel overflow-x-auto">
-        <table className="w-full text-xs">
+        <table className="w-full text-xs tabular-nums">
           <thead className="sticky top-0 bg-term-panel z-10 border-b border-term-line">
             <tr className="border-b border-term-line">
               {["Ticker", "Setor", "Spot", "Dia", "IV Call ATM", "IV Put ATM", "Skew P/C", "Sinal", "IV−HV21", "IV Rank", ""].map((h) => (
@@ -246,7 +259,13 @@ export function PainelWatchlist() {
                       : { label: "neutro", cls: "text-term-dim" };
               return (
                 <tr key={u.ticker} className={clsx("border-b border-term-line/40 hover:bg-term-panel2/50", loadingRow && "opacity-60")}>
-                  <td className="td font-semibold text-term-cyan">{u.ticker}</td>
+                  <td
+                    className="td font-semibold text-term-cyan cursor-pointer sticky left-0 bg-term-panel z-[1]"
+                    onClick={() => openChain(u.ticker)}
+                    title={aoSelecionar ? "Selecionar este ativo" : "Abrir a cadeia deste ativo"}
+                  >
+                    {u.ticker}
+                  </td>
                   <td className="td text-right text-term-dim text-xxs">{u.sector}</td>
                   <td className="td text-right">{loadingRow ? "…" : fmtBRL(r?.spot ?? null)}</td>
                   <td className={clsx("td text-right", (r?.dayChg ?? 0) > 0 ? "text-term-up" : (r?.dayChg ?? 0) < 0 ? "text-term-down" : "")}>

@@ -27,7 +27,12 @@ const SECTOR_COLORS: Record<Sector, string> = {
   "Food": "#14b8a6",          // turquesa
 };
 
-export function MapaOportunidades() {
+interface PropsMapa {
+  /** WO-47 §4: dentro da Notícias, clicar seleciona o ativo para a Cobertura e o Radar — não navega. */
+  aoSelecionar?: (ticker: string) => void;
+}
+
+export function MapaOportunidades({ aoSelecionar }: PropsMapa = {}) {
   const router = useRouter();
   const setTicker = useMarket((st) => st.setTicker);
   const watchRows = useWatchlist((st) => st.rows);
@@ -75,6 +80,10 @@ export function MapaOportunidades() {
   };
 
   const handleSelectTicker = (t: string) => {
+    if (aoSelecionar) {
+      aoSelecionar(t);
+      return;
+    }
     setTicker(t);
     router.push("/estrategia?modo=cadeia");
   };
@@ -104,10 +113,10 @@ export function MapaOportunidades() {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-neutral-800 pb-3">
         <div>
           <h4 className="text-sm font-bold text-neutral-100 flex items-center gap-2">
-            <span>[2] Mapa de Oportunidades do Universo ({UNIVERSE.length} ativos B3)</span>
+            <span>Mapa de Oportunidades do Universo ({UNIVERSE.length} ativos B3)</span>
           </h4>
           <p className="text-xs text-neutral-500">
-            Dispersão Skew P/C vs Spread IV-HV21 · Clique no ponto para abrir a cadeia do ativo na Estratégia.
+            Dispersão Skew P/C vs Spread IV-HV21 · Clique no ponto para selecionar o ativo — a Cobertura e o Radar abaixo seguem a seleção.
           </p>
         </div>
         <button
