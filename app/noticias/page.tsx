@@ -32,6 +32,7 @@ import { fmtBRL, fmtDateBR, fmtNum, fmtPct, pnlColor } from "@/lib/format";
 import { UNIVERSE, companyNames, type Sector } from "@/lib/universe";
 import { buildSectorRows, type SectorRow } from "@/lib/sector-analytics";
 import { useWatchlist, scanTicker } from "@/lib/sector-dashboard";
+import { MapaOportunidades } from "@/components/agents/MapaOportunidades";
 import { buildExpiryRisk, type ExpiryRisk } from "@/lib/event-radar";
 import { useEarnings } from "@/lib/earnings";
 import { EarningsEditor } from "@/components/EarningsEditor";
@@ -462,7 +463,14 @@ export default function NoticiasPage() {
         )}
       </div>
 
-      {/* 2. RADAR DE EVENTOS POR VENCIMENTO */}
+      {/* 2. MAPA DE OPORTUNIDADES DO UNIVERSO (WO-46 §2, vindo do Consultor)
+          Largura inteira de propósito: é uma dispersão com quadrantes, legenda de 9 setores e
+          tabela — dividir a linha comprime o scatter e a leitura se perde. */}
+      <div id="mapa-info">
+        <MapaOportunidades />
+      </div>
+
+      {/* 3. RADAR DE EVENTOS POR VENCIMENTO */}
       <div id="radar-eventos" className="panel">
         <div
           onClick={toggleRadar}
@@ -471,7 +479,7 @@ export default function NoticiasPage() {
           <div className="flex items-center gap-2">
             {radarOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
             <CalendarDays size={14} className="text-term-gold" />
-            <span className="font-bold">[2] Radar de Eventos por Vencimento — Risco por Prazo</span>
+            <span className="font-bold">[3] Radar de Eventos por Vencimento — Risco por Prazo</span>
             {chain && (
               <span className="tag bg-term-gold/15 text-term-gold">
                 {chain.ticker} (Spot: {fmtBRL(chain.spot)})
@@ -664,7 +672,7 @@ export default function NoticiasPage() {
           <div className="flex items-center gap-2">
             {coberturaOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
             <Newspaper size={14} className="text-term-up" />
-            <span className="font-bold">[3] Cobertura por Ação — Notícias sob Demanda do Universo</span>
+            <span className="font-bold">[4] Cobertura por Ação — Notícias sob Demanda do Universo</span>
             {selectedTicker && (
               <span className="tag bg-term-up/20 text-term-up">
                 Ativo: {selectedTicker}
@@ -841,7 +849,7 @@ export default function NoticiasPage() {
             <div className="flex flex-wrap items-center justify-between gap-2 border-b border-term-line pb-2">
               <div className="flex items-center gap-2">
                 <Newspaper size={14} className="text-term-cyan" />
-                <span className="font-bold text-xs">[4] Feed Noticioso Agregado</span>
+                <span className="font-bold text-xs">[5] Feed Noticioso Agregado</span>
                 <span className="tag bg-term-line text-term-dim text-xxs">
                   {filteredItems.length} manchetes
                 </span>

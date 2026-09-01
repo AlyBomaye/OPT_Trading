@@ -668,8 +668,168 @@ export default function MacroPage() {
           </div>
         )}
       </div>
+      {/* 2. PAINÉIS DE MERCADO */}
+      <div className="panel">
+        <div
+          onClick={() => {
+            const next = !mercadosOpen;
+            setMercadosOpen(next);
+            localStorage.setItem("macro-mercados-open", String(next));
+          }}
+          className="panel-title flex items-center justify-between cursor-pointer select-none"
+        >
+          <div className="flex items-center gap-2">
+            {mercadosOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+            <Compass size={14} className="text-term-gold" />
+            <span className="font-bold">[2] Painéis de Mercado — Índices, Futuros, VIX, Moedas e Commodities</span>
+          </div>
 
-      {/* 2. IMPACTO NO MEU UNIVERSO — sobe para logo depois dos painéis de mercado (WO-33 §2) */}
+          <span className="text-xxs text-term-dim">
+            Reordenados por: <b>{selectedWindow}</b>
+          </span>
+        </div>
+
+        {mercadosOpen && (
+          <div className="p-3">
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs font-mono border-collapse table-fixed min-w-[850px]">
+                <thead className="sticky top-0 bg-term-panel z-10 border-b border-term-line">
+                  <tr className="border-b border-term-line text-xxs text-term-dim uppercase bg-term-panel2/40">
+                    <th className="py-2 px-2 w-[26%]">Ativo</th>
+                    <th className="py-2 px-1 w-[10%]">Último</th>
+                    <th className="py-2 px-1 w-[10%]">Var Ativa</th>
+                    <th className="py-2 px-1 w-[7%]">1D</th>
+                    <th className="py-2 px-1 w-[7%]">5D</th>
+                    <th className="py-2 px-1 w-[7%]">1M</th>
+                    <th className="py-2 px-1 w-[7%]">YTD</th>
+                    <th className="py-2 px-1 w-[7%]">HV21</th>
+                    <th className="py-2 px-1 w-[9%]">Tendência</th>
+                    <th className="py-2 px-1 w-[10%]">Sparkline (1A)</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <MarketSectionGroup
+                    title="Índices Acionários Globais"
+                    list={getSortedSeries("INDICE")}
+                    activeField={activeField}
+                  />
+                  <MarketSectionGroup
+                    title="Futuros EUA & Volatilidade (VIX)"
+                    list={[...getSortedSeries("FUTURO"), ...getSortedSeries("VOL")]}
+                    activeField={activeField}
+                  />
+                  <MarketSectionGroup
+                    title="Moedas & Dólar"
+                    list={getSortedSeries("MOEDA")}
+                    activeField={activeField}
+                  />
+                  <MarketSectionGroup
+                    title="Commodities"
+                    list={getSortedSeries("COMMODITY")}
+                    activeField={activeField}
+                  />
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+      </div>
+      {/* 3. RATES & FX */}
+      <div id="curva-juros" className="panel">
+        <div
+          onClick={() => {
+            const next = !ratesOpen;
+            setRatesOpen(next);
+            localStorage.setItem("macro-rates-open", String(next));
+          }}
+          className="panel-title flex items-center justify-between cursor-pointer select-none"
+        >
+          <div className="flex items-center gap-2">
+            {ratesOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+            <LineChartIcon size={14} className="text-term-up" />
+            <span className="font-bold">[3] Rates &amp; FX</span>
+          </div>
+        </div>
+
+        {/* Cartões de referência de curto prazo: contra eles se lê a ponta curta das curvas */}
+        {ratesOpen && (
+          <div className="px-3 pt-3 grid grid-cols-3 gap-2">
+            <MacroCard title="Selic Meta" val={data?.brasil.selicMeta != null ? `${fmtNum(data.brasil.selicMeta, 2)}% a.a.` : "—"} />
+            <MacroCard title="Selic Efetiva" val={data?.brasil.selicEfetiva != null ? `${fmtNum(data.brasil.selicEfetiva, 2)}% a.a.` : "—"} />
+            <MacroCard title="CDI Diário" val={data?.brasil.cdiDaily != null ? `${fmtNum(data.brasil.cdiDaily, 4)}% a.d.` : "—"} />
+          </div>
+        )}
+
+        {ratesOpen && (
+          <div className="p-3 space-y-3">
+            {/* WO-34 §A: Pré e Treasuries dividem a primeira linha, cada um só com o painel de
+                variações — o nível já se lê na coluna TAXA da tabela. As demais seguem em
+                largura inteira com os dois painéis. */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+              {linhasRates.slice(0, 2).map((l) => (
+                <LinhaRates key={l.titulo} {...l} modo="somenteVariacao" />
+              ))}
+            </div>
+            {linhasRates.slice(2).map((l) => (
+              <LinhaRates key={l.titulo} {...l} />
+            ))}
+          </div>
+        )}
+
+      </div>
+      {/* 4. BOLETIM FOCUS */}
+      <div id="boletim-focus" className="panel">
+        <div
+          onClick={() => {
+            const next = !focusOpen;
+            setFocusOpen(next);
+            localStorage.setItem("macro-focus-open", String(next));
+          }}
+          className="panel-title flex items-center justify-between cursor-pointer select-none"
+        >
+          <div className="flex items-center gap-2">
+            {focusOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+            <Compass size={14} className="text-term-gold" />
+            <span className="font-bold">[4] Boletim Focus — Expectativas de Mercado</span>
+          </div>
+          {focus?.dataDoDado && (
+            <span className="text-xxs text-term-dim font-mono">coleta {fmtDateBR(focus.dataDoDado)}</span>
+          )}
+        </div>
+
+        {focusOpen && (
+          <div className="p-3 space-y-3">
+            {/* O Focus é consolidado com defasagem de dias. Dizer isso é mais honesto que
+                deixar o usuário supor que a projeção é de hoje. */}
+            <div className="text-xxs text-term-dim leading-relaxed">
+              Mediana das projeções coletadas pelo Banco Central junto a mais de 100 instituições.
+              É o que o mercado <b>espera</b>, não o que já aconteceu — o realizado está em Rates &amp; FX.
+              O boletim sai toda <b>segunda por volta das 8h25</b> e carrega as expectativas coletadas
+              até a <b>sexta anterior</b>: durante a semana inteira, a leitura mais recente que existe é
+              a daquela sexta. Não é atraso da plataforma — é a cadência da fonte. A base é a de 30 dias,
+              a mesma do boletim.
+            </div>
+
+            {focus?.falhas && focus.falhas.length > 0 && (
+              <div className="text-xxs text-term-gold bg-term-gold/10 border border-term-gold/30 rounded px-2 py-1.5">
+                {focus.falhas.join(" · ")}
+              </div>
+            )}
+
+            {focus == null ? (
+              <div className="px-3 py-8 text-center text-xxs text-term-dim">Carregando o Boletim Focus…</div>
+            ) : (
+              <>
+                {focus.series.map((s) => (
+                  <PainelFocus key={s.chave} serie={s} />
+                ))}
+                <PainelCopom pontos={focus.copom} dataDoDado={focus.dataDoDado} />
+              </>
+            )}
+          </div>
+        )}
+      </div>
+      {/* 5. IMPACTO NO MEU UNIVERSO — fecha a pagina: e a traducao de tudo acima para os meus papeis (WO-46 §3) */}
       <div id="impacto-universo" className="panel">
         <div
           onClick={() => {
@@ -682,7 +842,7 @@ export default function MacroPage() {
           <div className="flex items-center gap-2">
             {impactoOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
             <Zap size={14} className="text-term-gold" />
-            <span className="font-bold">[2] Impacto no Meu Universo — Driver → Tickers Afetados</span>
+            <span className="font-bold">[5] Impacto no Meu Universo — Driver → Tickers Afetados</span>
           </div>
         </div>
 
@@ -741,169 +901,6 @@ export default function MacroPage() {
                 </tbody>
               </table>
             </div>
-          </div>
-        )}
-      </div>
-
-      {/* 3. RATES & FX */}
-      <div id="curva-juros" className="panel">
-        <div
-          onClick={() => {
-            const next = !ratesOpen;
-            setRatesOpen(next);
-            localStorage.setItem("macro-rates-open", String(next));
-          }}
-          className="panel-title flex items-center justify-between cursor-pointer select-none"
-        >
-          <div className="flex items-center gap-2">
-            {ratesOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-            <LineChartIcon size={14} className="text-term-up" />
-            <span className="font-bold">[3] Rates &amp; FX</span>
-          </div>
-        </div>
-
-        {/* Cartões de referência de curto prazo: contra eles se lê a ponta curta das curvas */}
-        {ratesOpen && (
-          <div className="px-3 pt-3 grid grid-cols-3 gap-2">
-            <MacroCard title="Selic Meta" val={data?.brasil.selicMeta != null ? `${fmtNum(data.brasil.selicMeta, 2)}% a.a.` : "—"} />
-            <MacroCard title="Selic Efetiva" val={data?.brasil.selicEfetiva != null ? `${fmtNum(data.brasil.selicEfetiva, 2)}% a.a.` : "—"} />
-            <MacroCard title="CDI Diário" val={data?.brasil.cdiDaily != null ? `${fmtNum(data.brasil.cdiDaily, 4)}% a.d.` : "—"} />
-          </div>
-        )}
-
-        {ratesOpen && (
-          <div className="p-3 space-y-3">
-            {/* WO-34 §A: Pré e Treasuries dividem a primeira linha, cada um só com o painel de
-                variações — o nível já se lê na coluna TAXA da tabela. As demais seguem em
-                largura inteira com os dois painéis. */}
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
-              {linhasRates.slice(0, 2).map((l) => (
-                <LinhaRates key={l.titulo} {...l} modo="somenteVariacao" />
-              ))}
-            </div>
-            {linhasRates.slice(2).map((l) => (
-              <LinhaRates key={l.titulo} {...l} />
-            ))}
-          </div>
-        )}
-
-      </div>
-      {/* 4. PAINÉIS DE MERCADO */}
-      <div className="panel">
-        <div
-          onClick={() => {
-            const next = !mercadosOpen;
-            setMercadosOpen(next);
-            localStorage.setItem("macro-mercados-open", String(next));
-          }}
-          className="panel-title flex items-center justify-between cursor-pointer select-none"
-        >
-          <div className="flex items-center gap-2">
-            {mercadosOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-            <Compass size={14} className="text-term-gold" />
-            <span className="font-bold">[4] Painéis de Mercado — Índices, Futuros, VIX, Moedas e Commodities</span>
-          </div>
-
-          <span className="text-xxs text-term-dim">
-            Reordenados por: <b>{selectedWindow}</b>
-          </span>
-        </div>
-
-        {mercadosOpen && (
-          <div className="p-3">
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-xs font-mono border-collapse table-fixed min-w-[850px]">
-                <thead className="sticky top-0 bg-term-panel z-10 border-b border-term-line">
-                  <tr className="border-b border-term-line text-xxs text-term-dim uppercase bg-term-panel2/40">
-                    <th className="py-2 px-2 w-[26%]">Ativo</th>
-                    <th className="py-2 px-1 w-[10%]">Último</th>
-                    <th className="py-2 px-1 w-[10%]">Var Ativa</th>
-                    <th className="py-2 px-1 w-[7%]">1D</th>
-                    <th className="py-2 px-1 w-[7%]">5D</th>
-                    <th className="py-2 px-1 w-[7%]">1M</th>
-                    <th className="py-2 px-1 w-[7%]">YTD</th>
-                    <th className="py-2 px-1 w-[7%]">HV21</th>
-                    <th className="py-2 px-1 w-[9%]">Tendência</th>
-                    <th className="py-2 px-1 w-[10%]">Sparkline (1A)</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <MarketSectionGroup
-                    title="Índices Acionários Globais"
-                    list={getSortedSeries("INDICE")}
-                    activeField={activeField}
-                  />
-                  <MarketSectionGroup
-                    title="Futuros EUA & Volatilidade (VIX)"
-                    list={[...getSortedSeries("FUTURO"), ...getSortedSeries("VOL")]}
-                    activeField={activeField}
-                  />
-                  <MarketSectionGroup
-                    title="Moedas & Dólar"
-                    list={getSortedSeries("MOEDA")}
-                    activeField={activeField}
-                  />
-                  <MarketSectionGroup
-                    title="Commodities"
-                    list={getSortedSeries("COMMODITY")}
-                    activeField={activeField}
-                  />
-                </tbody>
-              </table>
-            </div>
-          </div>
-        )}
-      </div>
-
-      {/* 5. BOLETIM FOCUS */}
-      <div id="boletim-focus" className="panel">
-        <div
-          onClick={() => {
-            const next = !focusOpen;
-            setFocusOpen(next);
-            localStorage.setItem("macro-focus-open", String(next));
-          }}
-          className="panel-title flex items-center justify-between cursor-pointer select-none"
-        >
-          <div className="flex items-center gap-2">
-            {focusOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-            <Compass size={14} className="text-term-gold" />
-            <span className="font-bold">[5] Boletim Focus — Expectativas de Mercado</span>
-          </div>
-          {focus?.dataDoDado && (
-            <span className="text-xxs text-term-dim font-mono">coleta {fmtDateBR(focus.dataDoDado)}</span>
-          )}
-        </div>
-
-        {focusOpen && (
-          <div className="p-3 space-y-3">
-            {/* O Focus é consolidado com defasagem de dias. Dizer isso é mais honesto que
-                deixar o usuário supor que a projeção é de hoje. */}
-            <div className="text-xxs text-term-dim leading-relaxed">
-              Mediana das projeções coletadas pelo Banco Central junto a mais de 100 instituições.
-              É o que o mercado <b>espera</b>, não o que já aconteceu — o realizado está em Rates &amp; FX.
-              O boletim sai toda <b>segunda por volta das 8h25</b> e carrega as expectativas coletadas
-              até a <b>sexta anterior</b>: durante a semana inteira, a leitura mais recente que existe é
-              a daquela sexta. Não é atraso da plataforma — é a cadência da fonte. A base é a de 30 dias,
-              a mesma do boletim.
-            </div>
-
-            {focus?.falhas && focus.falhas.length > 0 && (
-              <div className="text-xxs text-term-gold bg-term-gold/10 border border-term-gold/30 rounded px-2 py-1.5">
-                {focus.falhas.join(" · ")}
-              </div>
-            )}
-
-            {focus == null ? (
-              <div className="px-3 py-8 text-center text-xxs text-term-dim">Carregando o Boletim Focus…</div>
-            ) : (
-              <>
-                {focus.series.map((s) => (
-                  <PainelFocus key={s.chave} serie={s} />
-                ))}
-                <PainelCopom pontos={focus.copom} dataDoDado={focus.dataDoDado} />
-              </>
-            )}
           </div>
         )}
       </div>

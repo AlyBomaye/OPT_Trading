@@ -13,7 +13,6 @@ import { alocacaoPorBalde, type AlocacaoBaldes } from "@/lib/agents/risk";
 import { AGENTS } from "@/lib/agents/registry";
 import type { AgentReport, Recomendacao, Achado, Melhoria, CycleResponse } from "@/lib/agents/types";
 import type { RunState } from "@/lib/agents/orchestrator";
-import { MapaOportunidades } from "@/components/agents/MapaOportunidades";
 import { useWatchlist } from "@/lib/sector-dashboard";
 import { sessionInfo } from "@/lib/session";
 
@@ -531,13 +530,10 @@ export default function ConsultorPage() {
           </div>
 
           {/* ALOCAÇÃO E AÇÕES */}
-          {/* WO-32 A: a Composição do Risco é uma barra horizontal e cabe em qualquer largura;
-              o Mapa é uma dispersão com quadrantes, legenda de 9 setores e tabela. Dividir 5/7
-              comprimia o scatter. Faixa fina em cima, mapa com a largura inteira embaixo. */}
-          <div className="space-y-4">
-            <RiskMixBar {...alocacao.mix} utilizacaoPct={alocacao.utilizacaoCapitalPct} desvio={alocacao.desvio} />
-            <MapaOportunidades />
-          </div>
+          {/* WO-46 §2: o Mapa de Oportunidades saiu daqui para a aba Notícias, ao lado do
+              Dashboard Setorial — as duas são leituras transversais do universo no mesmo
+              instante. O RiskMixBar fica: ele fala da carteira, não do universo. */}
+          <RiskMixBar {...alocacao.mix} utilizacaoPct={alocacao.utilizacaoCapitalPct} desvio={alocacao.desvio} />
 
           {/* RISCOS E LEITURA DE MERCADO */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">

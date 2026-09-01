@@ -104,10 +104,10 @@ export function MapaOportunidades() {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-neutral-800 pb-3">
         <div>
           <h4 className="text-sm font-bold text-neutral-100 flex items-center gap-2">
-            <span>Mapa de Oportunidades do Universo (20 Ativos B3)</span>
+            <span>[2] Mapa de Oportunidades do Universo ({UNIVERSE.length} ativos B3)</span>
           </h4>
           <p className="text-xs text-neutral-500">
-            Dispersão Skew P/C vs Spread IV-HV21 · Clique no ponto para navegar até a chain do ativo.
+            Dispersão Skew P/C vs Spread IV-HV21 · Clique no ponto para abrir a cadeia do ativo na Estratégia.
           </p>
         </div>
         <button
