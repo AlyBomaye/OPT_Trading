@@ -95,7 +95,9 @@ $url = "postgresql://${usuario}:${senhaAppTxt}@localhost:${porta}/${banco}"
 $linhas = @()
 if (Test-Path -LiteralPath $envPath) {
   # Preserva tudo o que ja existe (APP_PASSWORD, ANTHROPIC_API_KEY) e troca so a DATABASE_URL.
-  $linhas = Get-Content -LiteralPath $envPath | Where-Object { $_ -notmatch '^\s*DATABASE_URL\s*=' }
+  # @( ) e obrigatorio: com UMA linha no arquivo o pipeline devolve string, e o += abaixo
+  # concatenaria a URL no fim dela (aconteceu em 01/09: colou na ANTHROPIC_API_KEY).
+  $linhas = @(Get-Content -LiteralPath $envPath | Where-Object { $_ -notmatch '^\s*DATABASE_URL\s*=' })
 }
 $linhas += "DATABASE_URL=$url"
 # SEM BOM: -Encoding UTF8 do PowerShell 5.1 poe EF BB BF no inicio e o dotenv passa a ler a
