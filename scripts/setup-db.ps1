@@ -51,19 +51,18 @@ Write-Host "`nCriando usuario '$usuario' e banco '$banco'..." -ForegroundColor Y
 
 # A senha entra por variavel do psql (:'v') em vez de interpolada na string SQL: assim ela nunca
 # aparece no texto do comando nem em log de erro.
-$sqlUsuario = @"
-DO `$`$
-BEGIN
-  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = '$usuario') THEN
-    EXECUTE format('CREATE ROLE %I LOGIN PASSWORD %L', '$usuario', :'senha_app');
-  ELSE
-    EXECUTE format('ALTER ROLE %I LOGIN PASSWORD %L', '$usuario', :'senha_app');
-  END IF;
-END
-`$`$;
-"@
+#
+# ATENCAO: o psql NAO interpola :'v' dentro de $$...$$ — um bloco DO recebe o texto literal e o
+# servidor devolve "syntax error at or near ':'" (aconteceu em 01/09). Por isso sao dois SELECT
+# fora de dollar-quote, executados com \gexec: o primeiro cria o papel so se faltar, o segundo
+# sempre grava a senha. Idempotente, e a senha continua fora do texto do comando.
+$sqlUsuario = @'
+SELECT format('CREATE ROLE %I LOGIN PASSWORD %L', :'usuario', :'senha_app')
+WHERE NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = :'usuario') \gexec
+SELECT format('ALTER ROLE %I LOGIN PASSWORD %L', :'usuario', :'senha_app') \gexec
+'@
 
-$sqlUsuario | & $psql -h localhost -p $porta -U postgres -d postgres -v senha_app="$senhaAppTxt" -v ON_ERROR_STOP=1 -q -f -
+$sqlUsuario | & $psql -h localhost -p $porta -U postgres -d postgres -v usuario="$usuario" -v senha_app="$senhaAppTxt" -v ON_ERROR_STOP=1 -q -f -
 if ($LASTEXITCODE -ne 0) { throw "Falha ao criar/alterar o usuario." }
 
 # CREATE DATABASE nao roda dentro de bloco DO; verificar antes e criar so se faltar.
