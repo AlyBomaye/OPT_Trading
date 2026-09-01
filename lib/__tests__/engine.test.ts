@@ -2399,7 +2399,7 @@ async function testesWo46() {
   // ---- Teste 10: o Mapa saiu do Consultor e esta na Noticias, ainda derivado do UNIVERSE
   const noConsultor = /MapaOportunidades/.test(ler("app/consultor/page.tsx"));
   const srcNot = ler("app/noticias/page.tsx");
-  const naNoticias = /<MapaOportunidades \/>/.test(srcNot);
+  const naNoticias = /<MapaOportunidades\b/.test(srcNot); // WO-47: agora recebe aoSelecionar
   const posMapa = srcNot.indexOf("MAPA DE OPORTUNIDADES");
   const posSetorial = srcNot.indexOf("Dashboard Setorial");
   const posRadar = srcNot.indexOf("RADAR DE EVENTOS");
