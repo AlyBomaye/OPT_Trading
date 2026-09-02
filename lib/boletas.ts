@@ -53,6 +53,7 @@ export interface ConfigCustos {
   liquidacaoPct: number;
   registroPct: number;
   taxaOperacionalPct: number;
+  impostosCorretagemPct: number;
   fonte: string | null;
 }
 
@@ -165,6 +166,24 @@ export interface EstadoLivro {
 }
 
 /* ========================================================================== *
+ * Datas — o `pg` devolve DATE como objeto Date; String(Date) dá "Fri Sep 18".
+ * ========================================================================== */
+
+/** AAAA-MM-DD a partir de Date (data local, sem deslocar o dia), string ISO ou null. */
+export function dataIso(v: unknown): string | null {
+  if (v == null || v === "") return null;
+  if (v instanceof Date) {
+    if (!Number.isFinite(v.getTime())) return null;
+    const y = v.getFullYear();
+    const m = String(v.getMonth() + 1).padStart(2, "0");
+    const d = String(v.getDate()).padStart(2, "0");
+    return `${y}-${m}-${d}`;
+  }
+  const s = String(v);
+  return /^\d{4}-\d{2}-\d{2}/.test(s) ? s.slice(0, 10) : null;
+}
+
+/* ========================================================================== *
  * Schema sob demanda
  * ========================================================================== */
 
@@ -202,6 +221,7 @@ function linhaParaConfig(r: Record<string, unknown>): ConfigCustos {
     liquidacaoPct: Number(r.liquidacao_pct),
     registroPct: Number(r.registro_pct ?? 0),
     taxaOperacionalPct: Number(r.taxa_operacional_pct ?? 0),
+    impostosCorretagemPct: Number(r.impostos_corretagem_pct ?? 0),
     fonte: (r.fonte as string) ?? null,
   };
 }
@@ -211,7 +231,7 @@ export async function configCustosVigente(dataIso: string): Promise<ConfigCustos
   if (!(await garantirSchema())) return null;
   const rows = await consultar<Record<string, unknown>>(
     `SELECT id, to_char(vigente_desde,'YYYY-MM-DD') AS vigente_desde, corretagem_fixa,
-            emolumentos_pct, liquidacao_pct, registro_pct, taxa_operacional_pct, fonte
+            emolumentos_pct, liquidacao_pct, registro_pct, taxa_operacional_pct, impostos_corretagem_pct, fonte
        FROM config_custos
       WHERE vigente_desde <= $1::date
       ORDER BY vigente_desde DESC, id DESC
@@ -228,15 +248,16 @@ export async function gravarConfigCustos(c: {
   liquidacaoPct: number;
   registroPct?: number;
   taxaOperacionalPct?: number;
+  impostosCorretagemPct?: number;
   fonte?: string | null;
 }): Promise<ConfigCustos | null> {
   if (!(await garantirSchema())) return null;
   const rows = await consultar<Record<string, unknown>>(
-    `INSERT INTO config_custos (vigente_desde, corretagem_fixa, emolumentos_pct, liquidacao_pct, registro_pct, taxa_operacional_pct, fonte)
-     VALUES ($1::date, $2, $3, $4, $5, $6, $7)
+    `INSERT INTO config_custos (vigente_desde, corretagem_fixa, emolumentos_pct, liquidacao_pct, registro_pct, taxa_operacional_pct, impostos_corretagem_pct, fonte)
+     VALUES ($1::date, $2, $3, $4, $5, $6, $7, $8)
      RETURNING id, to_char(vigente_desde,'YYYY-MM-DD') AS vigente_desde, corretagem_fixa,
-               emolumentos_pct, liquidacao_pct, registro_pct, taxa_operacional_pct, fonte`,
-    [c.vigenteDesde, c.corretagemFixa, c.emolumentosPct, c.liquidacaoPct, c.registroPct ?? 0, c.taxaOperacionalPct ?? 0, c.fonte ?? null]
+               emolumentos_pct, liquidacao_pct, registro_pct, taxa_operacional_pct, impostos_corretagem_pct, fonte`,
+    [c.vigenteDesde, c.corretagemFixa, c.emolumentosPct, c.liquidacaoPct, c.registroPct ?? 0, c.taxaOperacionalPct ?? 0, c.impostosCorretagemPct ?? 0, c.fonte ?? null]
   );
   return rows && rows[0] ? linhaParaConfig(rows[0]) : null;
 }
@@ -452,7 +473,7 @@ export async function registrarBoleta(e: EntradaBoleta, opcoes: { simular?: bool
           kind: p.kind,
           tipoOpcao: p.tipo_opcao,
           strike: p.strike != null ? Number(p.strike) : null,
-          vencimento: p.vencimento ? String(p.vencimento).slice(0, 10) : null,
+          vencimento: dataIso(p.vencimento),
           // Lado da BOLETA de saída é o contrário da perna (fecha comprada vendendo).
           lado: (Number(p.lado) === 1 ? -1 : 1) as 1 | -1,
         };
@@ -490,6 +511,13 @@ export async function registrarBoleta(e: EntradaBoleta, opcoes: { simular?: bool
               WHERE id = $1`,
             [b.posicao_id, qNova, q, medio, custos]
           );
+          // Zerou a última perna? A estrutura fecha junto — igual ao fechamento.
+          if (qNova === 0 && b.estrutura_id != null) {
+            const ab = await c.query(`SELECT count(*)::int AS n FROM posicao WHERE estrutura_id = $1 AND quantidade > 0`, [b.estrutura_id]);
+            if (Number(ab.rows[0].n) === 0) {
+              await c.query(`UPDATE estrutura SET fechada_em = now() WHERE id = $1 AND fechada_em IS NULL`, [b.estrutura_id]);
+            }
+          }
         } else if ((b.tipo === "fechamento" || b.tipo === "exercicio" || b.tipo === "vencimento") && b.posicao_id != null) {
           await c.query(
             `UPDATE posicao SET quantidade = quantidade + $2, custos_acumulados = custos_acumulados + $3, fechada_em = NULL
@@ -504,7 +532,7 @@ export async function registrarBoleta(e: EntradaBoleta, opcoes: { simular?: bool
           ...e,
           ticker: b.ticker, opTicker: b.op_ticker, kind: b.kind, tipoOpcao: b.tipo_opcao,
           strike: b.strike != null ? Number(b.strike) : null,
-          vencimento: b.vencimento ? String(b.vencimento).slice(0, 10) : null,
+          vencimento: dataIso(b.vencimento),
           lado: b.lado != null ? ((Number(b.lado) === 1 ? -1 : 1) as 1 | -1) : undefined,
           quantidade: q, preco: Number(b.preco),
         };
@@ -551,7 +579,7 @@ function linhaParaBoleta(r: Record<string, any>): BoletaRegistrada {
     kind: r.kind,
     tipoOpcao: r.tipo_opcao ?? null,
     strike: r.strike != null ? Number(r.strike) : null,
-    vencimento: r.vencimento ? String(r.vencimento).slice(0, 10) : null,
+    vencimento: dataIso(r.vencimento),
     lado: r.lado != null ? (Number(r.lado) as 1 | -1) : null,
     quantidade: Number(r.quantidade),
     preco: Number(r.preco),
@@ -594,7 +622,7 @@ export async function estadoLivro(): Promise<EstadoLivro | null> {
 
   const posicaoParaPosition = (r: Record<string, any>, quantidade: number): Position => {
     const e = porEstrutura.get(Number(r.estrutura_id));
-    const venc = r.vencimento ? String(r.vencimento).slice(0, 10) : undefined;
+    const venc = dataIso(r.vencimento) ?? undefined;
     return {
       id: `db-${r.id}`,
       estruturaId: String(r.estrutura_id),

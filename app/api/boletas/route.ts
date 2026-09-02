@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { bancoConfigurado } from "@/lib/db";
+import { bancoConfigurado, ultimoErroTransacao } from "@/lib/db";
 import { estadoLivro, registrarBoleta, type EntradaBoleta } from "@/lib/boletas";
 
 /**
@@ -45,7 +45,7 @@ export async function POST(req: Request) {
       const r = await registrarBoleta(b, { simular });
       if (!r) {
         return NextResponse.json(
-          { error: "Banco indisponível — a boleta NÃO foi gravada.", resultados },
+          { error: `A boleta NÃO foi gravada — ${ultimoErroTransacao() ?? "banco indisponível"}.`, resultados },
           { status: 503 }
         );
       }

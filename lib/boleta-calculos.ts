@@ -50,6 +50,8 @@ export interface TabelaCustos {
   registroPct?: number;
   /** XP — "taxa operacional" sobre corretagem + taxas B3. */
   taxaOperacionalPct?: number;
+  /** ISS + PIS + COFINS sobre a corretagem — a tabela mostra a corretagem líquida, a nota cobra por cima. */
+  impostosCorretagemPct?: number;
 }
 
 export interface CustosCalculados {
@@ -69,7 +71,8 @@ export interface CustosCalculados {
 export function calcularCustos(cfg: TabelaCustos | null, financeiro: number, kind: "OPTION" | "STOCK" | "CAIXA"): CustosCalculados | null {
   if (!cfg || kind === "CAIXA") return null;
   const fin = Math.abs(financeiro);
-  const corretagem = cfg.corretagemFixa;
+  // A corretagem da tabela é líquida de impostos (ISS/PIS/COFINS); o que sai na nota é a bruta.
+  const corretagem = cfg.corretagemFixa * (1 + (cfg.impostosCorretagemPct ?? 0));
   const emolumentos = fin * cfg.emolumentosPct;
   const liquidacao = fin * cfg.liquidacaoPct;
   // Registro só existe no mercado de opções (B3); ação à vista não tem.

@@ -92,6 +92,7 @@ CREATE TABLE IF NOT EXISTS config_custos (
   liquidacao_pct   numeric      NOT NULL,      -- fração do financeiro (B3 liquidação)
   registro_pct     numeric      NOT NULL DEFAULT 0,  -- fração do financeiro (B3 registro, só opções)
   taxa_operacional_pct numeric  NOT NULL DEFAULT 0,  -- fração sobre corretagem + taxas (XP)
+  impostos_corretagem_pct numeric NOT NULL DEFAULT 0, -- ISS + PIS + COFINS sobre a corretagem (XP: 9,65%)
   fonte            text,                       -- de onde veio a tabela (URL/nota)
   criado_em        timestamptz  NOT NULL DEFAULT now()
 );
@@ -113,4 +114,15 @@ BEGIN
     ALTER TABLE config_custos ADD COLUMN registro_pct numeric NOT NULL DEFAULT 0;
     ALTER TABLE config_custos ADD COLUMN taxa_operacional_pct numeric NOT NULL DEFAULT 0;
   END IF;
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'config_custos' AND column_name = 'impostos_corretagem_pct') THEN
+    ALTER TABLE config_custos ADD COLUMN impostos_corretagem_pct numeric NOT NULL DEFAULT 0;
+  END IF;
 END $$;
+
+-- ---------------------------------------------------------------------------
+-- Reparo idempotente da projeção: estrutura sem nenhuma perna aberta fica fechada.
+-- (Um ajuste que zerava a última perna não fechava a estrutura antes de 02/09/2026.)
+-- ---------------------------------------------------------------------------
+UPDATE estrutura e SET fechada_em = sub.f
+  FROM (SELECT estrutura_id, coalesce(max(fechada_em), now()) AS f FROM posicao GROUP BY estrutura_id HAVING bool_and(quantidade = 0)) sub
+ WHERE e.id = sub.estrutura_id AND e.fechada_em IS NULL;

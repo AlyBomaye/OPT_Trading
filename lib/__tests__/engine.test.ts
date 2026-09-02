@@ -2303,15 +2303,17 @@ async function testesAjustes0209() {
 
   // ---- Teste 4: custos com registro (so opcoes) e taxa operacional (sobre corretagem + taxas)
   const { calcularCustos } = await import("../boleta-calculos");
-  const cfg = { vigenteDesde: "2026-01-01", corretagemFixa: 10, emolumentosPct: 0.00037, liquidacaoPct: 0.000275, registroPct: 0.000695, taxaOperacionalPct: 0.059 };
+  const cfg = { vigenteDesde: "2026-01-01", corretagemFixa: 18.9, emolumentosPct: 0.00037, liquidacaoPct: 0.000275, registroPct: 0.000695, taxaOperacionalPct: 0.059, impostosCorretagemPct: 0.0965 };
   const op = calcularCustos(cfg, 10_000, "OPTION")!;
   const ac = calcularCustos(cfg, 10_000, "STOCK")!;
-  // opcao: 10 + 3,70 + 2,75 + 6,95 = 23,40; taxa operacional 5,9% de 23,40 = 1,3806; total 24,7806
-  const okOp = Math.abs(op.registro - 6.95) < 1e-9 && Math.abs(op.taxaOperacional - 23.4 * 0.059) < 1e-9 && Math.abs(op.total - 24.7806) < 1e-6;
-  // acao: sem registro; 10 + 3,70 + 2,75 = 16,45; taxa 0,97055; total 17,42055
-  const okAc = ac.registro === 0 && Math.abs(ac.total - 16.45 * 1.059) < 1e-6;
+  // XP oficial: corretagem 18,90 liquida -> 20,72385 bruta (+9,65%); B3 3,70 + 2,75 + 6,95; taxa 5,9% sobre a soma.
+  const corr = 18.9 * 1.0965;
+  const somaOp = corr + 3.7 + 2.75 + 6.95;
+  const okOp = Math.abs(op.corretagem - corr) < 1e-9 && Math.abs(op.registro - 6.95) < 1e-9 && Math.abs(op.total - somaOp * 1.059) < 1e-6;
+  const somaAc = corr + 3.7 + 2.75;
+  const okAc = ac.registro === 0 && Math.abs(ac.total - somaAc * 1.059) < 1e-6;
   if (okOp && okAc) {
-    console.log("✔ AJ Teste 4: opcao de 10 mil custa R$ 24,78 (com registro e 5,9%); acao R$ 17,42 (sem registro)");
+    console.log(`✔ AJ Teste 4: opcao de 10 mil custa R$ ${(somaOp * 1.059).toFixed(2)} (18,90 + impostos, B3 com registro, 5,9%); acao R$ ${(somaAc * 1.059).toFixed(2)}`);
   } else {
     console.log(`✘ AJ Teste 4 falhou: op=${JSON.stringify(op)}, ac=${JSON.stringify(ac)}`);
     failures++;
@@ -2320,11 +2322,11 @@ async function testesAjustes0209() {
   // ---- Teste 5: a sugestao de custos carrega proveniencia e e marcada como "a confirmar"
   const { CUSTOS_SUGERIDOS_XP_B3: sug } = await import("../custos-sugeridos");
   const b3Oficial = Math.abs(sug.emolumentosPct + sug.liquidacaoPct + sug.registroPct - 0.00134) < 1e-9;
-  const comFonte = /B3 \(oficial\)/.test(sug.fonte) && /XP \(terceiros, a confirmar\)/.test(sug.fonte) && sug.confirmar === true && sug.observacoes.length >= 3;
+  const comFonte = /B3 \(oficial/.test(sug.fonte) && /XP \(oficial/.test(sug.fonte) && sug.corretagemFixa === 18.9 && sug.impostosCorretagemPct === 0.0965 && sug.exercicioMinimoPorSerie === 100 && sug.confirmar === true && sug.observacoes.length >= 3;
   const rotaEntrega = /sugestao: custos \? null : CUSTOS_SUGERIDOS_XP_B3/.test(ler("app/api/custos/route.ts"));
   const telaAvisa = /tabela SUGERIDA/.test(ler("components/FormularioBoleta.tsx")) && /Preencher com a sugestão/.test(ler("components/PainelCustos.tsx"));
   if (b3Oficial && comFonte && rotaEntrega && telaAvisa) {
-    console.log("✔ AJ Teste 5: sugestao = B3 0,1340% oficial + XP a confirmar, com fonte, entregue pela rota e sinalizada na tela");
+    console.log("✔ AJ Teste 5: sugestao = B3 0,1340% oficial + XP oficial (18,90 + 9,65% de impostos, 5,9%, exercicio min. R$ 100), com fonte, entregue pela rota e sinalizada na tela");
   } else {
     console.log(`✘ AJ Teste 5 falhou: b3=${b3Oficial}, fonte=${comFonte}, rota=${rotaEntrega}, tela=${telaAvisa}`);
     failures++;

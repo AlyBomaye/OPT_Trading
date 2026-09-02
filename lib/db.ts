@@ -73,6 +73,12 @@ export async function consultar<T = Record<string, unknown>>(
 }
 
 /** Transação. Devolve `null` se o banco não estiver disponível ou se algo falhar (com rollback). */
+let ultimoErro: string | null = null;
+/** Mensagem do ultimo erro que reverteu uma transacao — para a rota explicar o 503. */
+export function ultimoErroTransacao(): string | null {
+  return ultimoErro;
+}
+
 export async function emTransacao<T>(fn: (c: PoolClient) => Promise<T>): Promise<T | null> {
   const p = obterPool();
   if (!p) return null;
@@ -86,7 +92,10 @@ export async function emTransacao<T>(fn: (c: PoolClient) => Promise<T>): Promise
   } catch (err: any) {
     if (client) await client.query("ROLLBACK").catch(() => undefined);
     // Simulação de boleta (WO-48) reverte de propósito — não é falha, não polui o log.
-    if (err?.message !== "simulacao") console.warn(`[db] transação revertida: ${err?.message}`);
+    if (err?.message !== "simulacao") {
+      ultimoErro = err?.message ?? String(err);
+      console.warn(`[db] transação revertida: ${ultimoErro}`);
+    }
     return null;
   } finally {
     client?.release();
