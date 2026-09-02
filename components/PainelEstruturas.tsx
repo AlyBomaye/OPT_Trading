@@ -28,7 +28,9 @@ import { detectStrategy } from "@/lib/strategy-detect";
 import { DU_ROLAR, DU_FECHAR, REALIZAR_PCT_LUCRO_MAXIMO, type Regime } from "@/lib/metodo";
 import { fmtBRL, fmtDateBR, fmtNum, fmtPct, pnlColor } from "@/lib/format";
 import type { Position } from "@/lib/types";
-import { zeragemDaPerna, zeragemDaEstrutura } from "@/lib/zeragem";
+import { zeragemDaPerna, zeragemDaEstrutura, spotDeZeragem } from "@/lib/zeragem";
+import { PainelRolagem } from "@/components/PainelRolagem";
+import { RefreshCw } from "lucide-react";
 import type { TabelaCustos } from "@/lib/boleta-calculos";
 
 type Motivo = NonNullable<Position["motivoSaida"]>;
@@ -78,6 +80,7 @@ export function PainelEstruturas({ flags, regimes, tabelaCustos = null }: Props)
   const { positions, chainCache, selic, closeStructure } = useMarket();
   const [aberta, setAberta] = useState<string | null>(null);
   const [fechando, setFechando] = useState<string | null>(null);
+  const [rolando, setRolando] = useState<string | null>(null);
 
   const estruturas = useMemo(
     () => estruturasAbertas(positions, chainCache, selic),
@@ -118,7 +121,10 @@ export function PainelEstruturas({ flags, regimes, tabelaCustos = null }: Props)
                 expandida={aberta === e.chave}
                 onToggle={() => setAberta(aberta === e.chave ? null : e.chave)}
                 fechando={fechando === e.chave}
-                onFechar={() => setFechando(fechando === e.chave ? null : e.chave)}
+                onFechar={() => { setFechando(fechando === e.chave ? null : e.chave); setRolando(null); }}
+                rolando={rolando === e.chave}
+                onRolar={() => { setRolando(rolando === e.chave ? null : e.chave); setFechando(null); }}
+                selic={selic}
                 onConfirmarFechamento={(fs, motivo) => {
                   closeStructure(fs, motivo);
                   setFechando(null);
@@ -143,8 +149,14 @@ function LinhaEstrutura({
   fechando,
   onFechar,
   onConfirmarFechamento,
+  rolando,
+  onRolar,
+  selic,
 }: {
   e: EstruturaAberta;
+  rolando: boolean;
+  onRolar: () => void;
+  selic: number;
   flags: PositionFlag[];
   regime: { regime: Regime; observadoEm: string } | null;
   chainCache: Record<string, import("@/lib/types").ChainData>;
@@ -210,6 +222,9 @@ function LinhaEstrutura({
           ) : <span className="text-term-dim">—</span>}
         </td>
         <td className="td text-right whitespace-nowrap">
+          <button className="text-term-cyan hover:opacity-70 mr-2" title="Rolar: fechar as pernas de opção e abrir no próximo vencimento, numa boleta composta" onClick={onRolar}>
+            <RefreshCw size={13} />
+          </button>
           <button className="text-term-gold hover:opacity-70" title="Fechar a estrutura inteira" onClick={onFechar}>
             <XCircle size={13} />
           </button>
@@ -240,15 +255,30 @@ function LinhaEstrutura({
                   );
                 })}
                 {(() => {
-                  const zt = zeragemDaEstrutura(e.pernas, tabelaCustos, e.pernas.map((p) => markInfo(p, chainCache).price));
+                  const marcas = e.pernas.map((p) => markInfo(p, chainCache).price);
+                  const zt = zeragemDaEstrutura(e.pernas, tabelaCustos, marcas);
+                  // WO-53: a zeragem da ESTRUTURA — o preço do ativo, não da opção.
+                  const zs = spot != null ? spotDeZeragem(e.pernas, spot, selic, tabelaCustos, marcas) : null;
                   return (
-                    <div className="mt-1 pt-1 border-t border-term-line/30 flex justify-between font-mono">
-                      <span className="text-term-dim">P&amp;L líquido agora (após custos de abertura e de fechar)</span>
-                      <span className={zt.pnlLiquidoAgora == null ? "text-term-dim" : zt.pnlLiquidoAgora >= 0 ? "text-term-up" : "text-term-down"}>
-                        {zt.pnlLiquidoAgora != null ? fmtBRL(zt.pnlLiquidoAgora) : "—"}
-                        {zt.custoFechamentoAgora != null && <span className="text-term-dim"> (fechar custa ~{fmtBRL(zt.custoFechamentoAgora)})</span>}
-                      </span>
-                    </div>
+                    <>
+                      <div className="mt-1 pt-1 border-t border-term-line/30 flex justify-between font-mono">
+                        <span className="text-term-dim">P&amp;L líquido agora (após custos de abertura e de fechar)</span>
+                        <span className={zt.pnlLiquidoAgora == null ? "text-term-dim" : zt.pnlLiquidoAgora >= 0 ? "text-term-up" : "text-term-down"}>
+                          {zt.pnlLiquidoAgora != null ? fmtBRL(zt.pnlLiquidoAgora) : "—"}
+                          {zt.custoFechamentoAgora != null && <span className="text-term-dim"> (fechar custa ~{fmtBRL(zt.custoFechamentoAgora)})</span>}
+                        </span>
+                      </div>
+                      {zs && (
+                        <div className="flex justify-between font-mono" title={`A estrutura zera líquida quando o P&L de hoje cobre ${fmtBRL(zs.alvoPnl)} (abertura já paga + fechamento${zs.estimado ? " estimado" : " às marcações de hoje"})`}>
+                          <span className="text-term-dim">{e.underlying} em que a estrutura zera líquida{zs.estimado ? " (estimado)" : ""}</span>
+                          <span>
+                            {zs.abaixo != null ? <span className="text-term-down">{fmtNum(zs.abaixo, 2)} ({fmtPct(zs.abaixo / spot! - 1)})</span> : <span className="text-term-dim">—</span>}
+                            <span className="text-term-dim"> · spot {fmtNum(spot!, 2)} · </span>
+                            {zs.acima != null ? <span className="text-term-up">{fmtNum(zs.acima, 2)} (+{fmtPct(zs.acima / spot! - 1)})</span> : <span className="text-term-dim">—</span>}
+                          </span>
+                        </div>
+                      )}
+                    </>
                   );
                 })()}
               </div>
@@ -261,6 +291,14 @@ function LinhaEstrutura({
                 <div><b>Regime na entrada:</b> {lider.regimeNaEntrada ?? <span className="text-term-dim">não capturado</span>}</div>
               </div>
             </div>
+          </td>
+        </tr>
+      )}
+
+      {rolando && (
+        <tr className="bg-term-cyan/5">
+          <td colSpan={11} className="px-4 py-3">
+            <PainelRolagem pernas={e.pernas} tabelaCustos={tabelaCustos} onCancelar={onRolar} onRolado={onRolar} />
           </td>
         </tr>
       )}

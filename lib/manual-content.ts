@@ -82,7 +82,7 @@ export const RESUMO_TELAS = [
   {
     modulo: "3. Carteira",
     pergunta: "O que tenho aberto, o que o método manda fazer e quanto isso custa?",
-    resposta: "Boleta (B) e livro no banco, vencimentos pendentes, tabela de custos, flags de ação por estrutura, P&L líquido e zeragem a custo zero, apuração fiscal, stress, VaR e exportação em Excel.",
+    resposta: "Ação do dia, estruturas (rolagem numa boleta composta, zeragem líquida por estrutura, fechamento), capital e limites de risco com vigência, boleta (B) e livro no banco, vencimentos pendentes, tabela de custos, apuração fiscal, stress, VaR e exportação em Excel.",
   },
   {
     modulo: "4. Notícias",

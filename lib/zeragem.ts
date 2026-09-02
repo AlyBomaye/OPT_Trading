@@ -16,6 +16,7 @@
 
 import type { Position } from "./types";
 import type { TabelaCustos } from "./boleta-calculos";
+import { pnlAtDay } from "./payoff";
 
 export interface Zeragem {
   /** Preço da opção/ação em que fechar zera, líquido de tudo. */
@@ -84,4 +85,57 @@ export function zeragemDaEstrutura(pernas: Position[], cfg: TabelaCustos | null,
     fech += custoFechamentoEstimado(cfg, pernas[i].kind === "STOCK" ? "STOCK" : "OPTION", m, pernas[i].qty);
   }
   return { pnlLiquidoAgora: pnl, custosAbertura, custoFechamentoAgora: fech };
+}
+
+/**
+ * WO-53 — o preço do ATIVO em que a estrutura inteira zera líquida: P&L de hoje (reavaliação BSM
+ * com a vol atual) igual aos custos de abertura já pagos mais o fechamento estimado às marcações
+ * de hoje. Devolve o cruzamento mais próximo abaixo e acima do spot — uma trava zera de um lado,
+ * uma Trava de Linha zera dos dois.
+ *
+ * O custo de fechar depende do preço de saída (a B3 cobra sobre o financeiro); aqui ele é fixado
+ * nas marcações de hoje, o que está declarado no rótulo da tela. Sem marcação em alguma perna, o
+ * fechamento estimado é só a parte fixa — e a tela diz "estimado".
+ */
+export function spotDeZeragem(
+  pernas: Position[],
+  spot: number,
+  r: number,
+  cfg: TabelaCustos | null,
+  marcacoes: (number | null)[]
+): { abaixo: number | null; acima: number | null; alvoPnl: number; estimado: boolean } {
+  const custosAbertura = pernas.reduce((a, p) => a + (p.fees ?? 0), 0);
+  let fechamento = 0;
+  let estimado = false;
+  pernas.forEach((p, i) => {
+    const m = marcacoes[i];
+    const kind = p.kind === "STOCK" ? "STOCK" : "OPTION";
+    if (m == null) {
+      estimado = true;
+      fechamento += componentesFechamento(cfg, kind).A;
+    } else {
+      fechamento += custoFechamentoEstimado(cfg, kind, m, Math.abs(p.qty));
+    }
+  });
+  const alvoPnl = custosAbertura + fechamento;
+  if (!(spot > 0)) return { abaixo: null, acima: null, alvoPnl, estimado };
+  const f = (S: number) => pnlAtDay(pernas, S, 0, r) - alvoPnl;
+  const n = 600;
+  const lo = spot * 0.5;
+  const hi = spot * 1.8;
+  let abaixo: number | null = null;
+  let acima: number | null = null;
+  let prev = f(lo);
+  for (let i = 1; i <= n; i++) {
+    const S = lo + ((hi - lo) * i) / n;
+    const cur = f(S);
+    if ((prev < 0 && cur >= 0) || (prev > 0 && cur <= 0)) {
+      const S0 = lo + ((hi - lo) * (i - 1)) / n;
+      const raiz = S0 + ((S - S0) * -prev) / (cur - prev || 1e-12);
+      if (raiz <= spot) abaixo = raiz; // o último cruzamento antes do spot é o mais próximo
+      else if (acima == null) acima = raiz; // o primeiro depois do spot
+    }
+    prev = cur;
+  }
+  return { abaixo, acima, alvoPnl, estimado };
 }

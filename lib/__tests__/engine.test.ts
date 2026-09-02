@@ -5347,6 +5347,91 @@ async function testesWo28Restaurados() {
     if (t4) console.log("✔ WO-52 Teste 4: Cockpit com alertas (aviso do navegador, visto por dia), checklist da ROTINA_PRE_MARKET e GEX diário gravado com a leitura de ontem");
     else { console.log("✘ WO-52 Teste 4 falhou: Cockpit sem os painéis ou sem a memória do GEX"); failures++; }
   }
+
+  // ================= WO-53 — Carteira que rola =================
+  {
+    const fs = await import("node:fs");
+    const path = await import("node:path");
+    const lerSrc = (rel: string) => fs.readFileSync(path.join(process.cwd(), rel), "utf8");
+    const { propostaRolagem } = await import("../rolagem");
+    const { spotDeZeragem } = await import("../zeragem");
+    const { usoDosLimites, LIMITES_PADRAO } = await import("../limites");
+    const { CUSTOS_SUGERIDOS_XP_B3 } = await import("../custos-sugeridos");
+    const tab = { ...CUSTOS_SUGERIDOS_XP_B3, vigenteDesde: "2026-01-01" };
+
+    // Cadeia com dois vencimentos: o atual (du 8) e o próximo mensal (du 28, na janela)
+    const mk = (opTicker: string, type: "CALL" | "PUT", strike: number, expiry: string, du: number, last: number) => ({
+      ...synthChain.options[0], opTicker, type, strike, expiry, du, last, trades: 50, volumeFin: 10000, markQuality: "fresh", iv: 0.3, delta: type === "CALL" ? 0.4 : -0.4,
+    });
+    const chainRol: any = {
+      ...synthChain,
+      expiries: [
+        { date: "2026-04-17", label: "17/04", du: 8, dte: 12, isMonthly: true, weekCode: "M" },
+        { date: "2026-05-15", label: "15/05", du: 28, dte: 40, isMonthly: true, weekCode: "M" },
+      ],
+      options: [
+        mk("PETRD40", "CALL", 40, "2026-04-17", 8, 1.2), mk("PETRD42", "CALL", 42, "2026-04-17", 8, 0.5),
+        mk("PETRE40", "CALL", 40, "2026-05-15", 28, 2.1), mk("PETRE42", "CALL", 42, "2026-05-15", 28, 1.1),
+      ],
+    };
+    const pernas: any[] = [
+      { id: "db-1", kind: "OPTION", underlying: "PETR4", opTicker: "PETRD40", type: "CALL", strike: 40, expiry: "2026-04-17", du: 8, side: 1, qty: 100, price: 1.5, iv: 0.3, fees: 22, openedAt: "2026-03-20T13:00:00Z", estruturaId: "7" },
+      { id: "db-2", kind: "OPTION", underlying: "PETR4", opTicker: "PETRD42", type: "CALL", strike: 42, expiry: "2026-04-17", du: 8, side: -1, qty: 100, price: 0.7, iv: 0.3, fees: 22, openedAt: "2026-03-20T13:00:00Z", estruturaId: "7" },
+    ];
+
+    // ---- Teste 1: proposta de rolagem — fecha à marcação, abre no próximo mensal na janela, caixa bruto e líquido
+    const prop = propostaRolagem({ pernas, chain: chainRol, tabela: tab, marcacoes: { "db-1": 1.2, "db-2": 0.5 } });
+    const brutoEsperado = 100 * 1.2 - 100 * 0.5 - 100 * 2.1 + 100 * 1.1; // vende a comprada, recompra a vendida, compra e vende as novas
+    const t1 = prop.pronta && prop.vencimentoNovo === "2026-05-15" && prop.duNovo === 28 && !prop.foraDaJanela
+      && prop.fechar.length === 2 && prop.abrir.length === 2 && prop.abrir[0].opcao.opTicker === "PETRE40" && prop.abrir[1].side === -1
+      && Math.abs(prop.bruto - brutoEsperado) < 1e-9 && prop.custos > 80 && Math.abs(prop.liquido - (prop.bruto - prop.custos)) < 1e-9;
+    const semMarca = propostaRolagem({ pernas, chain: chainRol, tabela: tab, marcacoes: { "db-1": null, "db-2": 0.5 } });
+    const t1b = !semMarca.pronta && semMarca.avisos.some((a) => /sem marcação/.test(a));
+    if (t1 && t1b) console.log(`✔ WO-53 Teste 1: rolagem para 15/05 (28 DU): bruto ${prop.bruto.toFixed(0)}, custos ${prop.custos.toFixed(2)}, líquido ${prop.liquido.toFixed(2)}; sem marcação não está pronta`);
+    else { console.log(`✘ WO-53 Teste 1 falhou: ${JSON.stringify({ prop: { ...prop, fechar: prop.fechar.length, abrir: prop.abrir.map((a) => a.opcao.opTicker) }, semMarca: semMarca.avisos })}`); failures++; }
+
+    // ---- Teste 2: spot de zeragem da estrutura — cruza onde o P&L de hoje cobre abertura + fechamento
+    const z = spotDeZeragem(pernas, 40, 0.1, tab, [1.2, 0.5]);
+    const { pnlAtDay } = await import("../payoff");
+    const okAcima = z.acima != null && Math.abs(pnlAtDay(pernas, z.acima, 0, 0.1) - z.alvoPnl) < 0.5;
+    const t2 = z.alvoPnl > 44 && okAcima && !z.estimado && spotDeZeragem(pernas, 40, 0.1, tab, [null, 0.5]).estimado;
+    if (t2) console.log(`✔ WO-53 Teste 2: a trava zera líquida com o ativo em ${z.acima!.toFixed(2)} (cobre ${z.alvoPnl.toFixed(2)} de custos); sem marcação a conta é 'estimada'`);
+    else { console.log(`✘ WO-53 Teste 2 falhou: ${JSON.stringify(z)}`); failures++; }
+
+    // ---- Teste 3: uso dos limites — fração, situação e 'indefinido' sem medida
+    const usos = usoDosLimites({ capitalTotal: 600, vegaPer1pct: -10, var95: -40, alocado: 150, piorPerdaEstrutura: 7 }, LIMITES_PADRAO);
+    const teto = usos.find((u) => u.chave === "teto")!;
+    const expo = usos.find((u) => u.chave === "exposicao")!;
+    const vega = usos.find((u) => u.chave === "vega")!;
+    const vr = usos.find((u) => u.chave === "var")!;
+    const semMedida = usoDosLimites({ capitalTotal: 600, vegaPer1pct: null, var95: null, alocado: null, piorPerdaEstrutura: null }, LIMITES_PADRAO);
+    const t3 = teto.situacao === "estourado" && Math.abs(teto.fracao! - 7 / 6) < 1e-9 && expo.situacao === "estourado" && vega.situacao === "atencao" && vr.situacao === "estourado"
+      && semMedida.every((u) => u.situacao === "indefinido") && LIMITES_PADRAO.tetoOperacaoPct === 0.01 && LIMITES_PADRAO.exposicaoPct === 0.2;
+    if (t3) console.log("✔ WO-53 Teste 3: limites — R$ 7 de perda máx. em R$ 600 estoura o 1%; exposição 25% estoura 20%; vega 1,7% é atenção; sem medida é indefinido");
+    else { console.log(`✘ WO-53 Teste 3 falhou: ${JSON.stringify(usos.map((u) => [u.chave, u.situacao, u.fracao]))}`); failures++; }
+
+    // ---- Teste 4: N boletas numa transação, rota de rolagem, schema de limites
+    const srcBol = lerSrc("lib/boletas.ts");
+    const srcRol = lerSrc("app/api/boletas/rolar/route.ts");
+    const sql = lerSrc("db/004_limites.sql");
+    const t4 = /async function prepararExecucao\(e: EntradaBoleta\)/.test(srcBol) && /export async function registrarBoletasJuntas/.test(srcBol)
+      && /encadearEstrutura/.test(srcBol) && /throw new Simulacao\(r\[r\.length - 1\]\)/.test(srcBol)
+      && /registrarBoletasJuntas\(lista, \{ simular \}\)/.test(srcRol) && /encadearEstrutura: true/.test(srcRol)
+      && /CREATE TABLE IF NOT EXISTS config_limites/.test(sql) && /teto_operacao_pct/.test(sql)
+      && /export async function GET/.test(lerSrc("app/api/limites/route.ts")) && /export async function POST/.test(lerSrc("app/api/limites/route.ts"));
+    if (t4) console.log("✔ WO-53 Teste 4: registrarBoletasJuntas (uma transação, estrutura encadeada, simulação), POST /api/boletas/rolar e config_limites com vigência");
+    else { console.log("✘ WO-53 Teste 4 falhou: transação composta, rota de rolagem ou schema de limites"); failures++; }
+
+    // ---- Teste 5: a Carteira na ordem do método, com rolagem, zeragem por estrutura e limites
+    const srcCart = lerSrc("app/carteira/page.tsx");
+    const srcPE = lerSrc("components/PainelEstruturas.tsx");
+    const idx = (re: RegExp) => srcCart.search(re);
+    const ordem = idx(/id="acao-do-dia"/) < idx(/<PainelEstruturas /) && idx(/<PainelEstruturas /) < idx(/id="capital"/) && idx(/id="capital"/) < idx(/<PainelLimites /) && idx(/<PainelLimites /) < idx(/id="boleta"/) && idx(/id="boleta"/) < idx(/<PainelVencimentos \/>/);
+    const t5 = ordem && /"carteira-boleta-open", false/.test(srcCart) && (srcCart.match(/<PainelEstruturas /g) ?? []).length === 1
+      && /<PainelRolagem /.test(srcPE) && /spotDeZeragem\(/.test(srcPE) && /zera líquida/.test(srcPE);
+    if (t5) console.log("✔ WO-53 Teste 5: Carteira na ordem Ação do dia → Estruturas → Capital → Limites → boleta (recolhida) → vencimentos; estruturas com Rolar e zeragem do ativo");
+    else { console.log(`✘ WO-53 Teste 5 falhou: ordem=${ordem}`); failures++; }
+  }
 }
 
 testesAssincronos()

@@ -27,6 +27,9 @@ import { FormularioBoleta } from "@/components/FormularioBoleta";
 import { MigracaoLivro } from "@/components/MigracaoLivro";
 import { PainelVencimentos } from "@/components/PainelVencimentos";
 import { PainelCustos } from "@/components/PainelCustos";
+import { PainelLimites } from "@/components/PainelLimites";
+import { estruturasAbertas } from "@/lib/position-flags";
+import { strategyMetrics } from "@/lib/payoff";
 import { CUSTOS_SUGERIDOS_XP_B3 } from "@/lib/custos-sugeridos";
 import { usePersistedState } from "@/lib/use-persisted-state";
 import type { Regime } from "@/lib/metodo";
@@ -60,7 +63,8 @@ export default function CarteiraPage() {
   }, [sincronizarLivro]);
 
   // A boleta: recolhível (chave por seção) e aberta pelo atalho B ou por /carteira#boleta.
-  const [boletaAberta, setBoletaAberta] = usePersistedState<boolean>("carteira-boleta-open", true);
+  // WO-53: a boleta nasce recolhida — B (ou Aporte/Retirada, ou #boleta) abre.
+  const [boletaAberta, setBoletaAberta] = usePersistedState<boolean>("carteira-boleta-open", false);
   const [focarBoleta, setFocarBoleta] = useState(false);
   useEffect(() => {
     if (typeof window !== "undefined" && window.location.hash === "#boleta") {
@@ -130,6 +134,18 @@ export default function CarteiraPage() {
   );
 
   const greeks = useMemo(() => netGreeks(positions, chain, selic), [positions, chain, selic]);
+  // WO-53: a pior perda máxima entre as estruturas abertas, para o teto do método nos limites.
+  const piorPerdaEstrutura = useMemo(() => {
+    let pior: number | null = null;
+    for (const e of estruturasAbertas(positions, chainCache, selic)) {
+      const sp = chainCache[e.underlying]?.spot;
+      if (sp == null) continue;
+      const m = strategyMetrics(e.pernas, sp, selic);
+      if (m.maxLoss == null) return null; // uma perna sem teto: o limite não se mede
+      pior = Math.max(pior ?? 0, Math.abs(m.maxLoss));
+    }
+    return pior;
+  }, [positions, chainCache, selic]);
   const { skew, atmIv } = useSkewAtm();
   const risk = chain && positions.length ? varGrid(positions, chain, selic, atmIv) : null;
   const stress = chain && positions.length ? stressBook(positions, chain, selic) : [];
@@ -262,18 +278,10 @@ export default function CarteiraPage() {
         </div>
       )}
       <MigracaoLivro />
-      {boletaAberta ? (
-        <div id="boleta">
-          <FormularioBoleta aberto onFechar={() => { setBoletaAberta(false); setBoletaTipoInicial(undefined); }} focar={focarBoleta} tipoInicial={boletaTipoInicial} />
-        </div>
-      ) : (
-        <button className="btn flex items-center gap-1 text-term-cyan" onClick={() => setBoletaAberta(true)}>
-          Abrir a boleta <kbd className="text-xxs bg-term-panel2 border border-term-line rounded px-1">B</kbd>
-        </button>
-      )}
-      <PainelVencimentos />
-      <PainelCustos />
 
+      {/* WO-53 §D — a ordem do método: o que fazer hoje, as estruturas, o capital e os limites;
+          a boleta vem depois, recolhida (B abre). Antes, boleta, vencimentos e custos empurravam
+          a Ação do dia para o meio da página. */}
       {/* WO-17 Bloco A: Painel de Ação do Dia (Flags de Risco) */}
       <div id="acao-do-dia">
         <ActionFlags
@@ -283,6 +291,9 @@ export default function CarteiraPage() {
           capitalTotal={capitalTotal}
         />
       </div>
+
+      {/* WO-47 §5.2 — a Carteira pensa por estrutura (WO-53: com rolagem e zeragem por estrutura). */}
+      <PainelEstruturas flags={allFlags} regimes={regimes} tabelaCustos={tabelaCustos} />
 
       {/* WO-11: capital & desempenho (Dashboard da planilha) */}
       <div id="capital" className="grid grid-cols-2 md:grid-cols-6 gap-2">
@@ -326,6 +337,21 @@ export default function CarteiraPage() {
           vantagem assumida — reduza tamanho ou pare até rever o processo.
         </div>
       )}
+
+      {/* WO-53 §C — limites fixados antes, medidos agora */}
+      <PainelLimites capitalTotal={capitalTotal} vegaPer1pct={greeks.vegaPer1pct} var95={risk?.var95 ?? null} alocado={alocado} piorPerdaEstrutura={piorPerdaEstrutura} />
+
+      {boletaAberta ? (
+        <div id="boleta">
+          <FormularioBoleta aberto onFechar={() => { setBoletaAberta(false); setBoletaTipoInicial(undefined); }} focar={focarBoleta} tipoInicial={boletaTipoInicial} />
+        </div>
+      ) : (
+        <button className="btn flex items-center gap-1 text-term-cyan" onClick={() => setBoletaAberta(true)}>
+          Abrir a boleta <kbd className="text-xxs bg-term-panel2 border border-term-line rounded px-1">B</kbd>
+        </button>
+      )}
+      <PainelVencimentos />
+      <PainelCustos />
 
       {/* WO-17 Bloco B: Analytics de Desempenho do Journal */}
       <div id="journal" className="grid grid-cols-2 md:grid-cols-6 gap-2">
@@ -408,11 +434,6 @@ export default function CarteiraPage() {
           {pos.expiry ? fmtDateBR(pos.expiry) : ""} — risco de atribuição na véspera do ex-date.
         </div>
       ))}
-
-      {/* WO-47 §5.2 — a Carteira pensa por estrutura: % do lucro máximo, DU, alvo, regime e o
-          plano da entrada, com fechamento da estrutura inteira numa ação. A tabela por perna
-          continua abaixo para editar taxas e notas. */}
-      <PainelEstruturas flags={allFlags} regimes={regimes} tabelaCustos={tabelaCustos} />
 
       {/* Posições abertas (por perna) */}
       <div className="panel">

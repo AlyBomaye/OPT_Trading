@@ -84,6 +84,8 @@ export interface EntradaBoleta {
   taxaOperacional?: number | null;
   /** Abertura: estrutura existente (id) ou nova (com o plano). */
   estruturaId?: number | null;
+  /** WO-53: numa lista de `registrarBoletasJuntas`, entra na estrutura criada pela abertura anterior. */
+  encadearEstrutura?: boolean;
   novaEstrutura?: {
     nomeDetectado?: string | null;
     tese?: string | null;
@@ -346,8 +348,11 @@ class Simulacao extends Error {
   }
 }
 
-export async function registrarBoleta(e: EntradaBoleta, opcoes: { simular?: boolean } = {}): Promise<ResultadoRegistro | null> {
-  if (!(await garantirSchema())) return null;
+/**
+ * WO-53: a validação, os custos e o `executar(c)` de UMA boleta, sem transação — para
+ * `registrarBoleta` (uma transação por boleta) e `registrarBoletasJuntas` (N numa só).
+ */
+async function prepararExecucao(e: EntradaBoleta): Promise<(c: PoolClient) => Promise<ResultadoRegistro>> {
   if (!Number.isFinite(e.quantidade) || e.quantidade <= 0) throw new Error("Quantidade precisa ser positiva.");
   if (!Number.isFinite(e.preco) || e.preco < 0) throw new Error("Preço inválido.");
   if (!e.executadoEm || !Number.isFinite(new Date(e.executadoEm).getTime())) throw new Error("Informe quando a boleta foi executada.");
@@ -562,6 +567,12 @@ export async function registrarBoleta(e: EntradaBoleta, opcoes: { simular?: bool
     }
   };
 
+  return executar;
+}
+
+export async function registrarBoleta(e: EntradaBoleta, opcoes: { simular?: boolean } = {}): Promise<ResultadoRegistro | null> {
+  if (!(await garantirSchema())) return null;
+  const executar = await prepararExecucao(e);
   if (!opcoes.simular) return emTransacao(executar);
 
   // Simulação: tudo roda, nada fica. O sentinela força o ROLLBACK de `emTransacao`.
@@ -570,6 +581,42 @@ export async function registrarBoleta(e: EntradaBoleta, opcoes: { simular?: bool
     const r = await executar(c);
     capturado = r;
     throw new Simulacao(r);
+  });
+  return capturado;
+}
+
+/**
+ * WO-53 — N boletas numa única transação: ou entram todas, ou nenhuma.
+ *
+ * É o que uma rolagem exige (fechar e abrir juntos) e o que a abertura de uma estrutura de várias
+ * pernas sempre mereceu. Uma abertura com `encadearEstrutura` entra na estrutura criada pela
+ * abertura anterior da mesma lista — assim a primeira cria e as demais acompanham, sem o cliente
+ * precisar de ida e volta. `simular` roda tudo e reverte.
+ */
+export async function registrarBoletasJuntas(lista: EntradaBoleta[], opcoes: { simular?: boolean } = {}): Promise<ResultadoRegistro[] | null> {
+  if (!(await garantirSchema())) return null;
+  if (lista.length === 0) throw new Error("Nenhuma boleta.");
+  const executarTodas = async (c: PoolClient): Promise<ResultadoRegistro[]> => {
+    const resultados: ResultadoRegistro[] = [];
+    let estruturaAnterior: number | null = null;
+    for (const original of lista) {
+      const e: EntradaBoleta =
+        original.tipo === "abertura" && original.encadearEstrutura && original.estruturaId == null && estruturaAnterior != null
+          ? { ...original, estruturaId: estruturaAnterior }
+          : original;
+      const executar = await prepararExecucao(e);
+      const r = await executar(c);
+      if (e.tipo === "abertura" && r.estruturaId != null) estruturaAnterior = r.estruturaId;
+      resultados.push(r);
+    }
+    return resultados;
+  };
+  if (!opcoes.simular) return emTransacao(executarTodas);
+  let capturado: ResultadoRegistro[] | null = null;
+  await emTransacao(async (c) => {
+    const r = await executarTodas(c);
+    capturado = r;
+    throw new Simulacao(r[r.length - 1]);
   });
   return capturado;
 }
