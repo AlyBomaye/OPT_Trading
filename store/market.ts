@@ -528,7 +528,8 @@ export const useMarket = create<MarketState>()(
               const oj = await oRes.json();
               if (oj?.ok && oj.series) {
                 for (const o of chain.options) {
-                  const c = oj.series[o.opTicker];
+                  // A fonte da cadeia sufixa o ano (PETRI482_2026); o COTAHIST não (PETRI482).
+                  const c = oj.series[o.opTicker.replace(/_\d{4}$/, "")] ?? oj.series[o.opTicker];
                   if (!c) continue;
                   o.bid = c.bid ?? null;
                   o.ask = c.ask ?? null;
