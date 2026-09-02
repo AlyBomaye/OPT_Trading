@@ -5693,7 +5693,7 @@ Líquido para 04/09/2026 5.134,69 D`;
     const srcRota = lerSrc("app/api/cotahist/route.ts");
     const srcStore = lerSrc("store/market.ts");
     const t5 = /COTAHIST_D/.test(srcRota) && /lerZip\(buf\)/.test(srcRota) && /pregaoAnterior/.test(srcRota) && /gravarCache\(`cotahist-/.test(srcRota)
-      && /\/api\/cotahist\?data=/.test(srcStore) && /o\.mid = c\.mid/.test(srcStore) && srcStore.includes('o.opTicker.replace(/_\d{4}$/, "")') && /export function marcaDaSerie/.test(srcStore) && /fonte,\n/.test(srcStore)
+      && /\/api\/cotahist\?data=/.test(srcStore) && /o\.mid = c\.mid/.test(srcStore) && srcStore.includes("o.opTicker.replace(/_" + String.fromCharCode(92) + "d{4}$/, " + '""' + ")") && /export function marcaDaSerie/.test(srcStore) && /fonte,\n/.test(srcStore)
       && /mark\.fonte === "mid"/.test(lerSrc("app/carteira/page.tsx")) && /<ReconciliacaoNota \/>/.test(lerSrc("app/carteira/page.tsx"))
       && /ofertas de fechamento/.test(lerSrc("components/OptionChain.tsx")) && /bid\?: number \| null/.test(lerSrc("lib/types.ts"));
     if (t5) console.log("✔ WO-56 Teste 5: /api/cotahist com cache e recuo de datas; o store junta bid/ask/mid à cadeia; Carteira marca MID e tem a reconciliação; a cadeia mostra a cobertura de ofertas");
