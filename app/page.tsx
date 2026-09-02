@@ -16,7 +16,7 @@ import { GexProfileChart } from "@/components/GexProfile";
 import { ChevronDown, ChevronRight } from "lucide-react";
 import clsx from "clsx";
 import { sessionInfo } from "@/lib/session";
-import { getIvRank, useSnapshots } from "@/lib/snapshots";
+import { useIvRank } from "@/lib/hooks/useIvRank";
 import { AgentPanel } from "@/components/AgentPanel";
 import { TruthBar } from "@/components/TruthBar";
 import { PainelWatchlist } from "@/components/PainelWatchlist";
@@ -68,9 +68,9 @@ function PreMarketPanel() {
   const [open, setOpen] = useState(sess.state !== "ABERTO");
   const [calEvents, setCalEvents] = useState<any[]>([]);
 
-  const snapshots = useSnapshots((st) => st.snapshots);
   const { skew, atmIv } = useSkewAtm(chain?.expiries[0]?.date ?? null);
-  const ivRank = atmIv != null ? getIvRank(snapshots, ticker, atmIv) : null;
+  // WO-50: o IV rank vem do banco (ou do navegador, quando não há banco) — o mesmo das outras abas.
+  const { ivRank, observacoes: nObs, fonte: fonteRank } = useIvRank(ticker, atmIv);
 
   const greeks = useMemo(() => netGreeks(positions, chain, selic), [positions, chain, selic]);
 
@@ -126,7 +126,7 @@ function PreMarketPanel() {
               </div>
               <div className="flex justify-between text-xxs">
                 <span>IV Rank:</span>
-                <span className="text-term-cyan">{ivRank != null ? `${Math.round(ivRank * 100)}` : "n/d (<20 snaps)"}</span>
+                <span className="text-term-cyan" title={fonteRank ? `${nObs} observação(ões) — fonte: ${fonteRank}` : "sem histórico de IV"}>{ivRank != null ? `${Math.round(ivRank * 100)}` : `n/d (${nObs}/20)`}</span>
               </div>
             </div>
 

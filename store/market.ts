@@ -539,7 +539,18 @@ export const useMarket = create<MarketState>()(
               : {}),
           }));
 
-          useSnapshots.getState().upsert(snapshotFromChain(chain));
+          // WO-50: o snapshot do dia vai para o navegador (cache) E para o banco (origem
+          // navegador). Dias sem `dados:sync` deixam de ser buracos; onde o sync já gravou, ele vence.
+          const snap = snapshotFromChain(chain);
+          useSnapshots.getState().upsert(snap);
+          if (typeof window !== "undefined" && snap.atmIvMean != null) {
+            fetch("/api/iv-historico", {
+              method: "PUT",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ ...snap, data: snap.date, dataEfetiva: chain.dataEfetiva ?? null }),
+              signal: AbortSignal.timeout(10_000),
+            }).catch(() => {});
+          }
         } catch (e) {
           if (isActive) {
             const errStr = e instanceof Error ? e.message : String(e);

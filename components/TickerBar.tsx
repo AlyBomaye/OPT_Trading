@@ -8,7 +8,7 @@ import { useMarket } from "@/store/market";
 import { fmtBRL, fmtDateBR, fmtPct } from "@/lib/format";
 import { skewInfo } from "@/lib/scanner";
 import { sessionInfo } from "@/lib/session";
-import { getIvRank, snapshotCount, useSnapshots } from "@/lib/snapshots";
+import { useIvRank } from "@/lib/hooks/useIvRank";
 import { UNIVERSE } from "@/lib/universe";
 
 import { TickerQuickSwitch } from "@/components/TickerQuickSwitch";
@@ -90,9 +90,8 @@ export function TickerBar() {
 
   const { skew, atmIv } = useSkewAtm();
 
-  const snapshots = useSnapshots((st) => st.snapshots);
-  const ivRank = atmIv != null ? getIvRank(snapshots, ticker, atmIv) : null;
-  const nSnaps = snapshotCount(snapshots, ticker);
+  // WO-50: o mesmo IV rank das outras abas (banco; navegador só sem banco).
+  const { ivRank, observacoes: nSnaps } = useIvRank(ticker, atmIv);
 
   // Proveniência do Spot
   let spotProvenanceLabel = "EST";

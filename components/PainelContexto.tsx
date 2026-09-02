@@ -18,7 +18,8 @@ import clsx from "clsx";
 import { useMarket } from "@/store/market";
 import type { Candle } from "@/app/api/history/route";
 import { volSeries, returnStats, volCone } from "@/lib/historical";
-import { getIvRank, snapshotCount, useSnapshots } from "@/lib/snapshots";
+import { useIvRank, useSerieIv } from "@/lib/hooks/useIvRank";
+import { resumoDistribuicao } from "@/lib/iv-rank";
 import { tickers } from "@/lib/universe";
 import { fmtBRL, fmtNum, fmtPct, fmtCompact, fmtDateBR } from "@/lib/format";
 import { AgentPanel } from "@/components/AgentPanel";
@@ -55,7 +56,6 @@ interface HistBody {
 
 export function PainelContexto() {
   const { chain, ticker, setTicker } = useMarket();
-  const snapshots = useSnapshots((st) => st.snapshots);
   const [range, setRange] = useState<string>("1y");
   const [data, setData] = useState<HistBody | null>(null);
   const [loading, setLoading] = useState(false);
@@ -102,9 +102,10 @@ export function PainelContexto() {
   const lastHv21 = [...vols].reverse().find((v) => v.hv21 != null)?.hv21 ?? null;
   const ivHvSpread = liveAtmIv != null && lastHv21 != null ? liveAtmIv - lastHv21 : null;
 
-  // WO-2: IV Rank quando ≥ 20 snapshots acumulados
-  const ivRank = liveAtmIv != null ? getIvRank(snapshots, ticker, liveAtmIv) : null;
-  const nSnaps = snapshotCount(snapshots, ticker);
+  // WO-50: IV rank do banco (navegador só sem banco) e a série histórica de IV ATM para o cone.
+  const { ivRank, observacoes: nSnaps, fonte: fonteRank } = useIvRank(ticker, liveAtmIv);
+  const { serie: serieIv } = useSerieIv(ticker);
+  const coneIv = useMemo(() => resumoDistribuicao(serieIv.map((p) => p.atmIvMean)), [serieIv]);
 
   const priceData = useMemo(
     () =>
@@ -289,6 +290,26 @@ export function PainelContexto() {
                     </td>
                   </tr>
                 )}
+                {/* WO-50: a IV histórica do banco na mesma régua das HVs — é o "vol cara?" contra a própria história. */}
+                {coneIv && (() => {
+                  const cur = liveAtmIv;
+                  const pctl = cur != null && coneIv.max > coneIv.min ? (cur - coneIv.min) / (coneIv.max - coneIv.min) : null;
+                  const read = cur == null ? "sem IV ao vivo" : coneIv.n < 20 ? `coletando ${coneIv.n}/20` : pctl! > 0.75 ? "IV cara p/ ela mesma" : pctl! < 0.25 ? "IV barata p/ ela mesma" : "meio do range";
+                  return (
+                    <tr className="border-t-2 border-term-line/60 bg-term-panel2/30" title={`IV ATM diária gravada no banco (${coneIv.n} pregões, fonte ${fonteRank ?? "banco"})`}>
+                      <td className="td font-semibold text-term-gold">IV ATM · banco ({coneIv.n})</td>
+                      <td className="td text-right text-term-dim">{fmtNum(coneIv.min * 100, 1)}%</td>
+                      <td className="td text-right text-term-dim">{fmtNum(coneIv.p25 * 100, 1)}%</td>
+                      <td className="td text-right">{fmtNum(coneIv.median * 100, 1)}%</td>
+                      <td className="td text-right text-term-dim">{fmtNum(coneIv.p75 * 100, 1)}%</td>
+                      <td className="td text-right text-term-dim">{fmtNum(coneIv.max * 100, 1)}%</td>
+                      <td className={clsx("td text-right font-semibold", pctl != null && pctl > 0.75 ? "text-term-gold" : pctl != null && pctl < 0.25 ? "text-term-up" : "")}>
+                        {cur != null ? `${fmtNum(cur * 100, 1)}%` : "—"}
+                      </td>
+                      <td className="td text-xxs text-term-dim">{read}</td>
+                    </tr>
+                  );
+                })()}
               </tbody>
             </table>
           </div>

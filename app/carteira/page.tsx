@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Database, FileJson, FileSpreadsheet, RefreshCw, Trash2, Upload, XCircle } from "lucide-react";
+import { FileJson, FileSpreadsheet, RefreshCw, Trash2, XCircle } from "lucide-react";
 import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { markInfo, useMarket } from "@/store/market";
 import {
@@ -16,7 +16,7 @@ import {
   varGrid,
 } from "@/lib/portfolio";
 import { skewInfo } from "@/lib/scanner";
-import { useSnapshots, type IvSnapshot } from "@/lib/snapshots";
+import { ArquivoIv } from "@/components/ArquivoIv";
 import { divsBeforeExpiry, effectiveDividends, useDividends } from "@/lib/dividends";
 import { downloadText, fmtBRL, fmtDateBR, fmtNum, fmtPct, pnlColor } from "@/lib/format";
 import { evaluateFlags, useFlagSettings } from "@/lib/position-flags";
@@ -81,9 +81,7 @@ export default function CarteiraPage() {
   const livroNoBanco = livro.configurado && livro.totalBoletas > 0;
   // WO-4: progresso do "Reavaliar tudo"
   const [reval, setReval] = useState<{ done: number; total: number; failed: string[] } | null>(null);
-  const { snapshots, importSnapshots } = useSnapshots();
   const divsByTicker = useDividends((st) => st.byTicker);
-  const importRef = useRef<HTMLInputElement | null>(null);
   const thresholds = useFlagSettings((st) => st.thresholds);
 
   // WO-17: Avaliação de flags de ação do book
@@ -233,25 +231,6 @@ export default function CarteiraPage() {
       JSON.stringify({ exportedAt: new Date().toISOString(), greeks, var95: risk?.var95 ?? null, es: risk?.es ?? null, positions: rows, closed }, null, 2),
       "application/json"
     );
-
-  // WO-2: arquivo de snapshots de IV (export/import do "data moat")
-  const exportIvHistory = () =>
-    downloadText(
-      "iv-snapshots.json",
-      JSON.stringify({ exportedAt: new Date().toISOString(), snapshots }, null, 2),
-      "application/json"
-    );
-
-  const onImportIvHistory = async (file: File) => {
-    try {
-      const parsed = JSON.parse(await file.text()) as { snapshots?: IvSnapshot[] } | IvSnapshot[];
-      const list = Array.isArray(parsed) ? parsed : parsed.snapshots ?? [];
-      const added = importSnapshots(list);
-      alert(`${added} snapshot(s) importado(s).`);
-    } catch {
-      alert("Arquivo inválido — esperado JSON exportado pelo terminal.");
-    }
-  };
 
   return (
     <>
@@ -619,32 +598,8 @@ export default function CarteiraPage() {
         tabelaCustos={tabelaCustos}
       />
 
-      {/* WO-2: arquivo de snapshots de IV */}
-      <div className="panel px-3 py-2 flex flex-wrap items-center gap-2 text-xxs text-term-dim">
-        <Database size={12} className="text-term-cyan" />
-        <span>
-          Histórico IV: <span className="text-term-text font-semibold">{snapshots.length}</span> snapshot(s) ·{" "}
-          {new Set(snapshots.map((s) => s.ticker)).size} ticker(s)
-        </span>
-        <div className="flex-1" />
-        <button className="btn flex items-center gap-1" onClick={exportIvHistory}>
-          <FileJson size={12} /> Exportar histórico IV
-        </button>
-        <button className="btn flex items-center gap-1" onClick={() => importRef.current?.click()}>
-          <Upload size={12} /> Importar
-        </button>
-        <input
-          ref={importRef}
-          type="file"
-          accept="application/json"
-          className="hidden"
-          onChange={(e) => {
-            const f = e.target.files?.[0];
-            if (f) void onImportIvHistory(f);
-            e.target.value = "";
-          }}
-        />
-      </div>
+      {/* WO-50: o arquivo de IV — navegador × banco, migração uma vez, backup em JSON */}
+      <ArquivoIv />
 
       {/* Encerradas */}
       {closed.length > 0 && (

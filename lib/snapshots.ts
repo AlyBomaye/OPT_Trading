@@ -3,6 +3,7 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import type { ChainData } from "./types";
+import { ivRankDe } from "./iv-rank";
 
 /* ============================================================================
  * Snapshots EOD de IV — o "data moat": um registro por ticker por dia.
@@ -105,10 +106,8 @@ export function getIvRank(
   ticker: string,
   currentIv: number
 ): number | null {
-  const hist = snapshots.filter((s) => s.ticker === ticker && s.atmIvMean != null);
-  if (hist.length < 20) return null;
-  const below = hist.filter((s) => (s.atmIvMean as number) <= currentIv).length;
-  return below / hist.length;
+  // WO-50: a regra (percentil, mínimo de observações) vive em lib/iv-rank.ts, igual à do servidor.
+  return ivRankDe(snapshots.filter((s) => s.ticker === ticker).map((s) => s.atmIvMean), currentIv);
 }
 
 /** Contagem de observações por ticker (para o estado "coletando k/20"). */

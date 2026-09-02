@@ -1,12 +1,12 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { useCallback, useState, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { LayoutGrid, Play, AlertTriangle } from "lucide-react";
 import clsx from "clsx";
 import { impliedVol } from "@/lib/black-scholes";
 import { rollingHV } from "@/lib/historical";
-import { getIvRank, useSnapshots } from "@/lib/snapshots";
+import { useIvRanks } from "@/lib/hooks/useIvRank";
 import { UNIVERSE } from "@/lib/universe";
 import { useMarket } from "@/store/market";
 import { fmtBRL, fmtNum, fmtPct } from "@/lib/format";
@@ -140,8 +140,18 @@ interface PropsWatchlist {
 export function PainelWatchlist({ aoSelecionar }: PropsWatchlist = {}) {
   const router = useRouter();
   const { selic, setTicker } = useMarket();
-  const snapshots = useSnapshots((st) => st.snapshots);
   const { rows, lastRunAt, setRow, markRun } = useWatchlist();
+  // WO-50: IV rank dos 20 papéis numa consulta ao banco (navegador só sem banco).
+  const itensRank = useMemo(
+    () =>
+      UNIVERSE.map((u) => {
+        const r = rows[u.ticker];
+        const iv = r?.ivCallAtm != null && r?.ivPutAtm != null ? (r.ivCallAtm + r.ivPutAtm) / 2 : r?.ivCallAtm ?? r?.ivPutAtm ?? null;
+        return { ticker: u.ticker, iv };
+      }),
+    [rows]
+  );
+  const ranks = useIvRanks(itensRank);
   const [running, setRunning] = useState(false);
   const [progress, setProgress] = useState(0);
   const [inFlight, setInFlight] = useState<Set<string>>(new Set());
@@ -247,7 +257,7 @@ export function PainelWatchlist({ aoSelecionar }: PropsWatchlist = {}) {
               const atmMean =
                 r?.ivCallAtm != null && r?.ivPutAtm != null ? (r.ivCallAtm + r.ivPutAtm) / 2 : r?.ivCallAtm ?? r?.ivPutAtm ?? null;
               const ivHv = atmMean != null && r?.hv21 != null ? atmMean - r.hv21 : null;
-              const rank = atmMean != null ? getIvRank(snapshots, u.ticker, atmMean) : null;
+              const rank = ranks[u.ticker]?.ivRank ?? null;
               const sig =
                 r?.skewRatio == null
                   ? null

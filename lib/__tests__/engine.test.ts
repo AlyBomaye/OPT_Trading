@@ -3855,9 +3855,11 @@ async function testesWo42() {
 
   // ---- Teste 5: o minimo de observacoes e o mesmo nos dois lados
   // Se o servidor e o navegador discordassem, o IV Rank apareceria numa tela e sumiria na outra.
+  // WO-50: a regra passou a viver em lib/iv-rank.ts; servidor e navegador a importam de la.
   const { MIN_OBSERVACOES } = await import("../iv-historico");
+  const { MIN_OBSERVACOES: minRegra } = await import("../iv-rank");
   const srcSnapshots = ler("lib/snapshots.ts");
-  const minCliente = Number(/hist\.length < (\d+)/.exec(srcSnapshots)?.[1] ?? 0);
+  const minCliente = /ivRankDe\(/.test(srcSnapshots) && /from "\.\/iv-rank"/.test(srcSnapshots) ? minRegra : 0;
   if (MIN_OBSERVACOES === minCliente && MIN_OBSERVACOES === 20) {
     console.log(`✔ WO-42 Teste 5: minimo de ${MIN_OBSERVACOES} observacoes igual no servidor e no navegador`);
   } else {
@@ -5180,6 +5182,61 @@ async function testesWo28Restaurados() {
     const notOk = !/setSelectedTicker\("PETR4"\)/.test(srcNot) && /setPainelTickerAberto\(false\)/.test(srcNot);
     if (manualOk && semVelhos && consOk && notOk) console.log("✔ WO-49 Teste 6: Manual (atalhos e resumo das telas) bate com a Nav; textos com atalhos antigos removidos; Consultor usa netGreeks e a data da cadeia; Notícias recolhe em vez de selecionar PETR4");
     else { console.log(`✘ WO-49 Teste 6 falhou: manual=${manualOk} semVelhos=${semVelhos} consultor=${consOk} noticias=${notOk}`); failures++; }
+  }
+
+  // ================= WO-50 — um histórico de IV =================
+  {
+    const fs = await import("node:fs");
+    const path = await import("node:path");
+    const lerSrc = (rel: string) => fs.readFileSync(path.join(process.cwd(), rel), "utf8");
+    const { ivRankDe, resumoDistribuicao, MIN_OBSERVACOES } = await import("../iv-rank");
+    const { getIvRank } = await import("../snapshots");
+
+    // ---- Teste 1: a regra do percentil — null abaixo do mínimo, fração acima; navegador delega
+    const vinte = Array.from({ length: 20 }, (_, i) => 0.2 + i * 0.01); // 0.20 … 0.39
+    const r1 = ivRankDe(vinte, 0.295);
+    const snaps: any[] = vinte.map((v, i) => ({ date: `2026-08-${String(i + 1).padStart(2, "0")}`, ticker: "PETR4", spot: 40, atmIvCall: v, atmIvPut: v, atmIvMean: v, skewRatio: 1 }));
+    const t1 = ivRankDe(vinte.slice(0, 19), 0.3) == null && r1 != null && Math.abs(r1 - 10 / 20) < 1e-12 && ivRankDe(vinte, 0.5) === 1 && ivRankDe(vinte, null) == null
+      && getIvRank(snaps, "PETR4", 0.295) === r1 && getIvRank(snaps, "VALE3", 0.3) == null && MIN_OBSERVACOES === 20;
+    if (t1) console.log(`✔ WO-50 Teste 1: percentil ${(r1! * 100).toFixed(0)}% com 20 obs, null com 19; getIvRank do navegador usa a mesma regra`);
+    else { console.log(`✘ WO-50 Teste 1 falhou: r1=${r1}`); failures++; }
+
+    // ---- Teste 2: quantis da IV histórica para a linha do cone
+    const d = resumoDistribuicao([0.3, null, 0.1, 0.2, 0.4, undefined, 0.5])!;
+    const t2 = d.n === 5 && d.min === 0.1 && d.max === 0.5 && Math.abs(d.median - 0.3) < 1e-12 && Math.abs(d.p25 - 0.2) < 1e-12 && Math.abs(d.p75 - 0.4) < 1e-12 && resumoDistribuicao([]) == null;
+    if (t2) console.log("✔ WO-50 Teste 2: resumoDistribuicao ignora nulos e devolve mín/p25/mediana/p75/máx");
+    else { console.log(`✘ WO-50 Teste 2 falhou: ${JSON.stringify(d)}`); failures++; }
+
+    // ---- Teste 3: servidor — ranks em lote, gravação do navegador sem sobrescrever o sync, migração
+    const srcIvh = lerSrc("lib/iv-historico.ts");
+    const srcRota = lerSrc("app/api/iv-historico/route.ts");
+    const srcMig = lerSrc("app/api/iv-historico/migrar/route.ts");
+    const t3 = /export async function estatisticasIv/.test(srcIvh) && /unnest\(\$1::text\[\], \$2::numeric\[\]\)/.test(srcIvh)
+      && /export async function gravarSnapshotDoNavegador/.test(srcIvh) && /WHERE iv_snapshot\.origem <> 'sync'/.test(srcIvh)
+      && /export async function importarSnapshots/.test(srcIvh)
+      && /export async function POST/.test(srcRota) && /export async function PUT/.test(srcRota) && /estatisticasIv\(itens\)/.test(srcRota)
+      && /importarSnapshots\(validos\)/.test(srcMig)
+      && /MIN_OBSERVACOES = MINIMO/.test(srcIvh);
+    if (t3) console.log("✔ WO-50 Teste 3: POST (ranks em lote via unnest), PUT (snapshot do navegador, sync soberano) e migração existem; o mínimo vem de iv-rank.ts");
+    else { console.log("✘ WO-50 Teste 3 falhou: rotas ou funções do servidor ausentes"); failures++; }
+
+    // ---- Teste 4: um consumidor só — nenhum componente lê getIvRank direto; o store envia o snapshot ao banco
+    const consumidores = ["app/page.tsx", "app/noticias/page.tsx", "components/PainelContexto.tsx", "components/PainelWatchlist.tsx", "components/TickerBar.tsx"];
+    const semDireto = consumidores.every((a) => !/getIvRank\(/.test(lerSrc(a)) && !/useSnapshots/.test(lerSrc(a)) && /useIvRanks?\(/.test(lerSrc(a)));
+    const srcStore = lerSrc("store/market.ts");
+    const storeOk = /fetch\("\/api\/iv-historico", \{\s*method: "PUT"/.test(srcStore) && /data: snap\.date/.test(srcStore);
+    const hookOk = /export function useIvRanks/.test(lerSrc("lib/hooks/useIvRank.ts")) && /"navegador" : null/.test(lerSrc("lib/hooks/useIvRank.ts"));
+    if (semDireto && storeOk && hookOk) console.log("✔ WO-50 Teste 4: Cockpit, Notícias, Contexto, Watchlist e TickerBar usam useIvRank(s); o store grava o snapshot do dia no banco");
+    else { console.log(`✘ WO-50 Teste 4 falhou: semDireto=${semDireto} store=${storeOk} hook=${hookOk}`); failures++; }
+
+    // ---- Teste 5: Contexto mostra a IV histórica no cone; Carteira tem o arquivo com migração
+    const srcCtx = lerSrc("components/PainelContexto.tsx");
+    const srcArq = lerSrc("components/ArquivoIv.tsx");
+    const srcCart = lerSrc("app/carteira/page.tsx");
+    const t5 = /IV ATM · banco/.test(srcCtx) && /useSerieIv\(ticker\)/.test(srcCtx) && /resumoDistribuicao\(serieIv/.test(srcCtx)
+      && /Levar para o banco/.test(srcArq) && /\/api\/iv-historico\/migrar/.test(srcArq) && /<ArquivoIv \/>/.test(srcCart) && !/exportIvHistory/.test(srcCart);
+    if (t5) console.log("✔ WO-50 Teste 5: o cone do Contexto ganha a linha 'IV ATM · banco'; a Carteira usa ArquivoIv com 'Levar para o banco'");
+    else { console.log("✘ WO-50 Teste 5 falhou: cone sem IV histórica ou Carteira sem ArquivoIv"); failures++; }
   }
 }
 

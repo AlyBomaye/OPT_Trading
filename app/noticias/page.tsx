@@ -27,7 +27,7 @@ import clsx from "clsx";
 import type { MacroStrip, NewsBody, NewsItem } from "@/app/api/news/route";
 import type { EconEvent } from "@/app/api/calendar/route";
 import { useMarket } from "@/store/market";
-import { useSnapshots, getIvRank } from "@/lib/snapshots";
+import { useIvRank } from "@/lib/hooks/useIvRank";
 import { fmtBRL, fmtDateBR, fmtNum, fmtPct, pnlColor } from "@/lib/format";
 import { UNIVERSE, companyNames, type Sector } from "@/lib/universe";
 import { buildSectorRows, type SectorRow } from "@/lib/sector-analytics";
@@ -66,7 +66,6 @@ export default function NoticiasPage() {
   const { chain, selic, setTicker } = useMarket();
   const { byTicker: earningsMap } = useEarnings();
   const { rows: watchRows, lastRunAt, setRow, markRun } = useWatchlist();
-  const { snapshots } = useSnapshots();
 
   // Estados de dados
   const [news, setNews] = useState<NewsBody | null>(null);
@@ -94,6 +93,8 @@ export default function NoticiasPage() {
   const [updatingWatchlist, setUpdatingWatchlist] = useState(false);
   // WO-49: "Fechar" recolhe o painel do ticker; antes selecionava PETR4 fixo.
   const [painelTickerAberto, setPainelTickerAberto] = useState(true);
+  // WO-50: IV rank do banco (o mesmo do Cockpit e do Contexto). Hook fica no topo — não dentro do JSX.
+  const { ivRank: ivRankSelecionado } = useIvRank(selectedTicker, watchRows[selectedTicker]?.ivCallAtm ?? null);
 
   // Carrega preferências do localStorage
   useEffect(() => {
@@ -791,7 +792,7 @@ export default function NoticiasPage() {
                 {/* Contexto de Volatilidade do Ticker */}
                 {(() => {
                   const w = watchRows[selectedTicker];
-                  const ivRank = w?.ivCallAtm != null ? getIvRank(snapshots, selectedTicker, w.ivCallAtm) : null;
+                  const ivRank = ivRankSelecionado;
                   const ivHv = w?.ivCallAtm != null && w?.hv21 != null ? w.ivCallAtm - w.hv21 : null;
 
                   return (
