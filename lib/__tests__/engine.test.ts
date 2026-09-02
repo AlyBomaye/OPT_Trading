@@ -2235,9 +2235,229 @@ async function testesWo33() {
   await testesWo45();
   await testesWo46();
   await testesWo47();
+  await testesWo48();
 }
 
 // ============ WO-44 — TENDENCIA, FISCAL, AMOSTRA E JOURNAL ============
+
+// ============ WO-48 — BOLETAGEM: A BOLETA E O FATO, A POSICAO E A CONSEQUENCIA ============
+
+async function testesWo48() {
+  const fs = await import("fs");
+  const path = await import("path");
+  const raiz = path.resolve(__dirname, "..", "..");
+  const ler = (rel: string) => fs.readFileSync(path.join(raiz, rel), "utf-8");
+  const semComentarios = (src: string) => src.split("\n").filter((l) => !/^\s*(\/\/|\*|\/\*|--)/.test(l)).join("\n");
+
+  const sql = ler("db/002_boletagem.sql");
+  const srcLib = semComentarios(ler("lib/boletas.ts"));
+
+  // ---- Teste 1: o schema e idempotente e cria as tabelas na ordem das referencias
+  const creates = Array.from(sql.matchAll(/CREATE TABLE(?: IF NOT EXISTS)? (\w+)/g)).map((m) => [m[0].includes("IF NOT EXISTS"), m[1]] as const);
+  const todosIdempotentes = creates.every(([ok]) => ok) && !/CREATE INDEX (?!IF NOT EXISTS)/.test(sql) && !/CREATE UNIQUE INDEX (?!IF NOT EXISTS)/.test(sql);
+  const ordem = creates.map(([, n]) => n);
+  const refsOk = ordem.indexOf("estrutura") < ordem.indexOf("posicao") && ordem.indexOf("posicao") < ordem.indexOf("boleta");
+  if (todosIdempotentes && refsOk && ordem.length === 4) {
+    console.log("✔ WO-48 Teste 1: 002_boletagem.sql e idempotente (IF NOT EXISTS em tudo) e cria estrutura > posicao > boleta > config_custos");
+  } else {
+    console.log(`✘ WO-48 Teste 1 falhou: idempotente=${todosIdempotentes}, ordem=${ordem.join(">")}`);
+    failures++;
+  }
+
+  // ---- Teste 2: boleta e append-only — a biblioteca nao tem UPDATE nem DELETE em boleta
+  const mexeEmBoleta = /UPDATE\s+boleta\b|DELETE\s+FROM\s+boleta\b/i.test(srcLib);
+  const temEstorno = /estorna_id/.test(srcLib) && /case "ajuste"/.test(srcLib);
+  if (!mexeEmBoleta && temEstorno) {
+    console.log("✔ WO-48 Teste 2: nenhum UPDATE/DELETE em boleta; corrigir e registrar um ajuste com estorna_id");
+  } else {
+    console.log(`✘ WO-48 Teste 2 falhou: mexe=${mexeEmBoleta}, estorno=${temEstorno}`);
+    failures++;
+  }
+
+  const calc = await import("../boleta-calculos");
+
+  // ---- Teste 3: aumento recalcula o preco medio ponderado — exato
+  // 100 a 2,00 + 50 a 2,60 = 150 a 2,20.
+  const medio = calc.precoMedioAposAumento(100, 2.0, 50, 2.6);
+  const volta = calc.precoMedioAposEstorno(150, medio, 50, 2.6);
+  if (Math.abs(medio - 2.2) < 1e-9 && Math.abs(volta - 2.0) < 1e-9) {
+    console.log("✔ WO-48 Teste 3: 100@2,00 + 50@2,60 = 150@2,20; estornar os 50 devolve 2,00");
+  } else {
+    console.log(`✘ WO-48 Teste 3 falhou: medio=${medio}, volta=${volta}`);
+    failures++;
+  }
+
+  // ---- Teste 4: fechamento parcial leva o custo de abertura proporcional
+  // Perna com R$ 9,00 de custo acumulado, fecha 30 de 90 -> sai R$ 3,00 de custo.
+  const prop = calc.custosProporcionais(9, 30, 90);
+  if (Math.abs(prop - 3) < 1e-9 && calc.custosProporcionais(9, 30, 0) === 0) {
+    console.log("✔ WO-48 Teste 4: fechar 30 de 90 leva 1/3 do custo de abertura; perna vazia leva zero");
+  } else {
+    console.log(`✘ WO-48 Teste 4 falhou: ${prop}`);
+    failures++;
+  }
+
+  // ---- Teste 5: o servidor usa OS MESMOS calculos puros — nao ha segunda formula
+  const usaHelpers =
+    /precoMedioAposAumento\(/.test(srcLib) &&
+    /precoMedioAposEstorno\(/.test(srcLib) &&
+    /custosProporcionais\(/.test(srcLib) &&
+    /saldoCaixa\(/.test(srcLib) &&
+    /custoFiscalDaSaida\(/.test(srcLib);
+  const semFormulaPropria = !/preco_medio\) \* qAnt \+ e\.preco/.test(srcLib);
+  if (usaHelpers && semFormulaPropria) {
+    console.log("✔ WO-48 Teste 5: lib/boletas.ts grava com os calculos de boleta-calculos.ts — previa e projecao nao podem divergir");
+  } else {
+    console.log(`✘ WO-48 Teste 5 falhou: helpers=${usaHelpers}, semFormula=${semFormulaPropria}`);
+    failures++;
+  }
+
+  // ---- Teste 6: custos pela tabela VIGENTE NA DATA, e nunca inventados
+  const cfg = { vigenteDesde: "2026-01-01", corretagemFixa: 2.5, emolumentosPct: 0.0003, liquidacaoPct: 0.00025 };
+  const c = calc.calcularCustos(cfg, 10_000, "OPTION");
+  const semTabela = calc.calcularCustos(null, 10_000, "OPTION");
+  const caixa = calc.calcularCustos(cfg, 10_000, "CAIXA");
+  const vigenciaNaData = /vigente_desde <= \$1::date/.test(srcLib) && /ORDER BY vigente_desde DESC/.test(srcLib);
+  const semPercentualCravado = !/0\.0003|0\.00025|0\.03%/.test(ler("lib/boletas.ts")) && !/0\.0003|0\.00025/.test(semComentarios(ler("components/PainelCustos.tsx")).replace(/placeholder="[^"]*"/g, ""));
+  if (c && Math.abs(c.total - (2.5 + 3 + 2.5)) < 1e-9 && semTabela === null && caixa === null && vigenciaNaData && semPercentualCravado) {
+    console.log("✔ WO-48 Teste 6: R$2,50 + 0,03% + 0,025% de 10 mil = R$8,00; sem tabela e null; caixa nao tem custo; vigencia pela data; nenhum percentual cravado");
+  } else {
+    console.log(`✘ WO-48 Teste 6 falhou: total=${c?.total}, semTabela=${semTabela}, caixa=${caixa}, vigencia=${vigenciaNaData}, cravado=${!semPercentualCravado}`);
+    failures++;
+  }
+
+  // ---- Teste 7: proposta de vencimento — po, exercicio, atribuicao, e INDEFINIDA sem fechamento
+  const call = { tipoOpcao: "CALL" as const, strike: 30, lado: 1 as const, quantidade: 100 };
+  const put = { tipoOpcao: "PUT" as const, strike: 30, lado: -1 as const, quantidade: 100 };
+  const po = calc.propostaVencimento(call, 28);
+  const ex = calc.propostaVencimento(call, 33);
+  const atr = calc.propostaVencimento(put, 27);
+  const ind = calc.propostaVencimento(call, null);
+  const ok7 = po.situacao === "po" && po.ladoAcao === null
+    && ex.situacao === "exercicio" && ex.ladoAcao === 1
+    && atr.situacao === "atribuicao" && atr.ladoAcao === 1   // put vendida atribuida: COMPRA a acao
+    && ind.situacao === "indefinida";
+  if (ok7) {
+    console.log("✔ WO-48 Teste 7: call OTM vira po; call comprada ITM exerce comprando; put vendida ITM e atribuida comprando; sem fechamento e indefinida");
+  } else {
+    console.log(`✘ WO-48 Teste 7 falhou: ${JSON.stringify({ po, ex, atr, ind })}`);
+    failures++;
+  }
+
+  // ---- Teste 8: caixa = aportes − retiradas − debitos + creditos − custos
+  const fita = [
+    { tipo: "caixa", kind: "CAIXA", lado: 1 as const, quantidade: 1, preco: 50_000, custosTotal: 0 },
+    { tipo: "abertura", kind: "OPTION", lado: 1 as const, quantidade: 100, preco: 2.0, custosTotal: 3.0 },   // compra: -200 -3
+    { tipo: "abertura", kind: "OPTION", lado: -1 as const, quantidade: 100, preco: 0.6, custosTotal: 2.5 },  // venda: +60 -2.5
+    { tipo: "fechamento", kind: "OPTION", lado: -1 as const, quantidade: 100, preco: 3.0, custosTotal: 3.5 }, // vende a comprada: +300 -3.5
+    { tipo: "caixa", kind: "CAIXA", lado: -1 as const, quantidade: 1, preco: 1_000, custosTotal: 0 },
+  ];
+  const cx = calc.saldoCaixa(fita);
+  const esperado = 50_000 - 1_000 - 200 + 60 + 300 - (3 + 2.5 + 3.5);
+  if (Math.abs(cx.saldo - esperado) < 1e-9 && cx.aportes === 50_000 && cx.retiradas === 1_000) {
+    console.log(`✔ WO-48 Teste 8: caixa de um livro de 5 boletas = ${esperado} (aportes − retiradas − debitos + creditos − custos)`);
+  } else {
+    console.log(`✘ WO-48 Teste 8 falhou: ${JSON.stringify(cx)} vs ${esperado}`);
+    failures++;
+  }
+
+  // ---- Teste 9: migracao — origem migracao, executado_em = openedAt/closedAt, e so com o livro vazio
+  const mig = srcLib.slice(srcLib.indexOf("export async function migrarDoNavegador"));
+  const preservaDatas = /\[p\.openedAt, estruturaId, posicaoId/.test(mig) && /\[p\.closedAt, eid, pid/.test(mig);
+  const origemMigracao = (mig.match(/'migracao'/g) ?? []).length >= 3;
+  const soVazio = /count\(\*\)::int AS n FROM boleta/.test(mig) && /a migração só roda uma vez/.test(mig);
+  const caixaInicial = /'caixa','migracao'/.test(mig);
+  if (preservaDatas && origemMigracao && soVazio && caixaInicial) {
+    console.log("✔ WO-48 Teste 9: a migracao preserva openedAt/closedAt como executado_em, marca origem migracao, gera o aporte inicial e recusa rodar duas vezes");
+  } else {
+    console.log(`✘ WO-48 Teste 9 falhou: datas=${preservaDatas}, origem=${origemMigracao}, vazio=${soVazio}, caixa=${caixaInicial}`);
+    failures++;
+  }
+
+  // ---- Teste 10: sem banco, nada e gravado localmente
+  const srcRota = ler("app/api/boletas/route.ts");
+  const srcStore = semComentarios(ler("store/market.ts"));
+  const rotaRecusa = /if \(!bancoConfigurado\(\)\) return NextResponse\.json\(SEM_BANCO, \{ status: 409 \}\)/.test(srcRota);
+  const storeRecusa = /if \(!st\.livro\.configurado\) \{\s*return \{ ok: false/.test(srcStore);
+  const srcForm = ler("components/FormularioBoleta.tsx");
+  const formDesabilita = /semBanco \?/.test(srcForm) && /não guarda boleta só no navegador/.test(srcForm);
+  if (rotaRecusa && storeRecusa && formDesabilita) {
+    console.log("✔ WO-48 Teste 10: sem banco a rota responde 409, boletar() recusa e a boleta fica desabilitada — nunca grava so local");
+  } else {
+    console.log(`✘ WO-48 Teste 10 falhou: rota=${rotaRecusa}, store=${storeRecusa}, form=${formDesabilita}`);
+    failures++;
+  }
+
+  // ---- Teste 11: boleta + projecao na mesma transacao
+  const executarSoEmTransacao = /return emTransacao\(executar\)/.test(srcLib) && !/await executar\(\s*\)/.test(srcLib);
+  const inserirDentro = /await inserirBoleta\(c,/.test(srcLib);
+  if (executarSoEmTransacao && inserirDentro) {
+    console.log("✔ WO-48 Teste 11: registrarBoleta roda inteira dentro de emTransacao — sem projecao, sem boleta");
+  } else {
+    console.log(`✘ WO-48 Teste 11 falhou: transacao=${executarSoEmTransacao}, inserir=${inserirDentro}`);
+    failures++;
+  }
+
+  // ---- Teste 12: o Workbench gera boletas (origem workbench), nao grava posicao direto
+  const srcEstr = semComentarios(ler("app/estrategia/page.tsx"));
+  const usaBoletar = /await boletar\(legs, d\)/.test(srcEstr) && !/openPositions\(legs/.test(srcEstr);
+  const origemWorkbench = /origem: "workbench"/.test(srcStore);
+  if (usaBoletar && origemWorkbench) {
+    console.log("✔ WO-48 Teste 12: o botao Boletar do Workbench gera boletas origem workbench");
+  } else {
+    console.log(`✘ WO-48 Teste 12 falhou: boletar=${usaBoletar}, origem=${origemWorkbench}`);
+    failures++;
+  }
+
+  // ---- Teste 13: a apuracao fiscal le o custo da SAIDA (boleta + abertura proporcional)
+  const fiscal = calc.custoFiscalDaSaida(3, 3.5);
+  const fechadasUsam = /fees: custoFiscalDaSaida\(b\.custosAberturaRef, b\.custosTotal\)/.test(srcLib);
+  const precoMedioRef = /price: b\.precoMedioRef \?\? base\.price/.test(srcLib);
+  if (Math.abs(fiscal - 6.5) < 1e-9 && fechadasUsam && precoMedioRef) {
+    console.log("✔ WO-48 Teste 13: cada fechada leva fees = custo da saida + abertura proporcional, e price = medio da hora da saida — o que lib/fiscal.ts ja le");
+  } else {
+    console.log(`✘ WO-48 Teste 13 falhou: fiscal=${fiscal}, usa=${fechadasUsam}, medio=${precoMedioRef}`);
+    failures++;
+  }
+
+  // ---- Teste 14: a fita e ordenada por executado_em, nao por criado_em
+  if (/FROM boleta ORDER BY executado_em DESC/.test(srcLib)) {
+    console.log("✔ WO-48 Teste 14: a fita ordena por executado_em — a data do fato, nao a do registro");
+  } else {
+    console.log("✘ WO-48 Teste 14 falhou: a fita nao ordena por executado_em");
+    failures++;
+  }
+
+  // ---- Teste 15: chaves de localStorage novas sao por secao
+  const srcCart = ler("app/carteira/page.tsx");
+  if (/"carteira-boleta-open"/.test(srcCart) && !/carteira-boleta-\d/.test(srcCart)) {
+    console.log("✔ WO-48 Teste 15: carteira-boleta-open existe e e nomeada por secao");
+  } else {
+    console.log("✘ WO-48 Teste 15 falhou: chave da boleta ausente ou numerada");
+    failures++;
+  }
+
+  // ---- Teste 16: a simulacao reverte — o sentinela e tratado em db.ts sem virar warn
+  const srcDb = semComentarios(ler("lib/db.ts"));
+  const simula = /opcoes\.simular/.test(srcLib) && /throw new Simulacao\(r\)/.test(srcLib);
+  const dbSilencia = /err\?\.message !== "simulacao"/.test(srcDb);
+  if (simula && dbSilencia) {
+    console.log("✔ WO-48 Teste 16: ?simular=1 roda a boleta e forca ROLLBACK — a previa nunca grava");
+  } else {
+    console.log(`✘ WO-48 Teste 16 falhou: simula=${simula}, db=${dbSilencia}`);
+    failures++;
+  }
+
+  // ---- Teste 17: duAte conta so dias uteis
+  // De uma quarta (2026-09-02) ate a segunda seguinte (2026-09-07) sao 3 dias uteis: qui, sex, seg.
+  const du = calc.duAte("2026-09-07", new Date(2026, 8, 2, 12));
+  if (du === 3 && calc.duAte("2026-09-01", new Date(2026, 8, 2, 12)) === 0) {
+    console.log("✔ WO-48 Teste 17: duAte conta seg–sex (qua→seg = 3) e devolve 0 para data passada");
+  } else {
+    console.log(`✘ WO-48 Teste 17 falhou: ${du}`);
+    failures++;
+  }
+}
 
 // ============ WO-47 — A MESA QUE CABE NA TELA E A CARTEIRA QUE FECHA O CICLO ============
 
@@ -2681,7 +2901,7 @@ async function testesWo46() {
   const srcForm = ler("components/FormularioAbertura.tsx");
   const abreForm = /onClick=\{\(\) => setAbrindo\(true\)\}/.test(srcEstr);
   const gravaDireto = /openPositions\(legs\)\s*\}/.test(srcEstr);
-  const grava = /openPositions\(legs, d\)/.test(srcEstr);
+  const grava = /(openPositions|boletar)\(legs, d\)/.test(srcEstr); // WO-48: o Workbench boleta
   const teseObrigatoria = /if \(teseVazia\) return;/.test(srcForm);
   if (abreForm && !gravaDireto && grava && teseObrigatoria) {
     console.log("✔ WO-46 Teste 13: abrir posicao passa pelo formulario, e a tese e obrigatoria");

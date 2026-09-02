@@ -89,7 +89,7 @@ function Workbench() {
     removeLeg,
     setLegs,
     clearLegs,
-    openPositions,
+    boletar,
     selectedExpiry,
     positions,
     closed,
@@ -228,9 +228,21 @@ function Workbench() {
     [chain, metrics, legs, selic, atmIvStruct, capitalTotal]
   );
 
-  const confirmarAbertura = (d: DadosAbertura) => {
-    openPositions(legs, d);
+  // WO-48: boletar grava no banco como boletas `origem: workbench`; sem banco, recusa com a
+  // razão — a plataforma não guarda boleta só no navegador.
+  const [erroBoleta, setErroBoleta] = useState<string | null>(null);
+  const [boletando, setBoletando] = useState(false);
+  const confirmarAbertura = async (d: DadosAbertura) => {
+    setBoletando(true);
+    setErroBoleta(null);
+    const r = await boletar(legs, d);
+    setBoletando(false);
+    if (!r.ok) {
+      setErroBoleta(r.mensagem);
+      return;
+    }
     setAbrindo(false);
+    clearLegs();
   };
 
   const currentPresetDef = suggestPreset ? PRESETS.find((p) => p.key === suggestPreset) : null;
@@ -599,6 +611,12 @@ function Workbench() {
 
         {/* A porta das 3 perguntas abre AQUI, junto do botão — não no fim da página. */}
           {/* WO-46 §E.2 — a porta das 3 perguntas. */}
+          {erroBoleta && (
+            <div className="panel px-3 py-2 text-xs text-term-down border border-term-down/40">
+              Não boletado: {erroBoleta}
+            </div>
+          )}
+          {boletando && <div className="text-xxs text-term-dim px-1">Boletando…</div>}
           {abrindo && chain && (
             <FormularioAbertura
               ticker={chain.ticker}

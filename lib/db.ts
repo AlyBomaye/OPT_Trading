@@ -85,7 +85,8 @@ export async function emTransacao<T>(fn: (c: PoolClient) => Promise<T>): Promise
     return out;
   } catch (err: any) {
     if (client) await client.query("ROLLBACK").catch(() => undefined);
-    console.warn(`[db] transação revertida: ${err?.message}`);
+    // Simulação de boleta (WO-48) reverte de propósito — não é falha, não polui o log.
+    if (err?.message !== "simulacao") console.warn(`[db] transação revertida: ${err?.message}`);
     return null;
   } finally {
     client?.release();

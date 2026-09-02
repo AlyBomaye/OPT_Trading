@@ -257,6 +257,31 @@ interface MarketState {
   closed: Position[];
   capitalTotal: number;
 
+  /**
+   * WO-48 — estado do livro no banco. Com `configurado`, `positions`/`closed`/`capitalTotal` são
+   * CACHE do que veio de /api/boletas; sem, são o que sempre foram (o navegador).
+   */
+  livro: {
+    configurado: boolean;
+    /** null = ainda não perguntou ao servidor. */
+    consultadoEm: string | null;
+    totalBoletas: number;
+    aviso: string | null;
+    caixa: { aportes: number; retiradas: number; debitos: number; creditos: number; custos: number; saldo: number } | null;
+    estruturas: import("@/lib/boletas").EstruturaRegistrada[];
+    boletas: import("@/lib/boletas").BoletaRegistrada[];
+  };
+  sincronizarLivro: () => Promise<void>;
+  /**
+   * Boletar (WO-48): grava as pernas como boletas `origem: workbench` e ressincroniza.
+   * Devolve `{ ok:false, mensagem }` sem banco ou se o servidor recusar — nunca grava só local.
+   */
+  boletar: (
+    ls: Leg[],
+    plano?: Pick<Position, "tese" | "alvo" | "regraSaida" | "regimeNaEntrada">,
+    executadoEm?: string
+  ) => Promise<{ ok: boolean; mensagem: string | null }>;
+
   setTicker: (t: string) => void;
   setCapitalTotal: (v: number) => void;
   updatePosition: (id: string, patch: Partial<Position>) => void;
@@ -315,6 +340,84 @@ export const useMarket = create<MarketState>()(
       positions: [],
       closed: [],
       capitalTotal: 100_000,
+      livro: { configurado: false, consultadoEm: null, totalBoletas: 0, aviso: null, caixa: null, estruturas: [], boletas: [] },
+
+      sincronizarLivro: async () => {
+        try {
+          const res = await fetch("/api/boletas", { signal: AbortSignal.timeout(20_000) });
+          const j = await res.json().catch(() => null);
+          if (!j || j.configurado !== true) {
+            set((st) => ({ livro: { ...st.livro, configurado: false, consultadoEm: new Date().toISOString(), aviso: j?.aviso ?? "Banco indisponível — somente-leitura com o cache." } }));
+            return;
+          }
+          // Livro vazio no banco = ainda não migrado: NÃO sobrescreve o cache do navegador, senão
+          // a migração não teria de onde ler. A tela oferece a migração.
+          if (j.totalBoletas === 0) {
+            set((st) => ({ livro: { ...st.livro, configurado: true, consultadoEm: new Date().toISOString(), totalBoletas: 0, aviso: null, caixa: j.caixa, estruturas: [], boletas: [] } }));
+            return;
+          }
+          set({
+            positions: j.posicoes,
+            closed: j.fechadas,
+            capitalTotal: Math.max(0, Number(j.caixa?.saldo ?? 0)),
+            livro: { configurado: true, consultadoEm: new Date().toISOString(), totalBoletas: j.totalBoletas, aviso: null, caixa: j.caixa, estruturas: j.estruturas, boletas: j.boletas },
+          });
+        } catch (e: any) {
+          set((st) => ({ livro: { ...st.livro, consultadoEm: new Date().toISOString(), aviso: `Não foi possível ler o livro: ${e?.message ?? "erro"}` } }));
+        }
+      },
+
+      boletar: async (ls, plano, executadoEm) => {
+        const st = get();
+        if (!st.livro.configurado) {
+          return { ok: false, mensagem: "Boletar exige o banco (WO-48): rode npm run setup:db. Nada foi gravado — a plataforma não guarda boleta só no navegador." };
+        }
+        if (ls.length === 0) return { ok: false, mensagem: "Sem pernas para boletar." };
+        const quando = executadoEm ?? new Date().toISOString();
+        const chain = st.chainCache[ls[0].underlying] ?? st.chain;
+        const boletas = ls.map((l, i) => {
+          const o = l.kind === "OPTION" && chain?.ticker === l.underlying ? chain.options.find((x) => x.opTicker === l.opTicker) : undefined;
+          return {
+            tipo: "abertura",
+            origem: "workbench",
+            executadoEm: quando,
+            ticker: l.underlying,
+            kind: l.kind,
+            opTicker: l.kind === "OPTION" ? l.opTicker ?? null : null,
+            tipoOpcao: l.type ?? null,
+            modelo: l.model ?? null,
+            strike: l.strike ?? null,
+            vencimento: l.expiry ?? null,
+            lado: l.side,
+            quantidade: Math.abs(l.qty),
+            preco: l.price,
+            ivEntrada: l.iv ?? null,
+            gregasEntrada: o ? { delta: o.delta, vega: o.vega, theta: o.theta } : l.kind === "STOCK" ? { delta: 1, vega: 0, theta: 0 } : null,
+            // A primeira perna cria a estrutura com o plano; as demais entram nela pelo id
+            // devolvido — o servidor processa em ordem e o cliente encadeia.
+            ...(i === 0 ? { novaEstrutura: { tese: plano?.tese ?? null, alvo: plano?.alvo ?? null, regraSaida: plano?.regraSaida ?? null, regimeEntrada: plano?.regimeNaEntrada ?? null } } : {}),
+          };
+        });
+        try {
+          // Encadeia: primeira boleta cria a estrutura; as seguintes recebem estruturaId.
+          let estruturaId: number | null = null;
+          for (const b of boletas) {
+            const corpo: Record<string, unknown> = estruturaId != null ? { ...b, estruturaId } : b;
+            const res: Response = await fetch("/api/boletas", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(corpo), signal: AbortSignal.timeout(20_000) });
+            const j: any = await res.json().catch(() => null);
+            if (!res.ok || !j?.gravado) {
+              await get().sincronizarLivro();
+              return { ok: false, mensagem: j?.error ?? j?.aviso ?? `Boleta recusada (${res.status}).` };
+            }
+            const devolvido = j?.resultados?.[0]?.estruturaId;
+            if (typeof devolvido === "number") estruturaId = devolvido;
+          }
+          await get().sincronizarLivro();
+          return { ok: true, mensagem: null };
+        } catch (e: any) {
+          return { ok: false, mensagem: `Falha ao boletar: ${e?.message ?? "erro"}` };
+        }
+      },
 
       initHydrate: () => {
         const { chain, ticker } = get();
@@ -333,7 +436,12 @@ export const useMarket = create<MarketState>()(
         get().initHydrate();
         void get().refresh();
       },
-      setCapitalTotal: (v) => set({ capitalTotal: Math.max(0, v) }),
+      setCapitalTotal: (v) => {
+        // WO-48: com o livro no banco, o caixa vem das boletas (aporte/retirada). Editar aqui
+        // criaria um segundo número — a tela desabilita o campo; isto é a rede de segurança.
+        if (get().livro.configurado && get().livro.totalBoletas > 0) return;
+        set({ capitalTotal: Math.max(0, v) });
+      },
       updatePosition: (id, patch) =>
         set((st) => ({ positions: st.positions.map((p) => (p.id === id ? { ...p, ...patch } : p)) })),
       setSelic: (r) => {
@@ -473,7 +581,19 @@ export const useMarket = create<MarketState>()(
             }),
           ],
         })),
-      closePosition: (id, closePrice, motivoSaida) =>
+      closePosition: (id, closePrice, motivoSaida) => {
+        // WO-48: perna do banco ('db-<id>') fecha por boleta, e o livro ressincroniza.
+        const m = /^db-(\d+)$/.exec(id);
+        if (m) {
+          const st = get();
+          const p = st.positions.find((x) => x.id === id);
+          if (!p) return;
+          void fetch("/api/boletas", {
+            method: "POST", headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ tipo: "fechamento", origem: "manual", executadoEm: new Date().toISOString(), ticker: p.underlying, kind: p.kind, posicaoId: Number(m[1]), quantidade: Math.abs(p.qty), preco: closePrice, motivoSaida: motivoSaida ?? null }),
+          }).then(() => get().sincronizarLivro()).catch(() => get().sincronizarLivro());
+          return;
+        }
         set((st) => {
           const pos = st.positions.find((p) => p.id === id);
           if (!pos) return st;
@@ -481,8 +601,22 @@ export const useMarket = create<MarketState>()(
             positions: st.positions.filter((p) => p.id !== id),
             closed: [...st.closed, { ...pos, closedAt: new Date().toISOString(), closePrice, motivoSaida }],
           };
-        }),
-      closeStructure: (fechamentos, motivoSaida) =>
+        });
+      },
+      closeStructure: (fechamentos, motivoSaida) => {
+        // WO-48: se as pernas são do banco, N boletas de fechamento numa chamada só.
+        const st = get();
+        const doBanco = fechamentos.filter((f) => /^db-\d+$/.test(f.id));
+        if (doBanco.length > 0) {
+          const agora = new Date().toISOString();
+          const boletas = doBanco.map((f) => {
+            const p = st.positions.find((x) => x.id === f.id)!;
+            return { tipo: "fechamento", origem: "manual", executadoEm: agora, ticker: p.underlying, kind: p.kind, posicaoId: Number(f.id.slice(3)), quantidade: Math.abs(p.qty), preco: f.closePrice, motivoSaida: motivoSaida ?? null };
+          });
+          void fetch("/api/boletas", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ boletas }) })
+            .then(() => get().sincronizarLivro()).catch(() => get().sincronizarLivro());
+          return;
+        }
         set((st) => {
           const agora = new Date().toISOString();
           const porId = new Map(fechamentos.map((f) => [f.id, f.closePrice]));
@@ -494,7 +628,8 @@ export const useMarket = create<MarketState>()(
             positions: st.positions.filter((p) => !porId.has(p.id)),
             closed: [...st.closed, ...fechadas],
           };
-        }),
+        });
+      },
       removePosition: (id) =>
         set((st) => ({ positions: st.positions.filter((p) => p.id !== id) })),
     }),

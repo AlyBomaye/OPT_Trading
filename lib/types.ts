@@ -104,6 +104,12 @@ export interface Leg {
 }
 
 export interface Position extends Leg {
+  /**
+   * WO-48 — id da estrutura no banco. A chave implícita `underlying|openedAt` (groupTrades)
+   * continua valendo como fallback para o que veio do navegador; o que nasce pela boleta
+   * tem este id, e é por ele que uma perna diz "eu pertenço àquela estrutura".
+   */
+  estruturaId?: string;
   openedAt: string;
   closedAt?: string;
   closePrice?: number;

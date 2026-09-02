@@ -73,6 +73,11 @@ export function Nav() {
         setRecolhida(!recolhida);
         return;
       }
+      // WO-48: B abre a Carteira com a boleta focada, de qualquer aba.
+      if (e.key === "b" || e.key === "B") {
+        router.push("/carteira#boleta");
+        return;
+      }
       const item = ITEMS.find((i) => i.key === e.key);
       if (item) router.push(item.href);
     };
@@ -136,7 +141,7 @@ export function Nav() {
 
       {!recolhida && (
         <div className="px-3 py-2 text-xxs text-term-dim border-t border-term-line">
-          Atalhos: <kbd>1</kbd>–<kbd>0</kbd> abas · <kbd>G</kbd> Gestor · <kbd>R</kbd> atualizar · <kbd>[</kbd> barra · <kbd>?</kbd> ajuda
+          Atalhos: <kbd>1</kbd>–<kbd>0</kbd> abas · <kbd>B</kbd> boleta · <kbd>G</kbd> Gestor · <kbd>R</kbd> atualizar · <kbd>[</kbd> barra · <kbd>?</kbd> ajuda
         </div>
       )}
 

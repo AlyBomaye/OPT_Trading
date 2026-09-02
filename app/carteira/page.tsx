@@ -22,6 +22,11 @@ import { evaluateFlags, useFlagSettings } from "@/lib/position-flags";
 import { groupTrades, performanceStats } from "@/lib/performance";
 import { PainelApuracao } from "@/components/PainelApuracao";
 import { PainelEstruturas } from "@/components/PainelEstruturas";
+import { FormularioBoleta } from "@/components/FormularioBoleta";
+import { MigracaoLivro } from "@/components/MigracaoLivro";
+import { PainelVencimentos } from "@/components/PainelVencimentos";
+import { PainelCustos } from "@/components/PainelCustos";
+import { usePersistedState } from "@/lib/use-persisted-state";
 import type { Regime } from "@/lib/metodo";
 import { ActionFlags } from "@/components/ActionFlags";
 import { PerformanceCharts } from "@/components/PerformanceCharts";
@@ -43,7 +48,35 @@ export default function CarteiraPage() {
     refresh,
     capitalTotal,
     setCapitalTotal,
+    livro,
+    sincronizarLivro,
   } = useMarket();
+
+  // WO-48: o livro vive no banco; o store é cache. Sincroniza ao abrir a aba.
+  useEffect(() => {
+    void sincronizarLivro();
+  }, [sincronizarLivro]);
+
+  // A boleta: recolhível (chave por seção) e aberta pelo atalho B ou por /carteira#boleta.
+  const [boletaAberta, setBoletaAberta] = usePersistedState<boolean>("carteira-boleta-open", true);
+  const [focarBoleta, setFocarBoleta] = useState(false);
+  useEffect(() => {
+    if (typeof window !== "undefined" && window.location.hash === "#boleta") {
+      setBoletaAberta(true);
+      setFocarBoleta(true);
+    }
+    const onKey = (e: KeyboardEvent) => {
+      const tag = (e.target as HTMLElement)?.tagName;
+      if (tag === "INPUT" || tag === "SELECT" || tag === "TEXTAREA") return;
+      if (e.key === "b" || e.key === "B") {
+        setBoletaAberta(true);
+        setFocarBoleta(true);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [setBoletaAberta]);
+  const livroNoBanco = livro.configurado && livro.totalBoletas > 0;
   // WO-4: progresso do "Reavaliar tudo"
   const [reval, setReval] = useState<{ done: number; total: number; failed: string[] } | null>(null);
   const { snapshots, importSnapshots } = useSnapshots();
@@ -190,6 +223,25 @@ export default function CarteiraPage() {
         }}
       />
 
+      {/* WO-48 — o livro no banco. Sem banco: somente-leitura com o cache, e a boleta desabilitada. */}
+      {livro.consultadoEm && !livro.configurado && (
+        <div className="panel px-3 py-2 text-xs text-term-gold border border-term-gold/40">
+          <b>Somente leitura</b> — {livro.aviso ?? "banco indisponível"}. O que você vê é o cache deste navegador; nada é gravado até o banco voltar.
+        </div>
+      )}
+      <MigracaoLivro />
+      {boletaAberta ? (
+        <div id="boleta">
+          <FormularioBoleta aberto onFechar={() => setBoletaAberta(false)} focar={focarBoleta} />
+        </div>
+      ) : (
+        <button className="btn flex items-center gap-1 text-term-cyan" onClick={() => setBoletaAberta(true)}>
+          Abrir a boleta <kbd className="text-xxs bg-term-panel2 border border-term-line rounded px-1">B</kbd>
+        </button>
+      )}
+      <PainelVencimentos />
+      <PainelCustos />
+
       {/* WO-17 Bloco A: Painel de Ação do Dia (Flags de Risco) */}
       <div id="acao-do-dia">
         <ActionFlags
@@ -209,6 +261,8 @@ export default function CarteiraPage() {
             step="1000"
             value={capitalTotal}
             onChange={(e) => setCapitalTotal(Number(e.target.value) || 0)}
+            disabled={livroNoBanco}
+            title={livroNoBanco ? "Com o livro no banco, o caixa vem das boletas (aporte/retirada) — registre pela boleta" : undefined}
             className="cell-input !w-full font-mono font-semibold"
           />
         </div>
