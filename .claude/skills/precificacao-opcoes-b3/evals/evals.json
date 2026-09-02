@@ -1,0 +1,23 @@
+{
+  "skill_name": "precificacao-opcoes-b3",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "A IV da PETRI482 está vindo null na cadeia hoje e ontem estava 31%. O prêmio é 2,08 e o spot 45,60, strike 45,92, vencimento 18/09. Descobre o que está acontecendo e corrige se for bug.",
+      "expected_output": "Diagnóstico que testa primeiro dado vs código: confere intrínseco vs prêmio, data da marcação vs data do spot, du/252, r como fração; usa paridade/limites como verificação; se null for legítimo (stale/sem negócio), mantém null e explica na tela; se bug, teste numérico antes do fix.",
+      "files": []
+    },
+    {
+      "id": 2,
+      "prompt": "Adiciona um cenário 'T+5 com vol +8pp' no gráfico de payoff da Estratégia.",
+      "expected_output": "Reutiliza pnlAtDay/buildPayoffCurve em vez de escrever BSM novo; t em du/252; vega por +1pp (então +8pp = sigma + 0,08); avisa sobre sticky strike; teste numérico; typecheck e test:engine verdes.",
+      "files": []
+    },
+    {
+      "id": 3,
+      "prompt": "Quero um teste que garanta que as gregas do bsGreeks não vão quebrar quando alguém mexer na fórmula.",
+      "expected_output": "Teste com identidade theta+rSΔ+½σ²S²Γ=rΠ (theta ×365), diferenças finitas para delta/gamma/vega, paridade put-call, inversão impliedVol(bsPrice)=σ, convergência da árvore; usa BsInput {s,k,t,r,sigma} conforme assinatura real.",
+      "files": []
+    }
+  ]
+}

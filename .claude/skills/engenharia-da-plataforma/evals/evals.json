@@ -1,0 +1,23 @@
+{
+  "skill_name": "engenharia-da-plataforma",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "A tela ficou sem CSS de novo, tudo branco e sem estilo. Resolve.",
+      "expected_output": "Diagnostica .next corrompido (build com dev vivo), para o dev, apaga .next, sobe o dev via WMI, confirma no navegador; não roda npm run build com o dev de pé.",
+      "files": []
+    },
+    {
+      "id": 2,
+      "prompt": "Preciso de uma coluna nova 'observacao' na tabela boleta.",
+      "expected_output": "Migração idempotente em db/00N_*.sql com IF NOT EXISTS / DO $ guardado, atualização de tipos e de registrarBoleta, teste, typecheck && test:engine && commit com trailer, push para origin HEAD:main, sem imprimir DATABASE_URL.",
+      "files": []
+    },
+    {
+      "id": 3,
+      "prompt": "Faz um patch no PainelContexto trocando o texto 'Volatilidade histórica' por 'Vol realizada (HV21)'.",
+      "expected_output": "Usa script Python (ou Edit) em vez de heredoc do Bash com acento, mantém o teste de invariante se houver, roda typecheck e testes, commit por parte.",
+      "files": []
+    }
+  ]
+}

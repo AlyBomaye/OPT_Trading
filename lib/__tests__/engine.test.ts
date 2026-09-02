@@ -5053,6 +5053,40 @@ async function testesWo28Restaurados() {
     console.log("✘ WO-28 Teste 44 falhou: MapaOportunidades não deriva do UNIVERSE");
     failures++;
   }
+
+  // ---- Teste 45: skills de projeto — cada pasta tem SKILL.md com frontmatter válido e referências existentes
+  {
+    const fs = await import("node:fs");
+    const path = await import("node:path");
+    const raiz = path.join(process.cwd(), ".claude", "skills");
+    const pastas = fs.existsSync(raiz) ? fs.readdirSync(raiz).filter((d) => fs.statSync(path.join(raiz, d)).isDirectory()) : [];
+    const esperadas = ["precificacao-opcoes-b3", "volatilidade-e-smile", "risco-do-book", "boletagem-e-custos", "metodo-do-trader", "engenharia-da-plataforma"];
+    const problemas: string[] = [];
+    for (const nome of esperadas) {
+      const arq = path.join(raiz, nome, "SKILL.md");
+      if (!fs.existsSync(arq)) { problemas.push(`${nome}: sem SKILL.md`); continue; }
+      const src = fs.readFileSync(arq, "utf8");
+      const fm = src.match(/^---\n([\s\S]*?)\n---\n/);
+      if (!fm) { problemas.push(`${nome}: sem frontmatter`); continue; }
+      const nomeFm = fm[1].match(/^name:\s*(.+)$/m)?.[1]?.trim();
+      const desc = fm[1].match(/^description:\s*(.+)$/m)?.[1]?.trim() ?? "";
+      if (nomeFm !== nome) problemas.push(`${nome}: name '${nomeFm}' difere da pasta`);
+      if (desc.length < 200) problemas.push(`${nome}: descrição curta (${desc.length})`);
+      if (src.split("\n").length > 500) problemas.push(`${nome}: SKILL.md acima de 500 linhas`);
+      for (const ref of Array.from(src.matchAll(/`references\/([\w\-]+\.md)`/g))) {
+        if (!fs.existsSync(path.join(raiz, nome, "references", ref[1]))) problemas.push(`${nome}: referência ${ref[1]} não existe`);
+      }
+      const ev = path.join(raiz, nome, "evals", "evals.json");
+      if (!fs.existsSync(ev)) problemas.push(`${nome}: sem evals/evals.json`);
+      else { const j = JSON.parse(fs.readFileSync(ev, "utf8")); if (j.skill_name !== nome || !Array.isArray(j.evals) || j.evals.length < 2) problemas.push(`${nome}: evals inválido`); }
+    }
+    if (problemas.length === 0 && pastas.length >= esperadas.length) {
+      console.log(`✔ SK Teste 45: ${esperadas.length} skills com frontmatter válido, name = pasta, referências e evals presentes`);
+    } else {
+      console.log(`✘ SK Teste 45 falhou: ${problemas.join("; ") || "pastas: " + pastas.join(",")}`);
+      failures++;
+    }
+  }
 }
 
 testesAssincronos()

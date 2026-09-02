@@ -1,0 +1,23 @@
+{
+  "skill_name": "metodo-do-trader",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "O Consultor está genérico demais, parece um chatbot de finanças. Reescreve o prompt do agente da Estratégia.",
+      "expected_output": "Agente que aplica as 4 camadas aos dados da tela com números datados, responde as três perguntas, cita as saídas 70%/10 DU/5 DU e o 1%, usa nomes do método (Trava de Linha, Boletar), diz 'sem IV medida' quando falta dado, sem 'recomendo comprar'.",
+      "files": []
+    },
+    {
+      "id": 2,
+      "prompt": "Adiciona um preset de 'iron condor' na Estratégia.",
+      "expected_output": "Usa o nome do método (Condor, com nomeTecnico entre parênteses uma vez), posiciona no capítulo certo de PRESETS, entra em ESTRUTURAS_METODO/glossário/didática na mesma mudança, detecção em strategy-detect com o mesmo nome, testes de invariante atualizados com justificativa.",
+      "files": []
+    },
+    {
+      "id": 3,
+      "prompt": "Muda a realização de 70% para 60% só na tela da Carteira.",
+      "expected_output": "Recusa duplicar o literal: a regra vem de REALIZAR_PCT_LUCRO_MAXIMO em lib/metodo.ts; pergunta se a mudança é do método (então muda na constante e nos testes) ou propõe parâmetro explícito com proveniência; não cria dois 'setenta' diferentes.",
+      "files": []
+    }
+  ]
+}

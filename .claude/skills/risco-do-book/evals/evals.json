@@ -1,0 +1,23 @@
+{
+  "skill_name": "risco-do-book",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "Quanto eu perco na Carteira se a PETR4 abrir amanhã caindo 8% com a vol subindo? Quero isso na tela de risco.",
+      "expected_output": "Usa stressBook/varGrid ou pnlAtDay com choque de spot e de vol em T+1, mostra em R$ e em % do capital total, explica que a grade 3x3 é cenário e não distribuição; sem marcação devolve null com aviso.",
+      "files": []
+    },
+    {
+      "id": 2,
+      "prompt": "Vale a pena fazer delta hedge da minha Trava de Linha vendida em PETR4 comprando ação?",
+      "expected_output": "Faz a conta com os custos reais (tabela XP/B3, ~R$22 por ordem de opção, 0,03% + corretagem em ação), compara com lucro máximo restante e theta, conclui que quase sempre não para posição pequena, cita as saídas do método (70%/10 DU/5 DU) e o efeito fiscal de ter ação.",
+      "files": []
+    },
+    {
+      "id": 3,
+      "prompt": "Adiciona um VaR histórico na Carteira.",
+      "expected_output": "Simulação histórica com reavaliação completa via pnlAtDay sobre retornos reais dos candles (e IV via serieIv quando houver), horizonte 1d/5d, VaR 95% e expected shortfall, rotulado com janela e data, ao lado da grade e não substituindo; teste com caso fechado; null sem histórico.",
+      "files": []
+    }
+  ]
+}

@@ -1,0 +1,23 @@
+{
+  "skill_name": "boletagem-e-custos",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "Boletei a JHSFI109 com preço 0,37 mas o certo era 0,73. Corrige.",
+      "expected_output": "Não edita nem deleta a boleta: registra ajuste com estorna_id e nova abertura com 0,73 (ou orienta o formulário), mostra a prévia com ?simular=1, ressincroniza o livro; preço médio e caixa recalculados pela projeção.",
+      "files": []
+    },
+    {
+      "id": 2,
+      "prompt": "Quanto de imposto eu pago se fechar todas as posições hoje com lucro de R$ 180 em opções e vender R$ 15 mil de ações com lucro de R$ 900?",
+      "expected_output": "Opções: 15% sobre ganho líquido de custos, sem isenção; ações: vendas no mês ≤ R$ 20 mil → isento; IRRF 0,005% compensável; DARF até o último dia útil do mês seguinte; deixa claro que é estimativa e que custos entram na base.",
+      "files": []
+    },
+    {
+      "id": 3,
+      "prompt": "Coloca uma coluna 'custo por perna' na exportação Excel.",
+      "expected_output": "Adiciona a coluna na aba correta via lib/xlsx-minimo (sem dependência nova), usa custos_total gravados na boleta (não recalcula), atualiza o teste que lê o ZIP de volta, datas em ISO texto.",
+      "files": []
+    }
+  ]
+}

@@ -1,0 +1,23 @@
+{
+  "skill_name": "volatilidade-e-smile",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "A vol da VALE3 está cara? Quero que a tela de contexto responda isso de forma objetiva.",
+      "expected_output": "Resposta em três comparações (IV ATM vs HV21 com posição no cone; IV rank/percentil via estatisticaIv com aviso de histórico insuficiente; posição do strike no smile), cada número com data e fonte; null explicado, nunca zero.",
+      "files": []
+    },
+    {
+      "id": 2,
+      "prompt": "Implementa uma volatilidade EWMA na lib/historical e mostra ela ao lado da HV21 no PainelContexto.",
+      "expected_output": "ewmaVol(closes, lambda=0.94) anualizada por √252, null com dados insuficientes, exibida ao lado (não substituindo) da HV21 com rótulo do método; teste numérico com série sintética; testes existentes de rollingHV/volCone intactos.",
+      "files": []
+    },
+    {
+      "id": 3,
+      "prompt": "Na matriz de sensibilidade, quando eu simulo queda de 10% o P&L das puts compradas parece pequeno demais. Está errado?",
+      "expected_output": "Explica sticky strike (IV fixa por perna) vs realidade (IV sobe na queda), sugere choque de vol acoplado ao choque de spot ou aviso na tela; não chama de bug sem verificar; propõe mudança pequena com teste.",
+      "files": []
+    }
+  ]
+}
