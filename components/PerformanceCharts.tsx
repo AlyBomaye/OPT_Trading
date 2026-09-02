@@ -25,7 +25,10 @@ import {
   pnlByStrategy,
   pnlDistribution,
 } from "@/lib/performance";
-import { buildPayoffCurve, findBreakevens } from "@/lib/payoff";
+import { buildPayoffCurve, findBreakevens, pnlAtDay } from "@/lib/payoff";
+import { zeragemDaPerna, zeragemDaEstrutura } from "@/lib/zeragem";
+import { markInfo } from "@/store/market";
+import type { TabelaCustos } from "@/lib/boleta-calculos";
 import { allocatedCapital } from "@/lib/portfolio";
 import { sectorOf } from "@/lib/universe";
 import { fmtBRL, fmtCompact, fmtNum, fmtPct } from "@/lib/format";
@@ -38,6 +41,8 @@ interface Props {
   chainCache: Record<string, ChainData>;
   selic: number;
   concentracaoLimitPct?: number;
+  /** Tabela de custos para estimar o fechamento — a zeragem a custo zero depende dela. */
+  tabelaCustos?: TabelaCustos | null;
 }
 
 export function PerformanceCharts({
@@ -47,6 +52,7 @@ export function PerformanceCharts({
   chainCache,
   selic,
   concentracaoLimitPct = 0.25,
+  tabelaCustos = null,
 }: Props) {
   const groups = useMemo(() => groupTrades(positions, closed), [positions, closed]);
   const ddData = useMemo(() => drawdownSeries(closed, capitalTotal), [closed, capitalTotal]);
@@ -80,6 +86,18 @@ export function PerformanceCharts({
     }
     return Array.from(map.entries());
   }, [positions]);
+
+  // Zeragem a custo zero, por perna aberta: preço atual vs. preço que cobre todos os custos.
+  const zeragemData = useMemo(() => {
+    return positions
+      .filter((p) => p.closedAt == null)
+      .map((p) => {
+        const m = markInfo(p, chainCache).price;
+        const z = zeragemDaPerna(p, tabelaCustos, m);
+        const nome = p.kind === "STOCK" ? p.underlying : (p.opTicker ?? p.underlying).replace(/_\d{4}$/, "");
+        return { nome, lado: p.side === 1 ? "C" : "V", atual: m, zeragem: z.precoZeragem, cobre: z.cobreCustos, pnlLiquido: z.pnlLiquidoAgora, distancia: z.distancia };
+      });
+  }, [positions, chainCache, tabelaCustos]);
 
   // Calendário de Vencimentos
   const expiryCalendar = useMemo(() => {
@@ -244,6 +262,47 @@ export function PerformanceCharts({
           </div>
         )}
 
+        {/* 4b. Zeragem a custo zero — o que responde "quando vale a pena zerar" */}
+        {zeragemData.length > 0 && (
+          <div className="panel p-3 space-y-2">
+            <div className="panel-title flex items-center justify-between text-term-cyan">
+              <div className="flex items-center gap-2">
+                <TrendingUp size={14} />
+                <span>Zeragem a Custo Zero (preço que cobre ida e volta)</span>
+              </div>
+              <span className="text-xxs text-term-dim">
+                {tabelaCustos ? "custos pela tabela vigente" : "sem tabela: só custos de abertura"}
+              </span>
+            </div>
+            <div className="h-48 w-full">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart layout="vertical" data={zeragemData} margin={{ top: 5, right: 15, bottom: 0, left: 10 }} barGap={2}>
+                  <CartesianGrid stroke="#232a38" strokeDasharray="3 3" />
+                  <XAxis type="number" stroke="#6b7689" fontSize={9} tickFormatter={(v) => fmtNum(v, 2)} />
+                  <YAxis type="category" dataKey="nome" stroke="#6b7689" fontSize={9} width={92} />
+                  <Tooltip
+                    contentStyle={{ background: "#151922", border: "1px solid #232a38", fontSize: 11 }}
+                    formatter={(v: number, name: string) => [v != null ? fmtNum(v, 2) : "—", name === "atual" ? "Marcação atual" : "Zeragem (líquida de custos)"]}
+                    labelFormatter={(n: any, payload: any) => {
+                      const d = payload?.[0]?.payload;
+                      return d ? `${n} · P&L líquido agora ${d.pnlLiquido != null ? fmtBRL(d.pnlLiquido) : "—"}${d.distancia != null ? ` · faltam ${fmtPct(Math.abs(d.distancia))}` : ""}` : n;
+                    }}
+                  />
+                  <Bar dataKey="zeragem" name="zeragem" fill="#fbbf24" barSize={7} />
+                  <Bar dataKey="atual" name="atual" barSize={7}>
+                    {zeragemData.map((d, i) => (
+                      <Cell key={`z-${i}`} fill={d.atual == null ? "#3a4252" : d.cobre ? "#00c805" : "#ff3b30"} />
+                    ))}
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+            <div className="text-xxs text-term-dim font-mono">
+              amarelo = preço que zera após todos os custos · verde/vermelho = marcação atual, cobrindo ou não · cinza = sem marcação
+            </div>
+          </div>
+        )}
+
         {/* 5. Exposição por Setor */}
         <div className="panel p-3 space-y-2">
           <div className="panel-title flex items-center justify-between text-term-cyan">
@@ -292,15 +351,42 @@ export function PerformanceCharts({
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             {openByUnderlying.map(([ticker, tickerLegs]) => {
               const chain = chainCache[ticker];
-              const spot = chain?.spot ?? 100;
+              // Sem cadeia não há spot — e desenhar com um número de preenchimento era mentir.
+              if (!chain?.spot) {
+                return (
+                  <div key={ticker} className="p-2.5 rounded bg-term-panel2/40 border border-term-line/40 space-y-1">
+                    <div className="flex items-center justify-between text-xs font-mono">
+                      <span className="font-bold text-term-cyan">{ticker} ({tickerLegs.length} pernas)</span>
+                      <span className="text-term-gold text-xxs">sem cotação — carregando a cadeia…</span>
+                    </div>
+                    <div className="h-44 flex items-center justify-center text-xxs text-term-dim">
+                      O payoff aparece quando a cadeia de {ticker} carregar (ou clique em Reavaliar tudo).
+                    </div>
+                  </div>
+                );
+              }
+              const spot = chain.spot;
               const curveData = buildPayoffCurve(tickerLegs, spot, selic, 0);
               const bes = findBreakevens(tickerLegs, spot);
+              const marcas = tickerLegs.map((l) => markInfo(l, chainCache).price);
+              const z = zeragemDaEstrutura(tickerLegs, tabelaCustos, marcas);
+              const custoTotal = tickerLegs.reduce((a, l) => a + (l.side === 1 ? l.price * Math.abs(l.qty) : 0) + (l.fees ?? 0), 0);
+              const beMaisProximo = bes.length ? bes.reduce((m, b) => (Math.abs(b - spot) < Math.abs(m - spot) ? b : m), bes[0]) : null;
+              const duMin = Math.min(...tickerLegs.map((l) => l.du ?? 0).filter((d) => d > 0));
 
               return (
                 <div key={ticker} className="p-2.5 rounded bg-term-panel2/40 border border-term-line/40 space-y-1">
                   <div className="flex items-center justify-between text-xs font-mono">
                     <span className="font-bold text-term-cyan">{ticker} ({tickerLegs.length} pernas)</span>
                     <span className="text-term-dim text-xxs">Spot: {fmtBRL(spot)}</span>
+                  </div>
+                  {/* Indicadores: o que decide, em uma linha. */}
+                  <div className="grid grid-cols-5 gap-1 text-[10px] font-mono">
+                    <Ind rotulo="P&L líquido" valor={z.pnlLiquidoAgora != null ? fmtBRL(z.pnlLiquidoAgora, 0) : "—"} cls={z.pnlLiquidoAgora == null ? "text-term-dim" : z.pnlLiquidoAgora >= 0 ? "text-term-up" : "text-term-down"} dica="marcação de agora, menos custos de abertura e de um fechamento" />
+                    <Ind rotulo="Custo total" valor={fmtBRL(custoTotal, 0)} dica="prêmios pagos + custos de abertura" />
+                    <Ind rotulo="Breakeven" valor={beMaisProximo != null ? fmtNum(beMaisProximo, 2) : "—"} dica="preço do ativo em que a estrutura zera no vencimento (o mais próximo do spot)" />
+                    <Ind rotulo="Até o BE" valor={beMaisProximo != null ? fmtPct(beMaisProximo / spot - 1) : "—"} cls={beMaisProximo != null && Math.abs(beMaisProximo / spot - 1) < 0.02 ? "text-term-gold" : ""} dica="quanto o ativo precisa andar até o breakeven" />
+                    <Ind rotulo="DU" valor={Number.isFinite(duMin) ? String(duMin) : "—"} cls={Number.isFinite(duMin) && duMin <= 5 ? "text-term-down" : Number.isFinite(duMin) && duMin <= 10 ? "text-term-gold" : ""} dica="dias úteis até o vencimento mais próximo" />
                   </div>
 
                   <div className="h-44 w-full">
@@ -311,7 +397,7 @@ export function PerformanceCharts({
                         <YAxis stroke="#6b7689" fontSize={8} tickFormatter={(v) => fmtCompact(v)} width={40} />
                         <Tooltip
                           contentStyle={{ background: "#151922", border: "1px solid #232a38", fontSize: 10 }}
-                          formatter={(v: number) => [fmtBRL(v), "P&L Expiração"]}
+                          formatter={(v: number, name: string) => [fmtBRL(v), name === "Hoje" ? "P&L hoje (BSM)" : "P&L no vencimento"]}
                           labelFormatter={(s: number) => `S = ${fmtBRL(s)}`}
                         />
                         <ReferenceLine y={0} stroke="#6b7689" />
@@ -319,7 +405,8 @@ export function PerformanceCharts({
                         {bes.map((be) => (
                           <ReferenceLine key={be} x={be} stroke="#fbbf24" strokeDasharray="3 3" />
                         ))}
-                        <Line type="monotone" dataKey="expiry" stroke="#00c805" strokeWidth={1.5} dot={false} />
+                        <Line type="monotone" dataKey="expiry" name="Vencimento" stroke="#00c805" strokeWidth={1.5} dot={false} />
+                        <Line type="monotone" dataKey="t0" name="Hoje" stroke="#22d3ee" strokeWidth={1} strokeDasharray="4 3" dot={false} />
                       </LineChart>
                     </ResponsiveContainer>
                   </div>
@@ -370,6 +457,16 @@ export function PerformanceCharts({
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+
+function Ind({ rotulo, valor, cls, dica }: { rotulo: string; valor: string; cls?: string; dica?: string }) {
+  return (
+    <div className="bg-term-panel/60 border border-term-line/40 rounded px-1.5 py-1" title={dica}>
+      <div className="text-term-dim uppercase tracking-wider text-[9px] leading-none">{rotulo}</div>
+      <div className={`font-semibold leading-tight mt-0.5 ${cls ?? ""}`}>{valor}</div>
     </div>
   );
 }

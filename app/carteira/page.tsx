@@ -26,6 +26,7 @@ import { FormularioBoleta } from "@/components/FormularioBoleta";
 import { MigracaoLivro } from "@/components/MigracaoLivro";
 import { PainelVencimentos } from "@/components/PainelVencimentos";
 import { PainelCustos } from "@/components/PainelCustos";
+import { CUSTOS_SUGERIDOS_XP_B3 } from "@/lib/custos-sugeridos";
 import { usePersistedState } from "@/lib/use-persisted-state";
 import type { Regime } from "@/lib/metodo";
 import { ActionFlags } from "@/components/ActionFlags";
@@ -141,6 +142,23 @@ export default function CarteiraPage() {
   });
 
   // WO-4: reavalia sequencialmente o chain de cada ativo distinto do book
+  // Cadeias que faltam para marcar o book: sem elas o P&L fica em branco e o perfil de risco
+  // desenhava com um spot de preenchimento. Reavalia sozinho, uma vez por ativo por visita.
+  const tentados = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    const faltam = Array.from(new Set(positions.map((p) => p.underlying))).filter((t) => !chainCache[t] && !tentados.current.has(t));
+    if (faltam.length === 0) return;
+    faltam.forEach((t) => tentados.current.add(t));
+    (async () => {
+      for (const t of faltam) {
+        try { await refresh(t); } catch { /* fica sem marca; o botao Reavaliar tudo tenta de novo */ }
+      }
+    })();
+  }, [positions, chainCache, refresh]);
+
+  // Sem tabela gravada, a sugestao (oficial, com proveniencia) serve para estimar o fechamento.
+  const tabelaCustos = livro.custos ?? { ...CUSTOS_SUGERIDOS_XP_B3, vigenteDesde: "sugestao" };
+
   const revalAll = async () => {
     const tickers = Array.from(new Set(positions.map((p) => p.underlying)));
     if (!tickers.length) return;
@@ -417,7 +435,7 @@ export default function CarteiraPage() {
       {/* WO-47 §5.2 — a Carteira pensa por estrutura: % do lucro máximo, DU, alvo, regime e o
           plano da entrada, com fechamento da estrutura inteira numa ação. A tabela por perna
           continua abaixo para editar taxas e notas. */}
-      <PainelEstruturas flags={allFlags} regimes={regimes} />
+      <PainelEstruturas flags={allFlags} regimes={regimes} tabelaCustos={tabelaCustos} />
 
       {/* Posições abertas (por perna) */}
       <div className="panel">
@@ -600,6 +618,7 @@ export default function CarteiraPage() {
         capitalTotal={capitalTotal}
         chainCache={chainCache}
         selic={selic}
+        tabelaCustos={tabelaCustos}
       />
 
       {/* WO-2: arquivo de snapshots de IV */}

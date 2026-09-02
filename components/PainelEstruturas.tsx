@@ -28,6 +28,8 @@ import { detectStrategy } from "@/lib/strategy-detect";
 import { DU_ROLAR, DU_FECHAR, REALIZAR_PCT_LUCRO_MAXIMO, type Regime } from "@/lib/metodo";
 import { fmtBRL, fmtDateBR, fmtNum, fmtPct, pnlColor } from "@/lib/format";
 import type { Position } from "@/lib/types";
+import { zeragemDaPerna, zeragemDaEstrutura } from "@/lib/zeragem";
+import type { TabelaCustos } from "@/lib/boleta-calculos";
 
 type Motivo = NonNullable<Position["motivoSaida"]>;
 
@@ -42,6 +44,8 @@ const MOTIVOS: { valor: Motivo; rotulo: string }[] = [
 interface Props {
   flags: PositionFlag[];
   regimes: Record<string, { regime: Regime; observadoEm: string }>;
+  /** Tabela de custos — para a zeragem a custo zero de cada perna. */
+  tabelaCustos?: TabelaCustos | null;
 }
 
 /** Dias úteis restantes: o menor `du` das pernas, descontado o que passou desde a abertura. */
@@ -70,7 +74,7 @@ function motivoSugerido(flags: PositionFlag[]): Motivo {
   return "manual";
 }
 
-export function PainelEstruturas({ flags, regimes }: Props) {
+export function PainelEstruturas({ flags, regimes, tabelaCustos = null }: Props) {
   const { positions, chainCache, selic, closeStructure } = useMarket();
   const [aberta, setAberta] = useState<string | null>(null);
   const [fechando, setFechando] = useState<string | null>(null);
@@ -110,6 +114,7 @@ export function PainelEstruturas({ flags, regimes }: Props) {
                 flags={flags.filter((f) => e.pernas.some((p) => p.id === f.positionId))}
                 regime={regimes[e.underlying] ?? null}
                 chainCache={chainCache}
+                tabelaCustos={tabelaCustos}
                 expandida={aberta === e.chave}
                 onToggle={() => setAberta(aberta === e.chave ? null : e.chave)}
                 fechando={fechando === e.chave}
@@ -132,6 +137,7 @@ function LinhaEstrutura({
   flags,
   regime,
   chainCache,
+  tabelaCustos,
   expandida,
   onToggle,
   fechando,
@@ -142,6 +148,7 @@ function LinhaEstrutura({
   flags: PositionFlag[];
   regime: { regime: Regime; observadoEm: string } | null;
   chainCache: Record<string, import("@/lib/types").ChainData>;
+  tabelaCustos: TabelaCustos | null;
   expandida: boolean;
   onToggle: () => void;
   fechando: boolean;
@@ -217,18 +224,33 @@ function LinhaEstrutura({
                 <div className="text-term-dim uppercase tracking-wider mb-1">Pernas</div>
                 {e.pernas.map((p) => {
                   const m = markInfo(p, chainCache);
+                  const z = zeragemDaPerna(p, tabelaCustos, m.price);
                   return (
                     <div key={p.id} className="flex justify-between gap-2 font-mono">
                       <span>
                         <span className={p.side === 1 ? "text-term-up" : "text-term-down"}>{p.side === 1 ? "C" : "V"}</span>{" "}
                         {p.kind === "STOCK" ? "ação" : `${p.type} ${fmtNum(p.strike ?? 0)} ${p.expiry ? fmtDateBR(p.expiry) : ""}`} × {p.qty}
                       </span>
-                      <span className="text-term-dim">
+                      <span className="text-term-dim" title="entrada → marcação · zeragem a custo zero (cobre abertura + fechamento)">
                         {fmtBRL(p.price)} → {m.price != null ? fmtBRL(m.price) : "sem marca"}
+                        {" · zera em "}
+                        <span className={z.cobreCustos == null ? "" : z.cobreCustos ? "text-term-up" : "text-term-gold"}>{fmtBRL(z.precoZeragem)}</span>
                       </span>
                     </div>
                   );
                 })}
+                {(() => {
+                  const zt = zeragemDaEstrutura(e.pernas, tabelaCustos, e.pernas.map((p) => markInfo(p, chainCache).price));
+                  return (
+                    <div className="mt-1 pt-1 border-t border-term-line/30 flex justify-between font-mono">
+                      <span className="text-term-dim">P&amp;L líquido agora (após custos de abertura e de fechar)</span>
+                      <span className={zt.pnlLiquidoAgora == null ? "text-term-dim" : zt.pnlLiquidoAgora >= 0 ? "text-term-up" : "text-term-down"}>
+                        {zt.pnlLiquidoAgora != null ? fmtBRL(zt.pnlLiquidoAgora) : "—"}
+                        {zt.custoFechamentoAgora != null && <span className="text-term-dim"> (fechar custa ~{fmtBRL(zt.custoFechamentoAgora)})</span>}
+                      </span>
+                    </div>
+                  );
+                })()}
               </div>
               <div className="space-y-1">
                 <div className="text-term-dim uppercase tracking-wider mb-1 flex items-center gap-1">

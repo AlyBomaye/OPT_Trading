@@ -270,6 +270,8 @@ interface MarketState {
     caixa: { aportes: number; retiradas: number; debitos: number; creditos: number; custos: number; saldo: number } | null;
     estruturas: import("@/lib/boletas").EstruturaRegistrada[];
     boletas: import("@/lib/boletas").BoletaRegistrada[];
+    /** Tabela de custos vigente — para estimar o custo de fechar (zeragem). */
+    custos: import("@/lib/boletas").ConfigCustos | null;
   };
   sincronizarLivro: () => Promise<void>;
   /**
@@ -340,7 +342,7 @@ export const useMarket = create<MarketState>()(
       positions: [],
       closed: [],
       capitalTotal: 100_000,
-      livro: { configurado: false, consultadoEm: null, totalBoletas: 0, aviso: null, caixa: null, estruturas: [], boletas: [] },
+      livro: { configurado: false, consultadoEm: null, totalBoletas: 0, aviso: null, caixa: null, estruturas: [], boletas: [], custos: null },
 
       sincronizarLivro: async () => {
         try {
@@ -353,7 +355,7 @@ export const useMarket = create<MarketState>()(
           // Livro vazio no banco = ainda não migrado: NÃO sobrescreve o cache do navegador, senão
           // a migração não teria de onde ler. A tela oferece a migração.
           if (j.totalBoletas === 0) {
-            set((st) => ({ livro: { ...st.livro, configurado: true, consultadoEm: new Date().toISOString(), totalBoletas: 0, aviso: null, caixa: j.caixa, estruturas: [], boletas: [] } }));
+            set((st) => ({ livro: { ...st.livro, configurado: true, consultadoEm: new Date().toISOString(), totalBoletas: 0, aviso: null, caixa: j.caixa, estruturas: [], boletas: [], custos: j.custos ?? null } }));
             return;
           }
           set({
@@ -362,7 +364,7 @@ export const useMarket = create<MarketState>()(
             // Capital total = o que voce colocou (aportes - retiradas). O caixa depois das compras
             // fica em livro.caixa.saldo — sao numeros diferentes e a tela mostra os dois.
             capitalTotal: Math.max(0, Number(j.caixa?.aportes ?? 0) - Number(j.caixa?.retiradas ?? 0)),
-            livro: { configurado: true, consultadoEm: new Date().toISOString(), totalBoletas: j.totalBoletas, aviso: null, caixa: j.caixa, estruturas: j.estruturas, boletas: j.boletas },
+            livro: { configurado: true, consultadoEm: new Date().toISOString(), totalBoletas: j.totalBoletas, aviso: null, caixa: j.caixa, estruturas: j.estruturas, boletas: j.boletas, custos: j.custos ?? null },
           });
         } catch (e: any) {
           set((st) => ({ livro: { ...st.livro, consultadoEm: new Date().toISOString(), aviso: `Não foi possível ler o livro: ${e?.message ?? "erro"}` } }));

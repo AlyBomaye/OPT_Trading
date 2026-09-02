@@ -2400,6 +2400,44 @@ async function testesAjustes0209() {
     failures++;
   }
 
+  // ---- Teste 11: zeragem a custo zero — o preco que cobre abertura E fechamento
+  const { zeragemDaPerna, custoFechamentoEstimado } = await import("../zeragem");
+  const tab = { vigenteDesde: "2026-01-01", corretagemFixa: 18.9, emolumentosPct: 0.00037, liquidacaoPct: 0.000275, registroPct: 0.000695, taxaOperacionalPct: 0.059, impostosCorretagemPct: 0.0965 };
+  const comprada: any = { id: "x", kind: "OPTION", underlying: "PETR4", type: "CALL", strike: 45.92, side: 1, qty: 100, price: 2.08, fees: 22.24, openedAt: "2026-09-02T13:03:00Z" };
+  const z = zeragemDaPerna(comprada, tab, null);
+  // NA zeragem, o P&L liquido tem de ser ~0: qty*(P*-e) - fees - fechamento(P*) = 0
+  const pnlNaZeragem = 100 * (z.precoZeragem - 2.08) - 22.24 - custoFechamentoEstimado(tab, "OPTION", z.precoZeragem, 100);
+  const acimaDaEntrada = z.precoZeragem > 2.08;
+  const zm = zeragemDaPerna(comprada, tab, 2.16);
+  const vendida: any = { ...comprada, side: -1, price: 0.96, fees: 22.08 };
+  const zv = zeragemDaPerna(vendida, tab, null);
+  const pnlVendidaNaZeragem = 100 * (0.96 - zv.precoZeragem) - 22.08 - custoFechamentoEstimado(tab, "OPTION", zv.precoZeragem, 100);
+  const semTabela = zeragemDaPerna(comprada, null, null);
+  if (Math.abs(pnlNaZeragem) < 1e-6 && acimaDaEntrada && zm.pnlLiquidoAgora != null && zm.cobreCustos === false && Math.abs(pnlVendidaNaZeragem) < 1e-6 && zv.precoZeragem < 0.96 && Math.abs(semTabela.precoZeragem - (2.08 + 0.2224)) < 1e-9) {
+    console.log(`✔ AJ Teste 11: comprada a 2,08 com R$ 22 de custos zera em ${z.precoZeragem.toFixed(4)} (P&L liquido exatamente 0 la); a 2,16 ainda nao cobre; vendida zera abaixo da entrada; sem tabela = entrada + abertura/qtd`);
+  } else {
+    console.log(`✘ AJ Teste 11 falhou: pnlNaZeragem=${pnlNaZeragem}, z=${z.precoZeragem}, cobre=${zm.cobreCustos}, vend=${pnlVendidaNaZeragem}, semTab=${semTabela.precoZeragem}`);
+    failures++;
+  }
+
+  // ---- Teste 12: o perfil de risco nao desenha com spot de preenchimento
+  const srcPC = ler("components/PerformanceCharts.tsx");
+  if (!/chain\?\.spot \?\? 100/.test(srcPC) && /sem cotação — carregando a cadeia/.test(srcPC) && /dataKey="t0"/.test(srcPC) && /Zeragem a Custo Zero/.test(srcPC)) {
+    console.log("✔ AJ Teste 12: sem cadeia o perfil diz 'sem cotacao' em vez de usar spot 100; curva de hoje e grafico de zeragem presentes");
+  } else {
+    console.log("✘ AJ Teste 12 falhou: spot de preenchimento, curva de hoje ou grafico de zeragem");
+    failures++;
+  }
+
+  // ---- Teste 13: a Carteira reavalia sozinha as cadeias que faltam
+  const srcCartAJ = ler("app/carteira/page.tsx");
+  if (/const tentados = useRef<Set<string>>\(new Set\(\)\);/.test(srcCartAJ) && /filter\(\(t\) => !chainCache\[t\] && !tentados\.current\.has\(t\)\)/.test(srcCartAJ)) {
+    console.log("✔ AJ Teste 13: a Carteira busca a cadeia de cada ativo do book que ainda nao tem marcacao, uma vez por visita");
+  } else {
+    console.log("✘ AJ Teste 13 falhou: sem reavaliacao automatica");
+    failures++;
+  }
+
   // ---- Teste 9: apuracao fiscal cita opcoes SEM isencao e IRRF 0,005% (regras vigentes)
   const { IRRF_SWING_SOBRE_VENDA, ALIQUOTA_SWING } = await import("../fiscal");
   const semIsencaoOpcao = /NÃO vale para opções/.test(ler("lib/fiscal.ts"));
