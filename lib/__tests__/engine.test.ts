@@ -5238,6 +5238,54 @@ async function testesWo28Restaurados() {
     if (t5) console.log("✔ WO-50 Teste 5: o cone do Contexto ganha a linha 'IV ATM · banco'; a Carteira usa ArquivoIv com 'Levar para o banco'");
     else { console.log("✘ WO-50 Teste 5 falhou: cone sem IV histórica ou Carteira sem ArquivoIv"); failures++; }
   }
+
+  // ================= WO-51 — Scanner do método =================
+  {
+    const fs = await import("node:fs");
+    const path = await import("node:path");
+    const lerSrc = (rel: string) => fs.readFileSync(path.join(process.cwd(), rel), "utf8");
+    const { montarPrateleira, ordenarPrateleira, vencimentosDaPrateleira } = await import("../prateleira");
+    const { CUSTOS_SUGERIDOS_XP_B3 } = await import("../custos-sugeridos");
+    const { ESTRUTURAS_METODO } = await import("../metodo");
+    const tab = { ...CUSTOS_SUGERIDOS_XP_B3, vigenteDesde: "2026-01-01" };
+
+    // ---- Teste 1: com a cadeia sintética (du 20, dentro da janela) a prateleira monta estruturas do manual,
+    // líquidas de custos, julgadas, e sem as de risco ilimitado
+    const itens = montarPrateleira({ chain: synthChain, selic: 0.1, tabela: tab, regime: "alta", vol: "baixa" });
+    const presets = new Set(itens.map((i) => i.preset));
+    const ilimitadas = ESTRUTURAS_METODO.filter((e) => e.riscoIlimitado).map((e) => e.preset).filter(Boolean) as string[];
+    const semIlimitadas = ilimitadas.every((k) => !presets.has(k));
+    const temTrava = itens.some((i) => i.preset === "bullCallSpread");
+    const liquidos = itens.every((i) => i.custos != null && i.custos > 0 && i.metrics.liquido != null && i.dec === i.metrics.liquido && i.criterios.length > 0 && i.du === 20 && !i.foraDaJanela);
+    const t1 = itens.length >= 2 && semIlimitadas && temTrava && liquidos;
+    if (t1) console.log(`✔ WO-51 Teste 1: prateleira com ${itens.length} estrutura(s) de risco definido, líquidas de custos e julgadas (${Array.from(presets).join(", ")})`);
+    else { console.log(`✘ WO-51 Teste 1 falhou: n=${itens.length} semIlimitadas=${semIlimitadas} trava=${temTrava} liquidos=${liquidos}`); failures++; }
+
+    // ---- Teste 2: ordem — aderência a regime/vol antes dos critérios, e critérios antes do EV
+    const alta = itens.find((i) => i.preset === "bullCallSpread")!;
+    const baixa = itens.find((i) => i.preset === "bearPutSpread");
+    const ordenados = ordenarPrateleira(itens);
+    const idxAlta = ordenados.findIndex((i) => i === alta);
+    const idxBaixa = baixa ? ordenados.findIndex((i) => i === baixa) : -1;
+    const semRegime = montarPrateleira({ chain: synthChain, selic: 0.1, tabela: tab, regime: null, vol: null });
+    const t2 = alta.adereRegime === true && alta.adereVol === true && (baixa == null || (baixa.adereRegime === false && idxAlta < idxBaixa))
+      && semRegime.every((i) => i.adereRegime == null && i.adereVol == null);
+    if (t2) console.log("✔ WO-51 Teste 2: a trava de alta adere ao regime 'alta' com vol baixa e vem antes da de baixa; sem marcação a aderência é nula, não falsa");
+    else { console.log(`✘ WO-51 Teste 2 falhou: alta=${JSON.stringify({ r: alta?.adereRegime, v: alta?.adereVol, idxAlta, idxBaixa })}`); failures++; }
+
+    // ---- Teste 3: vencimentos — janela do método, ou o mais próximo marcado como fora; tela e Manual
+    const chainFora: any = { ...synthChain, expiries: [{ ...synthChain.expiries[0], du: 8 }, { ...synthChain.expiries[0], date: "2026-06-19", du: 60 }] };
+    const v1 = vencimentosDaPrateleira(synthChain);
+    const v2 = vencimentosDaPrateleira(chainFora);
+    const srcSc = lerSrc("app/scanner/page.tsx");
+    const srcPr = lerSrc("components/PrateleiraMetodo.tsx");
+    const ordemNaTela = srcSc.indexOf("<PrateleiraMetodo />") < srcSc.indexOf("Pozinhos —");
+    const t3 = v1.length === 1 && !v1[0].foraDaJanela && v2.length === 1 && v2[0].foraDaJanela && v2[0].du === 60
+      && ordemNaTela && /Montar na Estratégia/.test(srcPr) && /refresh\(t\)/.test(srcPr) && /useIvRanks\(/.test(srcPr) && /classificarVol\(/.test(srcPr)
+      && /prateleira do método/i.test(lerSrc("lib/manual-content.ts"));
+    if (t3) console.log("✔ WO-51 Teste 3: só vencimentos na janela (ou o mais próximo, marcado); a prateleira vem antes dos pozinhos e leva à Estratégia; Manual atualizado");
+    else { console.log(`✘ WO-51 Teste 3 falhou: v1=${JSON.stringify(v1)} v2=${JSON.stringify(v2)} tela=${ordemNaTela}`); failures++; }
+  }
 }
 
 testesAssincronos()

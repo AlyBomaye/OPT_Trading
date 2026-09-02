@@ -11,6 +11,7 @@ import { sectorOf } from "@/lib/universe";
 import { fmtBRL, fmtCompact, fmtDateBR, fmtNum, fmtPct } from "@/lib/format";
 import { AgentPanel } from "@/components/AgentPanel";
 import { TruthBar } from "@/components/TruthBar";
+import { PrateleiraMetodo } from "@/components/PrateleiraMetodo";
 
 export default function ScannerPage() {
   const { chain, ticker, selic, selectedExpiry, addLeg, closed } = useMarket();
@@ -54,8 +55,11 @@ export default function ScannerPage() {
           selectedExpiry,
         }}
       />
+      {/* WO-51: o scanner varre primeiro o que o método QUER — a prateleira; os pozinhos ficam abaixo. */}
+      <PrateleiraMetodo />
+
       <div className="panel">
-        <div className="panel-title">Scanner de Pozinhos — OTM barato com máxima convexidade (Δ/R$)</div>
+        <div className="panel-title">Pozinhos — OTM barato com máxima convexidade (Δ/R$) · capítulo 14, o que o método desaconselha</div>
 
         {/* WO-44: o manual dedica um capítulo ao Pozinho para DESENCORAJÁ-LO. A tela ranqueava sem
             dizer isso. A ressalva é do próprio método, com o número que ele dá. */}

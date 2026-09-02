@@ -96,8 +96,8 @@ export const RESUMO_TELAS = [
   },
   {
     modulo: "6. Scanner",
-    pergunta: "Quais opções OTM baratas têm mais convexidade — e por que o método desaconselha?",
-    resposta: "Varre pozinhos por Δ/R$, distância em σ e % até o breakeven, com o aviso do método e a alocação por setor sob orçamento ¼-Kelly.",
+    pergunta: "O que o método montaria hoje, em qual papel e vencimento — e quanto custa líquido?",
+    resposta: "Prateleira do método: para cada papel do universo e vencimento na janela de 20–40 DU, as estruturas do manual montadas, julgadas pelos critérios e precificadas líquidas de custos, com aderência ao regime marcado e à vol; abaixo, os pozinhos com o aviso do método.",
   },
   {
     modulo: "7. Estratégia",
@@ -117,7 +117,7 @@ export const HOTKEYS_MANUAL = [
   { atalho: "3", descricao: "Carteira — estruturas, pernas, boleta, apuração fiscal" },
   { atalho: "4", descricao: "Notícias — setorial, Mapa de Oportunidades, radar de eventos, feed" },
   { atalho: "5", descricao: "Macro — sessões, painéis, Rates & FX, Focus, impacto no universo" },
-  { atalho: "6", descricao: "Scanner — pozinhos e alocação por setor" },
+  { atalho: "6", descricao: "Scanner — prateleira do método e pozinhos" },
   { atalho: "7", descricao: "Estratégia — montagem, cadeia completa e contexto de volatilidade" },
   { atalho: "8", descricao: "Manual — este guia" },
   { atalho: "B", descricao: "Abre a Carteira com a boleta focada, de qualquer aba" },
