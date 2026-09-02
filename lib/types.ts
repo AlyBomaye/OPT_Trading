@@ -44,6 +44,12 @@ export interface OptionQuote {
   theta: number | null;
   vega: number | null;
   rho: number | null;
+  /** WO-56: melhor oferta de compra/venda no fechamento (COTAHIST diário da B3), quando houver. */
+  bid?: number | null;
+  ask?: number | null;
+  mid?: number | null;
+  /** Data do arquivo de ofertas usado. */
+  ofertasData?: string | null;
 }
 
 export interface ExpiryInfo {

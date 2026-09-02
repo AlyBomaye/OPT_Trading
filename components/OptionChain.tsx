@@ -134,6 +134,18 @@ export function OptionChain() {
       <div className="px-3 py-1.5 text-xxs text-term-dim">
         Clique <span className="text-term-up">C</span>/<span className="text-term-down">V</span> para comprar/vender a perna no
         Strategy Builder. Fundo verde = ITM.
+        {(() => {
+          // WO-56: quantas séries têm oferta de compra e venda no fechamento (COTAHIST da B3).
+          const comOferta = chain.options.filter((o) => o.bid != null && o.ask != null);
+          const data = comOferta[0]?.ofertasData ?? null;
+          return comOferta.length > 0 ? (
+            <span className="ml-2 text-term-cyan" title="Melhor oferta de compra e de venda no fechamento, do arquivo diário da B3. Séries com as duas ofertas e spread razoável são marcadas pelo mid na Carteira.">
+              · ofertas de fechamento{data ? ` (${data})` : ""}: {comOferta.length} de {chain.options.length} séries com bid e ask
+            </span>
+          ) : (
+            <span className="ml-2">· sem ofertas de fechamento (COTAHIST da B3 indisponível para a data)</span>
+          );
+        })()}
       </div>
     </div>
   );

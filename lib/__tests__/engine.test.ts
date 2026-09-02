@@ -5604,6 +5604,101 @@ async function testesWo28Restaurados() {
     if (t4) console.log("✔ WO-55 Teste 4: o ciclo é gravado no banco a cada agente e lido de lá após reinício; o Consultor tem fichas, grava a carta e relê as anteriores com 'o que mudou'");
     else { console.log("✘ WO-55 Teste 4 falhou: orquestrador ou Consultor"); failures++; }
   }
+
+  // ================= WO-56 — Nota XP e bid/ask =================
+  {
+    const fs = await import("node:fs");
+    const path = await import("node:path");
+    const lerSrc = (rel: string) => fs.readFileSync(path.join(process.cwd(), rel), "utf8");
+    const { parseCotahist, seriesDoPapel, spreadRelativo } = await import("../cotahist");
+    const { lerZip } = await import("../zip-leitura");
+    const { parseNotaSinacor, reconciliarNota } = await import("../nota-corretagem");
+    const { marcaDaSerie } = await import("../../store/market");
+
+    // ---- Teste 1: parse do COTAHIST (linha real do arquivo de 01/09/2026) e ZIP deflate
+    const linhaReal = "012026090178PETRI531    070PETR  FM/EDJON      N2000R$  000000000012600000000002080000000000126000000000016300000000002080000000000005000000000000000036000000000000044400000000000007242600000000000519402026091800000010000000000000BRPETRACNOR9214";
+    const linhaBidAsk = linhaReal.slice(0, 121) + "0000000000290" + "0000000000303" + linhaReal.slice(147); // bid 2,90 ask 3,03 nas colunas 121–146
+    const arq = parseCotahist(["00COTAHIST.2026BOVESPA 20260901", linhaReal, linhaBidAsk.replace("PETRI531", "PETRX501"), "99COTAHIST"].join("\n"));
+    const s1 = arq.series.PETRI531;
+    const s2 = arq.series.PETRX501;
+    const zlib = await import("node:zlib");
+    const conteudo = Buffer.from("01" + "x".repeat(300));
+    const comp = zlib.deflateRawSync(conteudo);
+    const nome = Buffer.from("A.TXT");
+    const local = Buffer.alloc(30); local.writeUInt32LE(0x04034b50, 0); local.writeUInt16LE(8, 8); local.writeUInt32LE(comp.length, 18); local.writeUInt32LE(conteudo.length, 22); local.writeUInt16LE(nome.length, 26);
+    const central = Buffer.alloc(46); central.writeUInt32LE(0x02014b50, 0); central.writeUInt16LE(8, 10); central.writeUInt32LE(comp.length, 20); central.writeUInt32LE(conteudo.length, 24); central.writeUInt16LE(nome.length, 28); central.writeUInt32LE(0, 42);
+    const eocd = Buffer.alloc(22); eocd.writeUInt32LE(0x06054b50, 0); eocd.writeUInt16LE(1, 8); eocd.writeUInt16LE(1, 10); eocd.writeUInt32LE(central.length + nome.length, 12); eocd.writeUInt32LE(local.length + nome.length + comp.length, 16);
+    const zip = Buffer.concat([local, nome, comp, central, nome, eocd]);
+    const entradas = lerZip(zip);
+    const t1 = arq.data === "2026-09-01" && arq.total === 2 && s1.tipo === "CALL" && s1.ultimo === 2.08 && s1.bid === 0.05 && s1.ask == null && s1.mid == null && s1.negocios === 36 && s1.quantidade === 44400 && s1.strike === 51.94 && s1.vencimento === "2026-09-18"
+      && s2.bid === 2.9 && s2.ask === 3.03 && Math.abs(s2.mid! - 2.965) < 1e-9 && Math.abs(spreadRelativo(s2)! - 0.13 / 2.965) < 1e-9
+      && Object.keys(seriesDoPapel(arq, "PETR4")).length === 2 && Object.keys(seriesDoPapel(arq, "VALE3")).length === 0
+      && entradas.length === 1 && entradas[0].nome === "A.TXT" && entradas[0].conteudo.equals(conteudo);
+    if (t1) console.log("✔ WO-56 Teste 1: COTAHIST — série, último, bid/ask/mid, negócios, strike e vencimento lidos do layout fixo; ZIP deflate lido sem dependência");
+    else { console.log(`✘ WO-56 Teste 1 falhou: ${JSON.stringify({ s1, s2, n: entradas.length })}`); failures++; }
+
+    // ---- Teste 2: a marca prefere o mid com spread razoável; spread absurdo ou sem oferta cai no último
+    const t2 = marcaDaSerie({ last: 2.0, bid: 1.9, ask: 2.1, mid: 2.0 }).fonte === "mid" && marcaDaSerie({ last: 2.0, bid: 1.9, ask: 2.1, mid: 2.0 }).preco === 2.0
+      && marcaDaSerie({ last: 0.3, bid: 0.05, ask: 0.5, mid: 0.275 }).fonte === "ultimo" && marcaDaSerie({ last: 0.3, bid: null, ask: 0.5, mid: null }).preco === 0.3
+      && marcaDaSerie({ last: null, bid: null, ask: null, mid: null }).preco == null && marcaDaSerie(undefined).fonte == null;
+    if (t2) console.log("✔ WO-56 Teste 2: marca = mid quando há bid e ask com spread ≤ 50% do mid; senão o último negócio; sem nada, null");
+    else { console.log("✘ WO-56 Teste 2 falhou: marcaDaSerie"); failures++; }
+
+    // ---- Teste 3: nota Sinacor — negócios, custos, data e líquido
+    const notaTxt = `NOTA DE NEGOCIAÇÃO
+Data pregão 02/09/2026
+Negócios realizados
+Q Negociação C/V Tipo mercado Prazo Especificação do título Obs. (*) Quantidade Preço / Ajuste Valor Operação / Ajuste D/C
+1-BOVESPA C OPCAO DE COMPRA 09/26 PETRI482 PETR PN 45,92 100 2,08 208,00 D
+1-BOVESPA C OPCAO DE VENDA 09/26 PETRU482 PETR PN 45,92 100 0,96 96,00 D
+1-BOVESPA V OPCAO DE COMPRA 09/26 JHSFI109 JHSF ON 10,77 100 0,80 80,00 C
+1-BOVESPA C VISTA PETR4 PETROBRAS PN N2 100 48,20 4.820,00 D
+Resumo dos Negócios
+Taxa de liquidação 1,44 D
+Taxa de Registro 0,27 D
+Emolumentos 1,93 D
+Corretagem / Despesas
+Corretagem 82,90 D
+ISS (SÃO PAULO) 4,15 D
+I.R.R.F. s/ operações, base R$ 80,00 0,00 D
+Total Custos / Despesas 90,69 D
+Líquido para 04/09/2026 5.134,69 D`;
+    const nota = parseNotaSinacor(notaTxt);
+    const t3 = nota.dataPregao === "2026-09-02" && nota.negocios.length === 4
+      && nota.negocios[0].codigo === "PETRI482" && nota.negocios[0].cv === "C" && nota.negocios[0].mercado === "OPCAO_COMPRA" && nota.negocios[0].quantidade === 100 && nota.negocios[0].preco === 2.08 && nota.negocios[0].valor === 208
+      && nota.negocios[2].cv === "V" && nota.negocios[2].dc === "C" && nota.negocios[3].mercado === "VISTA" && nota.negocios[3].codigo === "PETR4" && nota.negocios[3].valor === 4820
+      && nota.custos.corretagem === 82.9 && nota.custos.total === 90.69 && nota.custos.iss === 4.15 && nota.liquido === -5134.69 && nota.avisos.length === 0;
+    if (t3) console.log("✔ WO-56 Teste 3: nota Sinacor — 4 negócios (opções e à vista), custos por linha, total 90,69 e líquido lidos");
+    else { console.log(`✘ WO-56 Teste 3 falhou: ${JSON.stringify({ d: nota.dataPregao, n: nota.negocios, c: nota.custos, l: nota.liquido, a: nota.avisos })}`); failures++; }
+
+    // ---- Teste 4: reconciliação — casada, divergência de preço, falta boletar, boleta sem nota, diferença de custos distribuída
+    const boletas = [
+      { id: 1, tipo: "abertura", executadoEm: "2026-09-02T13:03:00Z", ticker: "PETR4", opTicker: "PETRI482", kind: "OPTION", lado: 1 as const, quantidade: 100, preco: 2.08, custosTotal: 22.24 },
+      { id: 2, tipo: "abertura", executadoEm: "2026-09-02T13:01:00Z", ticker: "PETR4", opTicker: "PETRU482", kind: "OPTION", lado: 1 as const, quantidade: 100, preco: 0.95, custosTotal: 22.08 },
+      { id: 3, tipo: "abertura", executadoEm: "2026-09-02T13:05:00Z", ticker: "COGN3", opTicker: "COGNI230", kind: "OPTION", lado: 1 as const, quantidade: 200, preco: 0.15, custosTotal: 21.99 },
+      { id: 4, tipo: "caixa", executadoEm: "2026-09-02T12:00:00Z", ticker: "CAIXA", opTicker: null, kind: "CAIXA", lado: 1 as const, quantidade: 1, preco: 600, custosTotal: 0 },
+      { id: 5, tipo: "abertura", executadoEm: "2026-09-01T13:05:00Z", ticker: "PETR4", opTicker: "PETRI482", kind: "OPTION", lado: 1 as const, quantidade: 100, preco: 2.08, custosTotal: 22.24 },
+    ];
+    const rec = reconciliarNota(nota, boletas);
+    const t4 = rec.casados.length === 2 && rec.casados[0].boleta?.id === 1 && rec.casados[0].divergencias.length === 0
+      && rec.casados[1].boleta?.id === 2 && /preço: boleta 0\.95 × nota 0\.96/.test(rec.casados[1].divergencias[0])
+      && rec.faltamBoletar.length === 2 && rec.faltamBoletar.map((n) => n.codigo).join() === "JHSFI109,PETR4"
+      && rec.boletasSemNota.length === 1 && rec.boletasSemNota[0].id === 3
+      && Math.abs(rec.custosEstimados - 44.32) < 1e-9 && rec.custosCobrados === 90.69 && Math.abs(rec.diferencaCustos! - 46.37) < 1e-9
+      && rec.distribuicao.length === 2 && Math.abs(rec.distribuicao.reduce((a, d) => a + d.ajuste, 0) - 46.37) < 0.02 && /2 negócio\(s\) casado\(s\) \(1 com divergência\)/.test(rec.resumo);
+    if (t4) console.log(`✔ WO-56 Teste 4: reconciliação — 2 casadas (1 com preço divergente), 2 na nota sem boleta, 1 boleta sem nota (a de outro dia e a de caixa ficam fora); custos +${rec.diferencaCustos!.toFixed(2)} distribuídos por financeiro`);
+    else { console.log(`✘ WO-56 Teste 4 falhou: ${JSON.stringify({ casados: rec.casados.map((c) => [c.boleta?.id, c.divergencias]), faltam: rec.faltamBoletar.map((n) => n.codigo), sem: rec.boletasSemNota.map((b) => b.id), custos: [rec.custosEstimados, rec.custosCobrados, rec.diferencaCustos], dist: rec.distribuicao })}`); failures++; }
+
+    // ---- Teste 5: rota, store e telas
+    const srcRota = lerSrc("app/api/cotahist/route.ts");
+    const srcStore = lerSrc("store/market.ts");
+    const t5 = /COTAHIST_D/.test(srcRota) && /lerZip\(buf\)/.test(srcRota) && /pregaoAnterior/.test(srcRota) && /gravarCache\(`cotahist-/.test(srcRota)
+      && /\/api\/cotahist\?data=/.test(srcStore) && /o\.mid = c\.mid/.test(srcStore) && /export function marcaDaSerie/.test(srcStore) && /fonte,\n/.test(srcStore)
+      && /mark\.fonte === "mid"/.test(lerSrc("app/carteira/page.tsx")) && /<ReconciliacaoNota \/>/.test(lerSrc("app/carteira/page.tsx"))
+      && /ofertas de fechamento/.test(lerSrc("components/OptionChain.tsx")) && /bid\?: number \| null/.test(lerSrc("lib/types.ts"));
+    if (t5) console.log("✔ WO-56 Teste 5: /api/cotahist com cache e recuo de datas; o store junta bid/ask/mid à cadeia; Carteira marca MID e tem a reconciliação; a cadeia mostra a cobertura de ofertas");
+    else { console.log("✘ WO-56 Teste 5 falhou: rota, store ou telas"); failures++; }
+  }
 }
 
 testesAssincronos()

@@ -82,7 +82,7 @@ export const RESUMO_TELAS = [
   {
     modulo: "3. Carteira",
     pergunta: "O que tenho aberto, o que o método manda fazer e quanto isso custa?",
-    resposta: "Ação do dia, estruturas (rolagem numa boleta composta, zeragem líquida por estrutura, fechamento), capital e limites de risco com vigência, boleta (B) e livro no banco, vencimentos pendentes, tabela de custos, apuração fiscal, stress, VaR da grade e VaR histórico com expected shortfall, e exportação em Excel.",
+    resposta: "Ação do dia, estruturas (rolagem numa boleta composta, zeragem líquida por estrutura, fechamento), capital e limites de risco com vigência, boleta (B) e livro no banco, vencimentos pendentes, tabela de custos, apuração fiscal, reconciliação com a nota de corretagem, stress, VaR da grade e VaR histórico com expected shortfall, e exportação em Excel. Marcação pelo mid das ofertas de fechamento da B3 quando há bid e ask.",
   },
   {
     modulo: "4. Notícias",

@@ -29,6 +29,7 @@ import { PainelVencimentos } from "@/components/PainelVencimentos";
 import { PainelCustos } from "@/components/PainelCustos";
 import { PainelLimites } from "@/components/PainelLimites";
 import { PainelVarHistorico } from "@/components/PainelVarHistorico";
+import { ReconciliacaoNota } from "@/components/ReconciliacaoNota";
 import { estruturasAbertas } from "@/lib/position-flags";
 import { strategyMetrics } from "@/lib/payoff";
 import { CUSTOS_SUGERIDOS_XP_B3 } from "@/lib/custos-sugeridos";
@@ -358,6 +359,8 @@ export default function CarteiraPage() {
       )}
       <PainelVencimentos />
       <PainelCustos />
+      {/* WO-56 — a nota da corretora contra o livro */}
+      <ReconciliacaoNota />
 
       {/* WO-17 Bloco B: Analytics de Desempenho do Journal */}
       <div id="journal" className="grid grid-cols-2 md:grid-cols-6 gap-2">
@@ -495,6 +498,9 @@ export default function CarteiraPage() {
                   <td className="td text-right">{fmtBRL(p.price)}</td>
                   <td className="td text-right">
                     {fmtBRL(cp)}
+                    {mark.fonte === "mid" && cp != null && (
+                      <span className="tag bg-term-cyan/15 text-term-cyan ml-1" title="Marca = mid entre a melhor oferta de compra e de venda no fechamento (COTAHIST da B3), não o último negócio.">MID</span>
+                    )}
                     {mark.stale && cp != null && (
                       <span
                         className="tag bg-term-gold/15 text-term-gold ml-1"

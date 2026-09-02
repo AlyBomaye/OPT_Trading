@@ -519,6 +519,27 @@ export const useMarket = create<MarketState>()(
             effectiveSpotDate,
             closesByDate
           );
+          // WO-56: bid/ask/mid de fechamento do COTAHIST da data efetiva, quando a B3 já publicou.
+          // Sem rede ou sem arquivo, a cadeia segue só com o último negócio — como sempre foi.
+          try {
+            const dataOf = chain.dataEfetiva ?? sess.ultimaSessao;
+            const oRes = await fetch(`/api/cotahist?data=${encodeURIComponent(dataOf)}&ticker=${encodeURIComponent(target)}`, { signal: AbortSignal.timeout(20_000) });
+            if (oRes.ok) {
+              const oj = await oRes.json();
+              if (oj?.ok && oj.series) {
+                for (const o of chain.options) {
+                  const c = oj.series[o.opTicker];
+                  if (!c) continue;
+                  o.bid = c.bid ?? null;
+                  o.ask = c.ask ?? null;
+                  o.mid = c.mid ?? null;
+                  o.ofertasData = oj.dataArquivo ?? null;
+                }
+              }
+            }
+          } catch {
+            /* ofertas são complemento, não requisito */
+          }
           const cur = get().selectedExpiry;
           const validExpiry = chain.expiries.some((e) => e.date === cur)
             ? cur
@@ -670,11 +691,23 @@ export const useMarket = create<MarketState>()(
 );
 
 /** Marcação de uma perna contra um chain específico (null se não achou). */
+/** WO-56: spread acima disto (relativo ao mid) e o mid deixa de ser marcação confiável. */
+const SPREAD_MAX_PARA_MID = 0.5;
+
+/** A marca de uma série: o mid das ofertas de fechamento quando existe e o spread é razoável; senão o último negócio. */
+export function marcaDaSerie(o: { last: number | null; bid?: number | null; ask?: number | null; mid?: number | null } | undefined): { preco: number | null; fonte: "mid" | "ultimo" | null } {
+  if (!o) return { preco: null, fonte: null };
+  if (o.bid != null && o.ask != null && o.mid != null && o.mid > 0 && o.ask >= o.bid && (o.ask - o.bid) / o.mid <= SPREAD_MAX_PARA_MID) {
+    return { preco: o.mid, fonte: "mid" };
+  }
+  return { preco: o.last ?? null, fonte: o.last != null ? "ultimo" : null };
+}
+
 function markFromChain(pos: Leg, chain: ChainData): number | null {
   if (pos.underlying !== chain.ticker) return null;
   if (pos.kind === "STOCK") return chain.spot;
   const o = chain.options.find((x) => x.opTicker === pos.opTicker);
-  return o?.last ?? null;
+  return marcaDaSerie(o).preco;
 }
 
 /** Cotação atual de uma posição a partir do chain carregado. */
@@ -687,6 +720,8 @@ export interface MarkInfo {
   price: number | null;
   stale: boolean;
   ageMin: number | null;
+  /** WO-56: de onde veio a marca — mid das ofertas de fechamento, ou o último negócio. */
+  fonte?: "mid" | "ultimo" | null;
   /**
    * WO-30 §2.5: idade da marca em PREGÕES, medida pela data do último negócio da série —
    * não pelo relógio do fetch. Antes, uma posição marcada com prêmio de 16/07 aparecia
@@ -706,7 +741,9 @@ export function markInfo(pos: Position, chainCache: Record<string, ChainData>): 
     if (live != null) {
       // Idade real = a do último negócio da própria série que originou a marca.
       const q = chain.options.find((o) => o.opTicker === pos.opTicker);
-      const markDate = q?.lastTradeAt ? q.lastTradeAt.slice(0, 10) : null;
+      const { fonte } = pos.kind === "STOCK" ? { fonte: null } : marcaDaSerie(q);
+      // Mid das ofertas de fechamento: a data é a do arquivo da B3, não a do último negócio.
+      const markDate = fonte === "mid" && q?.ofertasData ? q.ofertasData : q?.lastTradeAt ? q.lastTradeAt.slice(0, 10) : null;
       const agePregoes = markDate ? sessionsBetween(markDate, refSession) : null;
       return {
         price: live,
@@ -714,6 +751,7 @@ export function markInfo(pos: Position, chainCache: Record<string, ChainData>): 
         ageMin: null,
         agePregoes,
         markDate,
+        fonte,
       };
     }
   }
