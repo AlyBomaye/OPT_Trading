@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { runCycle, iniciarRunCycle, obterRunState, cancelarRunState } from "@/lib/agents/orchestrator";
+import { runCycle, iniciarRunCycle, obterRunStateAsync, cancelarRunState } from "@/lib/agents/orchestrator";
 import type { CycleResponse } from "@/lib/agents/types";
 import { lerHistoricoPerformance } from "@/lib/agents/curator";
 
@@ -69,7 +69,8 @@ export async function GET(req: Request) {
       return NextResponse.json({ error: "Parâmetro 'runId' é obrigatório." }, { status: 400 });
     }
 
-    const state = obterRunState(runId);
+    // WO-55: memória, e o banco quando o processo reiniciou no meio do ciclo.
+    const state = await obterRunStateAsync(runId);
     if (!state) {
       return NextResponse.json({ error: `Execução '${runId}' não encontrada ou expirada.` }, { status: 404 });
     }

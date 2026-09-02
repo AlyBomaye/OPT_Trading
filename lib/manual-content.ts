@@ -72,7 +72,7 @@ export const RESUMO_TELAS = [
   {
     modulo: "1. Consultor",
     pergunta: "O que a mesa de agentes diz do meu book e do mercado hoje?",
-    resposta: "Roda o ciclo de 13 agentes (aba por aba, depois o Gestor), consolida KPIs de risco, alertas, leitura de mercado e a Carta do Gestor; o Pipeline de Melhorias guarda o backlog sugerido.",
+    resposta: "As fichas de cada estrutura aberta (as três perguntas do método respondidas hoje, com o veredito: realizar, rolar, zerar, regime virou, manter), o ciclo de 13 agentes (aba por aba, depois o Gestor), KPIs de risco, alertas, leitura de mercado e a Carta do Gestor — guardada no banco a cada ciclo, com os anteriores para reler e o que mudou; o Pipeline de Melhorias guarda o backlog sugerido.",
   },
   {
     modulo: "2. Cockpit",

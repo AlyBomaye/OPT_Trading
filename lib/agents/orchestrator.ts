@@ -56,6 +56,15 @@ export interface RunState {
 // Armazenamento em memória dos runs assíncronos (P0.3)
 const RUN_STATES = new Map<string, RunState>();
 
+/**
+ * WO-55: a memória morre a cada recompile do dev server e a tela ficava em RODANDO até alguém
+ * recarregar. O estado agora vai também para o banco (`ciclo_agentes`), a cada agente concluído
+ * e no fim; a leitura cai para o banco quando a memória não tem o run. Sem banco, é como antes.
+ */
+function persistirRun(state: RunState): void {
+  void import("../consultor-db").then((m) => m.gravarCiclo(state.runId, state.status, state)).catch(() => undefined);
+}
+
 /** WO-31: markdown produzido pelo Gestor no ciclo corrente. */
 let ultimoRelatorioExecutivo = "";
 
@@ -392,6 +401,7 @@ export function iniciarRunCycle(ctx: CycleContext = {}): { runId: string } {
   };
   
   RUN_STATES.set(runId, state);
+  persistirRun(state);
 
   // Spawna execução em background (fire and forget)
   (async () => {
@@ -403,6 +413,7 @@ export function iniciarRunCycle(ctx: CycleContext = {}): { runId: string } {
         if (!state.concluidos.includes(rep.agentId)) {
           state.concluidos.push(rep.agentId);
         }
+        persistirRun(state);
       });
       if ((state.status as string) !== "cancelado") {
         state.status = "concluido";
@@ -419,6 +430,7 @@ export function iniciarRunCycle(ctx: CycleContext = {}): { runId: string } {
       state.status = "erro";
       state.error = err?.message ?? String(err);
     }
+    persistirRun(state);
   })();
 
   return { runId };
@@ -431,6 +443,24 @@ export function obterRunState(runId: string): RunState | undefined {
   return RUN_STATES.get(runId);
 }
 
+/** WO-55: memória primeiro; sem ela (recompile, reinício), o último estado gravado no banco. */
+export async function obterRunStateAsync(runId: string): Promise<RunState | undefined> {
+  const mem = RUN_STATES.get(runId);
+  if (mem) return mem;
+  try {
+    const m = await import("../consultor-db");
+    const doBanco = await m.obterCiclo<RunState>(runId);
+    if (!doBanco) return undefined;
+    // Um run "executando" que só existe no banco morreu com o processo: a tela precisa saber.
+    if (doBanco.status === "iniciado" || doBanco.status === "executando") {
+      return { ...doBanco, status: "erro", error: "O servidor foi reiniciado no meio do ciclo (recompile). O progresso gravado ficou; rode de novo." };
+    }
+    return doBanco;
+  } catch {
+    return undefined;
+  }
+}
+
 /**
  * WO-27 P0.3: Cancela um run em progresso.
  */
@@ -438,6 +468,7 @@ export function cancelarRunState(runId: string): boolean {
   const state = RUN_STATES.get(runId);
   if (state) {
     state.status = "cancelado";
+    persistirRun(state);
     return true;
   }
   return false;

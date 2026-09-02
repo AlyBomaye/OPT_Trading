@@ -5547,6 +5547,63 @@ async function testesWo28Restaurados() {
     if (t5) console.log("✔ WO-54 Teste 5: VaR histórico na Carteira, paridade no modo Cadeia, PoP no smile e β estimado na Estratégia, vol acoplada na matriz");
     else { console.log("✘ WO-54 Teste 5 falhou: alguma tela sem o instrumento novo"); failures++; }
   }
+
+  // ================= WO-55 — Consultor por estrutura =================
+  {
+    const fs = await import("node:fs");
+    const path = await import("node:path");
+    const lerSrc = (rel: string) => fs.readFileSync(path.join(process.cwd(), rel), "utf8");
+    const { fichasDasEstruturas } = await import("../consultor-estruturas");
+    const { CUSTOS_SUGERIDOS_XP_B3 } = await import("../custos-sugeridos");
+    const tab = { ...CUSTOS_SUGERIDOS_XP_B3, vigenteDesde: "2026-01-01" };
+    const hoje = new Date().toISOString();
+
+    // Trava de alta 38/42 aberta hoje, du 25, marcada quase no máximo → REALIZAR
+    const trava: any[] = [
+      { id: "db-1", kind: "OPTION", underlying: "PETR4", opTicker: "PETRD38", type: "CALL", strike: 38, expiry: "2026-04-17", du: 25, side: 1, qty: 100, price: 2.0, iv: 0.3, fees: 22, openedAt: hoje, estruturaId: "1", regimeNaEntrada: "alta" },
+      { id: "db-2", kind: "OPTION", underlying: "PETR4", opTicker: "PETRD42", type: "CALL", strike: 42, expiry: "2026-04-17", du: 25, side: -1, qty: 100, price: 0.8, iv: 0.3, fees: 22, openedAt: hoje, estruturaId: "1", regimeNaEntrada: "alta" },
+    ];
+    const marcas: Record<string, number> = { "db-1": 4.9, "db-2": 1.15 };
+    const fichas = fichasDasEstruturas({ positions: trava, chainCache: { PETR4: synthChain }, selic: 0.1, tabela: tab, flags: [], regimes: { PETR4: "alta" }, marcacaoDe: (p) => marcas[p.id] ?? null });
+    const f = fichas[0];
+    const t1 = fichas.length === 1 && f.veredito === "realizar" && f.fracaoDoMaximo != null && f.fracaoDoMaximo >= 0.7 && f.maxProfitLiquido != null && f.maxProfitLiquido < 280
+      && f.pnlLiquido != null && f.pnlLiquido > 0 && f.ganhoRestante != null && f.ganhoRestante > 0 && f.zeragem != null && f.nome.length > 0 && f.custosAbertura === 44;
+    if (t1) console.log(`✔ WO-55 Teste 1: ficha da trava — ${Math.round(f.fracaoDoMaximo! * 100)}% do máximo líquido (${f.maxProfitLiquido!.toFixed(0)}), P&L líquido ${f.pnlLiquido!.toFixed(0)}, veredito REALIZAR`);
+    else { console.log(`✘ WO-55 Teste 1 falhou: ${JSON.stringify(f && { v: f.veredito, fr: f.fracaoDoMaximo, mp: f.maxProfitLiquido, pnl: f.pnlLiquido, z: f.zeragem })}`); failures++; }
+
+    // ---- Teste 2: vereditos — 4 DU zera; 8 DU rola; regime virou vence a rolagem; sem marcação não decide
+    const comDu = (du: number, regime: any = "alta") => fichasDasEstruturas({ positions: trava.map((p) => ({ ...p, du })), chainCache: { PETR4: synthChain }, selic: 0.1, tabela: tab, flags: [], regimes: { PETR4: regime }, marcacaoDe: (p) => ({ "db-1": 2.3, "db-2": 0.9 } as any)[p.id] ?? null })[0];
+    const zera = comDu(4).veredito;
+    const rola = comDu(8).veredito;
+    const virou = comDu(8, "baixa").veredito;
+    const semMarca = fichasDasEstruturas({ positions: trava, chainCache: { PETR4: synthChain }, selic: 0.1, tabela: tab, flags: [], regimes: {}, marcacaoDe: () => null })[0].veredito;
+    const manter = comDu(25).veredito;
+    const t2 = zera === "zerar" && rola === "rolar" && virou === "regime-virou" && semMarca === "sem-marcacao" && manter === "manter";
+    if (t2) console.log("✔ WO-55 Teste 2: vereditos — 4 DU zera, 8 DU rola, regime virou vence, sem marcação não decide, 25 DU no plano mantém");
+    else { console.log(`✘ WO-55 Teste 2 falhou: ${JSON.stringify({ zera, rola, virou, semMarca, manter })}`); failures++; }
+
+    // ---- Teste 3: schema 005, consultor-db e rota de relatórios
+    const sql = lerSrc("db/005_consultor.sql");
+    const creates = sql.match(/CREATE (TABLE|INDEX)/g) ?? [];
+    const idem = (sql.match(/CREATE (TABLE|INDEX) IF NOT EXISTS/g) ?? []).length === creates.length && creates.length >= 3;
+    const srcDb = lerSrc("lib/consultor-db.ts");
+    const srcRel = lerSrc("app/api/relatorios/route.ts");
+    const t3 = idem && /relatorio_gestor/.test(sql) && /ciclo_agentes/.test(sql)
+      && /export async function salvarRelatorio/.test(srcDb) && /export async function listarRelatorios/.test(srcDb) && /export async function gravarCiclo/.test(srcDb) && /ON CONFLICT \(run_id\) DO UPDATE/.test(srcDb)
+      && /export async function GET/.test(srcRel) && /export async function POST/.test(srcRel);
+    if (t3) console.log("✔ WO-55 Teste 3: 005_consultor.sql idempotente (relatorio_gestor, ciclo_agentes); consultor-db e /api/relatorios completos");
+    else { console.log("✘ WO-55 Teste 3 falhou: schema ou rotas do Consultor"); failures++; }
+
+    // ---- Teste 4: orquestrador persiste e lê do banco; Consultor com fichas, gravação e histórico
+    const srcOrq = lerSrc("lib/agents/orchestrator.ts");
+    const srcRc = lerSrc("app/api/agents/run-cycle/route.ts");
+    const srcCons = lerSrc("app/consultor/page.tsx");
+    const t4 = /function persistirRun\(state: RunState\)/.test(srcOrq) && (srcOrq.match(/persistirRun\(state\)/g) ?? []).length >= 4 && /export async function obterRunStateAsync/.test(srcOrq)
+      && /obterRunStateAsync\(runId\)/.test(srcRc) && !/obterRunState\(runId\)/.test(srcRc)
+      && /<FichasEstruturas \/>/.test(srcCons) && /fetch\("\/api\/relatorios", \{\s*method: "POST"/.test(srcCons) && /relatorioAntigo/.test(srcCons) && /desde \{fmtDateBR\(anterior\.data\)\}/.test(srcCons);
+    if (t4) console.log("✔ WO-55 Teste 4: o ciclo é gravado no banco a cada agente e lido de lá após reinício; o Consultor tem fichas, grava a carta e relê as anteriores com 'o que mudou'");
+    else { console.log("✘ WO-55 Teste 4 falhou: orquestrador ou Consultor"); failures++; }
+  }
 }
 
 testesAssincronos()

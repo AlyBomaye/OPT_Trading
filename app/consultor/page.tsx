@@ -17,6 +17,7 @@ import { useWatchlist } from "@/lib/sector-dashboard";
 import { sessionInfo } from "@/lib/session";
 import { netGreeks } from "@/lib/portfolio";
 import { fmtDateBR } from "@/lib/format";
+import { FichasEstruturas } from "@/components/FichasEstruturas";
 
 // Gráficos do WO-26 (D.1)
 import { RiskTargetChart } from "@/components/agents/RiskTargetChart";
@@ -82,7 +83,33 @@ export default function ConsultorPage() {
   const [commentOpen, setCommentOpen] = useState(true);
   const [cycleError, setCycleError] = useState<string | null>(null);
 
+  // WO-55: relatórios persistidos — a lista dos anteriores, o selecionado para reler, e o que mudou.
+  const [historico, setHistorico] = useState<Array<{ id: number; data: string; ticker: string | null; modo: string; headline: string | null; criadoEm: string }>>([]);
+  const [relatorioAntigo, setRelatorioAntigo] = useState<{ id: number; texto: string; headline: string | null; data: string; criadoEm: string; reports: any } | null>(null);
+  const [salvoId, setSalvoId] = useState<number | null>(null);
+  const carregarHistorico = () =>
+    fetch("/api/relatorios?limit=20", { signal: AbortSignal.timeout(10_000) })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((j) => j?.configurado && Array.isArray(j.relatorios) && setHistorico(j.relatorios))
+      .catch(() => {});
+  useEffect(() => {
+    void carregarHistorico();
+  }, []);
+  const abrirAntigo = async (id: number) => {
+    try {
+      const r = await fetch(`/api/relatorios?id=${id}`, { signal: AbortSignal.timeout(10_000) });
+      const j = r.ok ? await r.json() : null;
+      if (j?.relatorio) setRelatorioAntigo(j.relatorio);
+    } catch {
+      /* fica o atual */
+    }
+  };
+
   const pollIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const cycleResultRef = useRef<CycleResponse | null>(null);
+  useEffect(() => {
+    cycleResultRef.current = cycleResult;
+  }, [cycleResult]);
 
   // Clean up polling interval on unmount
   useEffect(() => {
@@ -385,6 +412,32 @@ export default function ConsultorPage() {
             setRelatorioText(text);
           }
         }
+        // WO-55: gerar e não guardar é perder. Grava com a data efetiva dos dados, não a do relógio.
+        if (text.trim().length >= 20) {
+          const st = useMarket.getState();
+          fetch("/api/relatorios", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              data: st.chain?.dataEfetiva ?? new Date().toISOString().slice(0, 10),
+              ticker,
+              modo: reportGestor && cycleResultRef.current?.modoLLM ? "llm" : "deterministico",
+              headline: reportGestor?.headline ?? null,
+              texto: text,
+              reports: cycleResultRef.current?.reports ?? null,
+              custoUsd: (cycleResultRef.current as any)?.custoCicloUsd ?? null,
+            }),
+            signal: AbortSignal.timeout(15_000),
+          })
+            .then((r) => (r.ok ? r.json() : null))
+            .then((j) => {
+              if (j?.gravado) {
+                setSalvoId(j.id);
+                void carregarHistorico();
+              }
+            })
+            .catch(() => {});
+        }
       }
     } catch (streamErr) {
       console.warn("Falha no streaming do relatório sênior:", streamErr);
@@ -421,6 +474,48 @@ export default function ConsultorPage() {
 
       {activeTab === "relatorio" && (
         <div className="flex flex-col space-y-4">
+          {/* WO-55 — a tela da manhã: cada estrutura com as três perguntas respondidas, sem agente */}
+          <FichasEstruturas />
+
+          {/* WO-55 — relatórios anteriores e o que mudou */}
+          {(historico.length > 0 || salvoId != null) && (
+            <div className="border border-neutral-800 bg-neutral-900/50 rounded px-4 py-2 text-xs flex flex-wrap items-center gap-3">
+              <span className="text-neutral-400 font-mono">Relatórios guardados: {historico.length}</span>
+              <select
+                className="cell-input !w-auto text-xxs"
+                value={relatorioAntigo?.id ?? ""}
+                onChange={(e) => (e.target.value ? void abrirAntigo(Number(e.target.value)) : setRelatorioAntigo(null))}
+              >
+                <option value="">relatório atual</option>
+                {historico.map((h) => (
+                  <option key={h.id} value={h.id}>
+                    {fmtDateBR(h.data)} {new Date(h.criadoEm).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })} · {h.ticker ?? "—"} · {h.modo} · {(h.headline ?? "").slice(0, 60)}
+                  </option>
+                ))}
+              </select>
+              {salvoId != null && <span className="text-green-400 font-mono">relatório #{salvoId} gravado</span>}
+              {(() => {
+                // O que mudou desde o último guardado ANTES deste ciclo.
+                const anterior = historico.find((h) => salvoId == null || h.id !== salvoId);
+                if (!anterior || !cycleResult) return null;
+                const criticosAgora = achadosCriticos.length;
+                return (
+                  <span className="text-neutral-400">
+                    desde {fmtDateBR(anterior.data)}: headline era &ldquo;{(anterior.headline ?? "—").slice(0, 80)}&rdquo; · críticos agora {criticosAgora} · recomendações agora {recomendacoes.length}
+                  </span>
+                );
+              })()}
+            </div>
+          )}
+          {relatorioAntigo && (
+            <div className="border border-yellow-800/60 bg-yellow-950/30 rounded px-4 py-3 text-sm">
+              <div className="text-xxs font-mono text-yellow-300 mb-2">
+                Relatório guardado #{relatorioAntigo.id} · dados de {fmtDateBR(relatorioAntigo.data)} · gerado {new Date(relatorioAntigo.criadoEm).toLocaleString("pt-BR")} —{" "}
+                <button className="underline" onClick={() => setRelatorioAntigo(null)}>voltar ao atual</button>
+              </div>
+              <MarkdownLite text={relatorioAntigo.texto} />
+            </div>
+          )}
 
           {/* C.5: FAIXA DE CONTEXTO INCOMPLETO */}
           {isContextoIncompleto && (
