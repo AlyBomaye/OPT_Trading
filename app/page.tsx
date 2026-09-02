@@ -20,6 +20,8 @@ import { useIvRank } from "@/lib/hooks/useIvRank";
 import { AgentPanel } from "@/components/AgentPanel";
 import { TruthBar } from "@/components/TruthBar";
 import { PainelWatchlist } from "@/components/PainelWatchlist";
+import { PainelAlertas } from "@/components/PainelAlertas";
+import { ChecklistPreMarket } from "@/components/ChecklistPreMarket";
 import { useSkewAtm } from "@/lib/hooks/useSkewAtm";
 
 /** Valores manuais de GEX + carimbo de edição (WO-14), persistidos por ticker. */
@@ -261,6 +263,36 @@ export default function CockpitPage() {
   const regime =
     chain && gf ? (chain.spot > gf ? "SUPRESSÃO (GEX+)" : "EXPLOSÃO (GEX−)") : null;
 
+  // WO-52: GEX com memória — grava o perfil calculado do dia e lê o último dia anterior para
+  // dizer quanto os walls andaram. Só o calculado (OI da B3) vai para o banco; o manual é override
+  // de tela, não medida.
+  const [gexAnterior, setGexAnterior] = useState<{ data: string; gammaFlip: number | null; callWall: number | null; putWall: number | null } | null>(null);
+  const hojeSessao = sessionInfo().ultimaSessao;
+  useEffect(() => {
+    if (!calcProfile || !chain || chain.ticker !== ticker) return;
+    fetch("/api/gex-diario", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ticker, data: hojeSessao, fileDate: calcProfile.fileDate, gammaFlip: calcProfile.gammaFlip, callWall: calcProfile.callWall, putWall: calcProfile.putWall, spot: chain.spot }),
+      signal: AbortSignal.timeout(10_000),
+    }).catch(() => {});
+  }, [calcProfile, chain, ticker, hojeSessao]);
+  useEffect(() => {
+    let vivo = true;
+    setGexAnterior(null);
+    fetch(`/api/gex-diario?ticker=${encodeURIComponent(ticker)}&dias=10`, { signal: AbortSignal.timeout(10_000) })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((j) => {
+        if (!vivo || !j?.configurado) return;
+        const anterior = (j.historico as any[]).find((h) => h.data < hojeSessao);
+        if (anterior) setGexAnterior({ data: anterior.data, gammaFlip: anterior.gammaFlip, callWall: anterior.callWall, putWall: anterior.putWall });
+      })
+      .catch(() => {});
+    return () => {
+      vivo = false;
+    };
+  }, [ticker, hojeSessao, calcProfile?.fileDate]);
+
   const foco = buildFoco({ regime, skewSignal: skew?.signal ?? null, thetaPerDay: greeks.thetaPerDay, nPoz: pozinhos.length });
 
   return (
@@ -281,6 +313,9 @@ export default function CockpitPage() {
         }}
       />
       <PreMarketPanel />
+      {/* WO-52 — o Cockpit avisa e cobra: alertas derivados da tela, checklist do pregão. */}
+      <PainelAlertas gammaFlip={gf} callWall={cw} putWall={pw} />
+      <ChecklistPreMarket />
       {/* WO-47 §3 — ordem do panorama para o específico:
           Pré-Abertura > GEX por strike > Foco do dia > Watchlist (largura inteira) >
           Choque | Skew > Pozinhos. A Watchlist fica FORA de qualquer grade: no WO-46 ela
@@ -389,6 +424,18 @@ export default function CockpitPage() {
             {chain && pw != null && <WallRow label={`Put Wall ${isPwManual ? "(manual)" : "(B3)"}`} wall={pw} spot={chain.spot} />}
             {chain && vt != null && (
               <Row k="Vol Trigger (manual)" v={`${fmtNum(vt)} — IV tende a ${chain.spot > vt ? "comprimir" : "expandir"}`} />
+            )}
+            {gexAnterior && (
+              <Row
+                k={`Ontem (${fmtDateBR(gexAnterior.data)})`}
+                v={[
+                  gexAnterior.gammaFlip != null ? `flip ${fmtNum(gexAnterior.gammaFlip)}${calcProfile?.gammaFlip != null ? ` (${calcProfile.gammaFlip - gexAnterior.gammaFlip >= 0 ? "+" : ""}${fmtNum(calcProfile.gammaFlip - gexAnterior.gammaFlip)})` : ""}` : null,
+                  gexAnterior.callWall != null ? `CW ${fmtNum(gexAnterior.callWall)}${calcProfile?.callWall != null ? ` (${calcProfile.callWall - gexAnterior.callWall >= 0 ? "+" : ""}${fmtNum(calcProfile.callWall - gexAnterior.callWall)})` : ""}` : null,
+                  gexAnterior.putWall != null ? `PW ${fmtNum(gexAnterior.putWall)}${calcProfile?.putWall != null ? ` (${calcProfile.putWall - gexAnterior.putWall >= 0 ? "+" : ""}${fmtNum(calcProfile.putWall - gexAnterior.putWall)})` : ""}` : null,
+                ].filter(Boolean).join(" · ")}
+                cls="text-term-dim"
+                title="Perfil de GEX gravado no último pregão anterior (gex_diario) e a variação até o de hoje"
+              />
             )}
 
             <div className="grid grid-cols-2 gap-1 pt-1.5 border-t border-term-line/40">

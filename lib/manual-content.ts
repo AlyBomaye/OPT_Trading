@@ -77,7 +77,7 @@ export const RESUMO_TELAS = [
   {
     modulo: "2. Cockpit",
     pergunta: "Qual o diagnóstico de pré-abertura e onde está o risco do dia?",
-    resposta: "Leitura de pré-abertura, perfil de GEX por strike (posições em aberto da B3, com override manual), Foco do dia (regime × skew × book), Watchlist do universo, choque do portfólio e pozinhos.",
+    resposta: "Leitura de pré-abertura, alertas do dia (walls, flip, skew e flags do book, com aviso do navegador), checklist pré-market por pregão, perfil de GEX por strike (posições em aberto da B3, com override manual e a variação desde ontem), Foco do dia, Watchlist do universo, choque do portfólio e pozinhos.",
   },
   {
     modulo: "3. Carteira",

@@ -5288,6 +5288,65 @@ async function testesWo28Restaurados() {
     if (t3) console.log("✔ WO-51 Teste 3: só vencimentos na janela (ou o mais próximo, marcado); a prateleira vem antes dos pozinhos e leva à Estratégia; Manual atualizado");
     else { console.log(`✘ WO-51 Teste 3 falhou: v1=${JSON.stringify(v1)} v2=${JSON.stringify(v2)} tela=${ordemNaTela}`); failures++; }
   }
+
+  // ================= WO-52 — Cockpit que avisa =================
+  {
+    const fs = await import("node:fs");
+    const path = await import("node:path");
+    const lerSrc = (rel: string) => fs.readFileSync(path.join(process.cwd(), rel), "utf8");
+    const { avaliarAlertas, TOLERANCIA_WALL } = await import("../alertas");
+
+    // ---- Teste 1: alertas derivados — walls, flip, skew e flags, com chave estável e ordem por severidade
+    const base = { ticker: "PETR4", spot: 48.2, gammaFlip: 47.0, callWall: 48.3, putWall: 44.0, skewRatio: 1.3, skewSignal: "PUTS_CARAS" as const, flags: [] as any[] };
+    const a1 = avaliarAlertas(base);
+    const colado = a1.find((a) => a.chave === "WALL_CALL_COLADO|PETR4");
+    const acima = avaliarAlertas({ ...base, spot: 48.3 * (1 + TOLERANCIA_WALL) + 0.05 }).find((a) => a.chave === "WALL_CALL_ACIMA|PETR4");
+    const abaixo = avaliarAlertas({ ...base, spot: 43.5 }).find((a) => a.chave === "WALL_PUT_ABAIXO|PETR4");
+    const flip = avaliarAlertas({ ...base, spot: 47.2 }).find((a) => a.chave === "FLIP|PETR4");
+    const skew = a1.find((a) => a.chave === "SKEW_PUTS|PETR4");
+    const comFlags = avaliarAlertas({ ...base, flags: [
+      { kind: "VENCIMENTO", severity: "urgente", positionId: "p1", ticker: "PETR4", detalhe: "5 DU", acao: "Zere" },
+      { kind: "STALE", severity: "info", positionId: "p2", ticker: "PETR4", detalhe: "x", acao: "y" },
+      { kind: "TAKE_PROFIT", severity: "atencao", positionId: null, ticker: "JHSF3", detalhe: "72%", acao: "Realize" },
+    ] as any });
+    const semNada = avaliarAlertas({ ticker: "X", spot: 10, gammaFlip: 20, callWall: 30, putWall: 5, skewRatio: 1, skewSignal: "NEUTRO", flags: [] });
+    const t1 = colado?.severidade === "atencao" && acima != null && abaixo != null && flip != null && skew?.severidade === "info"
+      && comFlags[0].chave === "FLAG_VENCIMENTO|PETR4|p1" && comFlags[0].severidade === "urgente"
+      && comFlags.some((a) => a.chave === "FLAG_TAKE_PROFIT|JHSF3|book") && !comFlags.some((a) => a.chave.startsWith("FLAG_STALE"))
+      && comFlags.every((a) => a.deepLink.length > 0) && semNada.length === 0;
+    if (t1) console.log(`✔ WO-52 Teste 1: ${a1.length} alerta(s) com spot colado no Call Wall; acima/abaixo dos walls, flip, skew e flags (info fora) com chave estável e urgente primeiro; sem nada, lista vazia`);
+    else { console.log(`✘ WO-52 Teste 1 falhou: ${JSON.stringify({ colado, acima: !!acima, abaixo: !!abaixo, flip: !!flip, skew, comFlags: comFlags.map((a) => a.chave), semNada: semNada.length })}`); failures++; }
+
+    // ---- Teste 2: schema 003 idempotente com as duas memórias
+    const sql = lerSrc("db/003_cockpit.sql");
+    const creates = sql.match(/CREATE (TABLE|INDEX)/g) ?? [];
+    const idem = (sql.match(/CREATE (TABLE|INDEX) IF NOT EXISTS/g) ?? []).length === creates.length && creates.length >= 3;
+    const t2 = idem && /checklist_dia/.test(sql) && /gex_diario/.test(sql) && /PRIMARY KEY \(data, passo\)/.test(sql) && /PRIMARY KEY \(ticker, data\)/.test(sql);
+    if (t2) console.log("✔ WO-52 Teste 2: 003_cockpit.sql é idempotente e cria checklist_dia (data, passo) e gex_diario (ticker, data)");
+    else { console.log("✘ WO-52 Teste 2 falhou: schema 003"); failures++; }
+
+    // ---- Teste 3: rotas e funções do banco com schema sob demanda
+    const srcDb = lerSrc("lib/cockpit-db.ts");
+    const srcCk = lerSrc("app/api/checklist/route.ts");
+    const srcGx = lerSrc("app/api/gex-diario/route.ts");
+    const t3 = /export async function garantirSchemaCockpit/.test(srcDb) && /003_cockpit\.sql/.test(srcDb)
+      && /ON CONFLICT \(ticker, data\) DO UPDATE/.test(srcDb) && /ON CONFLICT \(data, passo\) DO NOTHING/.test(srcDb)
+      && /export async function GET/.test(srcCk) && /export async function POST/.test(srcCk) && /ROTINA_PRE_MARKET\.length/.test(srcCk)
+      && /export async function GET/.test(srcGx) && /export async function POST/.test(srcGx) && /historicoGex\(ticker, dias\)/.test(srcGx);
+    if (t3) console.log("✔ WO-52 Teste 3: cockpit-db aplica o schema sob demanda; /api/checklist e /api/gex-diario têm GET e POST");
+    else { console.log("✘ WO-52 Teste 3 falhou: rotas ou funções do banco"); failures++; }
+
+    // ---- Teste 4: o Cockpit usa os painéis, grava o GEX do dia e mostra ontem; o checklist vem do Manual
+    const srcCock = lerSrc("app/page.tsx");
+    const srcCl = lerSrc("components/ChecklistPreMarket.tsx");
+    const srcAl = lerSrc("components/PainelAlertas.tsx");
+    const t4 = /<PainelAlertas gammaFlip=\{gf\} callWall=\{cw\} putWall=\{pw\} \/>/.test(srcCock) && /<ChecklistPreMarket \/>/.test(srcCock)
+      && /fetch\("\/api\/gex-diario", \{\s*method: "POST"/.test(srcCock) && /gexAnterior/.test(srcCock)
+      && /ROTINA_PRE_MARKET\.map/.test(srcCl) && /\/api\/checklist/.test(srcCl)
+      && /Notification\.requestPermission/.test(srcAl) && /avaliarAlertas\(/.test(srcAl) && /cockpit-alertas-vistos/.test(srcAl);
+    if (t4) console.log("✔ WO-52 Teste 4: Cockpit com alertas (aviso do navegador, visto por dia), checklist da ROTINA_PRE_MARKET e GEX diário gravado com a leitura de ontem");
+    else { console.log("✘ WO-52 Teste 4 falhou: Cockpit sem os painéis ou sem a memória do GEX"); failures++; }
+  }
 }
 
 testesAssincronos()
