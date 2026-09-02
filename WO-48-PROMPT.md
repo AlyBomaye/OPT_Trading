@@ -52,32 +52,7 @@ mantida na mesma transação (`emTransacao` em `lib/db.ts` já existe para isso)
 Novo `db/002_boletagem.sql`, idempotente como o `001`:
 
 ```sql
-CREATE TABLE IF NOT EXISTS boleta (
-  id             bigserial PRIMARY KEY,
-  criado_em      timestamptz NOT NULL DEFAULT now(),   -- quando foi registrada
-  executado_em   timestamptz NOT NULL,                 -- quando foi executada (a que vale)
-  tipo           text NOT NULL CHECK (tipo IN ('abertura','fechamento','ajuste','exercicio','vencimento','caixa')),
-  origem         text NOT NULL CHECK (origem IN ('manual','workbench','vencimento','migracao')),
-  estrutura_id   bigint REFERENCES estrutura(id),
-  posicao_id     bigint REFERENCES posicao(id),
-  ticker         text NOT NULL,
-  op_ticker      text,                                  -- NULL para ação e para 'caixa'
-  kind           text NOT NULL CHECK (kind IN ('OPTION','STOCK','CAIXA')),
-  tipo_opcao     text CHECK (tipo_opcao IN ('CALL','PUT')),
-  strike         numeric,
-  vencimento     date,
-  lado           smallint CHECK (lado IN (1,-1)),
-  quantidade     integer NOT NULL,
-  preco          numeric NOT NULL,
-  corretagem     numeric NOT NULL DEFAULT 0,
-  emolumentos    numeric NOT NULL DEFAULT 0,
-  liquidacao     numeric NOT NULL DEFAULT 0,
-  custos_total   numeric GENERATED ALWAYS AS (corretagem + emolumentos + liquidacao) STORED,
-  motivo_saida   text CHECK (motivo_saida IN ('alvo','stop','regime','vencimento','manual')),
-  estorna_id     bigint REFERENCES boleta(id),         -- só em 'ajuste'
-  nota           text
-);
-
+-- Ordem importa: boleta referencia estrutura e posicao, que precisam existir antes.
 CREATE TABLE IF NOT EXISTS estrutura (
   id               bigserial PRIMARY KEY,
   ticker           text NOT NULL,
@@ -106,6 +81,32 @@ CREATE TABLE IF NOT EXISTS posicao (              -- projeção: estado corrente
   aberta_em        timestamptz NOT NULL,
   fechada_em       timestamptz,
   gregas_entrada   jsonb                               -- entryGreeks do WO-11, congeladas
+);
+
+CREATE TABLE IF NOT EXISTS boleta (
+  id             bigserial PRIMARY KEY,
+  criado_em      timestamptz NOT NULL DEFAULT now(),   -- quando foi registrada
+  executado_em   timestamptz NOT NULL,                 -- quando foi executada (a que vale)
+  tipo           text NOT NULL CHECK (tipo IN ('abertura','fechamento','ajuste','exercicio','vencimento','caixa')),
+  origem         text NOT NULL CHECK (origem IN ('manual','workbench','vencimento','migracao')),
+  estrutura_id   bigint REFERENCES estrutura(id),
+  posicao_id     bigint REFERENCES posicao(id),
+  ticker         text NOT NULL,
+  op_ticker      text,                                  -- NULL para ação e para 'caixa'
+  kind           text NOT NULL CHECK (kind IN ('OPTION','STOCK','CAIXA')),
+  tipo_opcao     text CHECK (tipo_opcao IN ('CALL','PUT')),
+  strike         numeric,
+  vencimento     date,
+  lado           smallint CHECK (lado IN (1,-1)),
+  quantidade     integer NOT NULL,
+  preco          numeric NOT NULL,
+  corretagem     numeric NOT NULL DEFAULT 0,
+  emolumentos    numeric NOT NULL DEFAULT 0,
+  liquidacao     numeric NOT NULL DEFAULT 0,
+  custos_total   numeric GENERATED ALWAYS AS (corretagem + emolumentos + liquidacao) STORED,
+  motivo_saida   text CHECK (motivo_saida IN ('alvo','stop','regime','vencimento','manual')),
+  estorna_id     bigint REFERENCES boleta(id),         -- só em 'ajuste'
+  nota           text
 );
 
 CREATE TABLE IF NOT EXISTS config_custos (
