@@ -33,6 +33,11 @@ export function PainelParidade() {
         <span className="tag bg-term-panel2 text-term-dim">
           {qualidade.strikes.length} strike(s) com call e put frescas · {qualidade.ok} ok · {qualidade.atencao} atenção · {qualidade.suspeitos} suspeito(s)
         </span>
+        {qualidade.dataSpotPremios && (
+          <span className="tag bg-term-panel2 text-term-dim" title="Os prêmios são desta data; a paridade foi conferida contra o spot da mesma data (WO-30), não contra o fechamento da tela">
+            spot da data dos prêmios ({qualidade.dataSpotPremios}): {fmtBRL(qualidade.strikes[0]?.spotUsado ?? qualidade.spotDaTela)}
+          </span>
+        )}
         {pv > 0 && <span className="tag bg-term-panel2 text-term-dim" title="Valor presente dos proventos com ex-date antes do vencimento, já descontado do resíduo">PV proventos {fmtBRL(pv)}</span>}
         {qualidade.dividendoImplicito != null && (
           <span className="tag bg-term-gold/15 text-term-gold" title="Todos os strikes têm resíduo negativo parecido: o mercado desconta um provento que a cadeia não conhece. Registre-o em Dividendos para a IV e as gregas ficarem certas.">

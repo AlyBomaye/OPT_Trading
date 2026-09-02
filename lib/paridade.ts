@@ -25,11 +25,16 @@ export interface ResiduoParidade {
   situacao: SituacaoParidade;
   callTicker: string;
   putTicker: string;
+  /** Spot contra o qual a paridade foi conferida — o da DATA dos prêmios, quando a cadeia o traz. */
+  spotUsado: number;
 }
 
 export interface QualidadeParidade {
   expiry: string;
   du: number;
+  /** Data do spot usado (a dos prêmios), quando difere da data do spot da tela. */
+  dataSpotPremios: string | null;
+  spotDaTela: number;
   strikes: ResiduoParidade[];
   ok: number;
   atencao: number;
@@ -49,11 +54,17 @@ export function residuosParidade(chain: ChainData, expiry: string, r: number, pv
   const calls = new Map(chain.options.filter((o) => fresco(o) && o.type === "CALL").map((o) => [o.strike, o]));
   const puts = new Map(chain.options.filter((o) => fresco(o) && o.type === "PUT").map((o) => [o.strike, o]));
   const strikes: ResiduoParidade[] = [];
+  let dataSpotPremios: string | null = null;
   for (const [k, c] of Array.from(calls.entries())) {
     const p = puts.get(k);
     if (!p) continue;
-    const residuo = c.last! - p.last! - chain.spot + k * Math.exp(-r * t) + pvDividendos;
-    const residuoPct = residuo / chain.spot;
+    // WO-30 §2.3: o prêmio é de uma data; o spot da tela pode ser de outra (fechamento de hoje
+    // contra cadeia de ontem). Conferir a paridade contra o spot de HOJE acusaria toda a cadeia por
+    // um "provento" que é só a diferença de data. Usa-se o spot da data do prêmio quando existe.
+    const spotUsado = c.ivSpotUsado ?? p.ivSpotUsado ?? chain.spot;
+    if (c.ivSpotDate && dataSpotPremios == null) dataSpotPremios = c.ivSpotDate;
+    const residuo = c.last! - p.last! - spotUsado + k * Math.exp(-r * t) + pvDividendos;
+    const residuoPct = residuo / spotUsado;
     const a = Math.abs(residuoPct);
     strikes.push({
       strike: k,
@@ -64,10 +75,12 @@ export function residuosParidade(chain: ChainData, expiry: string, r: number, pv
       situacao: a <= TOL_OK ? "ok" : a <= TOL_ATENCAO ? "atencao" : "suspeito",
       callTicker: c.opTicker,
       putTicker: p.opTicker,
+      spotUsado,
     });
   }
   strikes.sort((a, b) => a.strike - b.strike);
-  if (strikes.length === 0) return { expiry, du: exp.du, strikes, ok: 0, atencao: 0, suspeitos: 0, dividendoImplicito: null };
+  const base = { expiry, du: exp.du, dataSpotPremios, spotDaTela: chain.spot };
+  if (strikes.length === 0) return { ...base, strikes, ok: 0, atencao: 0, suspeitos: 0, dividendoImplicito: null };
   const ok = strikes.filter((s) => s.situacao === "ok").length;
   const atencao = strikes.filter((s) => s.situacao === "atencao").length;
   const suspeitos = strikes.filter((s) => s.situacao === "suspeito").length;
@@ -78,5 +91,5 @@ export function residuosParidade(chain: ChainData, expiry: string, r: number, pv
     const vals = strikes.map((s) => -s.residuo).sort((a, b) => a - b);
     dividendoImplicito = vals[Math.floor(vals.length / 2)];
   }
-  return { expiry, du: exp.du, strikes, ok, atencao, suspeitos, dividendoImplicito };
+  return { ...base, strikes, ok, atencao, suspeitos, dividendoImplicito };
 }

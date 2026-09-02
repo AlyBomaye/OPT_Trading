@@ -60,8 +60,8 @@ export function PainelVarHistorico({ positions, chainCache, selic, capitalTotal,
     if (!positions.length) return [];
     const out: { rotulo: string; r: ReturnType<typeof varHistoricoBook> }[] = [];
     for (const h of [1, 5] as const) {
-      out.push({ rotulo: `${h} pregão${h > 1 ? "s" : ""} · vol parada`, r: varHistoricoBook(positions, chainCache, candles, selic, h, { betaVol: 0 }) });
-      out.push({ rotulo: `${h} pregão${h > 1 ? "s" : ""} · vol acoplada (β ${betaVol.toFixed(1)} pp/−1%)`, r: varHistoricoBook(positions, chainCache, candles, selic, h, { betaVol }) });
+      out.push({ rotulo: `${h === 1 ? "1 pregão" : `${h} pregões`} · vol parada`, r: varHistoricoBook(positions, chainCache, candles, selic, h, { betaVol: 0 }) });
+      out.push({ rotulo: `${h === 1 ? "1 pregão" : `${h} pregões`} · vol acoplada (β ${betaVol.toFixed(1)} pp/−1%)`, r: varHistoricoBook(positions, chainCache, candles, selic, h, { betaVol }) });
     }
     return out;
   }, [positions, chainCache, candles, selic, betaVol]);
