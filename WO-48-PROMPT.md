@@ -16,7 +16,7 @@ A Carteira é um **monitor** de P&L e risco. Não é um livro de ordens. Sete fa
 
 | # | Fato | Onde |
 |---|---|---|
-| 1 | **A única entrada de posição é o Workbench.** `openPositions` é chamado em um só lugar. Não há formulário de boleta, nem importação. O que executa na corretora diferente do montado — preço, parcial, operação feita fora — não tem como entrar. | `app/estrategia/page.tsx:232`; grep em `app/`+`components/` |
+| 1 | **A única entrada de posição é o botão Boletar do Workbench.** `openPositions` é chamado em um só lugar. Não há formulário de boleta, nem importação. O que executa na corretora diferente do montado — preço, parcial, operação feita fora — não tem como entrar. | `app/estrategia/page.tsx:232`; grep em `app/`+`components/` |
 | 2 | **O livro vive no localStorage de um navegador.** Zustand `persist` (`opcoes-terminal`, v1, `partialize` de `positions`/`closed`/`capitalTotal`). A rota de backup no Postgres do WO-42 existe e **ninguém a chama** da interface. Limpar o cache apaga o livro. | `store/market.ts:503-515`; `app/api/carteira-backup/route.ts` sem chamador |
 | 3 | **Custos são um campo livre por perna.** `fees` editável na tabela; nenhum modelo de corretagem ou emolumentos. A apuração fiscal (`apurarOperacoes`) confia nesse campo. | `app/carteira/page.tsx:426`; `lib/fiscal.ts:111` |
 | 4 | **Vencimento não existe.** Nada trata opção vencida: fica "aberta" para sempre, com `du` congelado na abertura. A coluna "DU restantes" do WO-47 é uma estimativa por calendário. | grep `exerc|expir|venc` em `lib/`, `store/`: nenhum tratamento |

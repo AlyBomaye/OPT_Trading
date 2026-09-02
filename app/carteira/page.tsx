@@ -456,7 +456,7 @@ export default function CarteiraPage() {
               {!rows.length && (
                 <tr>
                   <td colSpan={14} className="td text-term-dim py-3">
-                    Sem posições — monte uma estrutura na Estratégia (3) e clique em “Abrir posição na carteira”.
+                    Sem posições — monte uma estrutura na Estratégia (7) e clique em “Boletar”.
                   </td>
                 </tr>
               )}

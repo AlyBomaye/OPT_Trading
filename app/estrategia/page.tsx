@@ -31,7 +31,7 @@ import { analisarPnl } from "@/lib/pnl-operacao";
 import { performanceStats, groupTrades } from "@/lib/performance";
 
 /* ============================================================================
- * Estratégia — a tela onde a operação nasce e sai para a carteira.
+ * Estratégia — a tela onde a operação nasce e é boletada para a carteira.
  *
  * WO-46: absorveu as abas Chain e Histórico. São TRÊS MODOS, e só o ativo é
  * montado:
@@ -53,7 +53,7 @@ import { performanceStats, groupTrades } from "@/lib/performance";
 type Modo = "montagem" | "cadeia" | "contexto";
 
 const MODOS: { valor: Modo; rotulo: string; icone: typeof Wrench; dica: string }[] = [
-  { valor: "montagem", rotulo: "Montagem", icone: Wrench, dica: "Monte a estrutura e mande para a carteira" },
+  { valor: "montagem", rotulo: "Montagem", icone: Wrench, dica: "Monte a estrutura e bolete para a carteira" },
   { valor: "cadeia", rotulo: "Cadeia", icone: Table2, dica: "Chain completa, estrutura a termo e smile" },
   { valor: "contexto", rotulo: "Contexto", icone: History, dica: "Tendência, vol realizada, IV×HV e cone" },
 ];
@@ -321,9 +321,9 @@ function Workbench() {
               <button
                 className="btn-primary flex items-center gap-1"
                 onClick={() => setAbrindo(true)}
-                title="Responder as 3 perguntas do método e registrar na carteira (congela gregas de entrada)"
+                title="Boletar: responder as 3 perguntas do método e registrar a operação na carteira (congela gregas de entrada)"
               >
-                <Save size={12} /> Abrir posição
+                <Save size={12} /> Boletar
               </button>
             </>
           )}

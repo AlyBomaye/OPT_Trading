@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * WO-46 §E.2 — as 3 perguntas do método viram a porta do "Abrir posição".
+ * WO-46 §E.2 — as 3 perguntas do método viram a porta do "Boletar".
  *
  * Os campos `tese`, `alvo` e `regraSaida` existem em `Position` desde o WO-44 e nenhuma tela os
  * preenchia. O momento certo de perguntar é **antes** de a posição existir: perguntar depois vira
@@ -98,7 +98,7 @@ export function FormularioAbertura({
   return (
     <div className="panel border-l-2 !border-l-term-gold">
       <div className="panel-title flex items-center justify-between gap-2">
-        <span className="font-bold">Antes de abrir — as 3 perguntas do método</span>
+        <span className="font-bold">Antes de boletar — as 3 perguntas do método</span>
         {regime && (
           <span className="tag bg-term-panel2 text-term-dim whitespace-nowrap">
             regime marcado: {regime}
@@ -167,7 +167,7 @@ export function FormularioAbertura({
 
         <div className="flex items-center gap-2 pt-1">
           <button className="btn btn-primary flex items-center gap-1" onClick={confirmar}>
-            <Save size={12} /> Abrir posição
+            <Save size={12} /> Boletar
           </button>
           <button className="btn flex items-center gap-1 text-term-dim" onClick={onCancelar}>
             <X size={12} /> Cancelar

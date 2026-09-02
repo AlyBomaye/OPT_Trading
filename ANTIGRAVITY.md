@@ -577,7 +577,7 @@ Layout (grid 12 colunas em xl; empilha em telas menores):
 
 ```
 [ Sugestão do dia (se builder vazio) ]
-[ Header: nome da estrutura detectada · tag de viés · nota · Presets ▾ · Limpar · Abrir posição ]
+[ Header: nome da estrutura detectada · tag de viés · nota · Presets ▾ · Limpar · Boletar ]
 ┌─────────────────────┬──────────────────────────────────────────────────┐
 │ col 4: MiniChain    │ col 8:                                           │
 │  (sticky)           │  Pernas da estrutura (editor: lado/qtd/prêmio/   │
@@ -610,7 +610,7 @@ Comportamentos-chave:
 - Kelly amarrado ao bankroll: `alocação sugerida = min(¼-Kelly × capital livre, custo da
   estrutura)`; custo = débito, ou |máx perda| em crédito. Banner vermelho quando excede;
   gate "NO EDGE — DO NOT TRADE" quando journal ≥ 20 trades tem Kelly realizado ≤ 0.
-- "Abrir posição" grava as pernas na Carteira congelando `entryGreeks`.
+- "Boletar" grava as pernas na Carteira congelando `entryGreeks` (antes chamava-se "Abrir posição").
 - **WO-16 Painel de Histórico (`PriceHistoryPanel`)**: colapsável com `ComposedChart` Recharts
   (linha de fechamento ciana + barras de volume), botões de range (3M | 6M | 1A), estado
   persistido em `localStorage` (`wb-history-open`), HV21, IV ATM live e spread IV−HV21, e **linhas

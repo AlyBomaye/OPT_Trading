@@ -63,7 +63,7 @@ export const PASSO_A_PASSO_WORKBENCH = [
   "Valide o custo de montagem (débito), lucro máximo, perda máxima, probabilidade de lucro (PoP risco-neutra) e as gregas líquidas resultantes.",
   "Consulte o dimensionamento sugerido pelo ¼-Kelly e o limite de orçamento sobre o capital total.",
   "Analise o comportamento do P&L no gráfico de Payoff comparando as curvas de Expiração e T+0 / T+n (reavaliação BSM) e inspecione a matriz de estresse Spot × Vol.",
-  "Clique no botão 'Abrir posição na Carteira' para salvar a operação no seu livro com as gregas congeladas no momento da entrada.",
+  "Clique em 'Boletar' para registrar a operação no seu livro, respondendo às 3 perguntas do método, com as gregas congeladas no momento da entrada.",
 ];
 
 export const RESUMO_TELAS = [
