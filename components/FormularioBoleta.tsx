@@ -45,6 +45,8 @@ interface Props {
   onFechar: () => void;
   /** Foco inicial — o atalho B abre a Carteira com a boleta focada. */
   focar?: boolean;
+  /** Abre já num tipo (o botão Aporte/Retirada abre em "caixa"). */
+  tipoInicial?: "abertura" | "fechamento" | "caixa";
 }
 
 function agoraLocalIso(): string {
@@ -54,10 +56,13 @@ function agoraLocalIso(): string {
   return new Date(d.getTime() - off).toISOString().slice(0, 16);
 }
 
-export function FormularioBoleta({ aberto, onFechar, focar }: Props) {
+export function FormularioBoleta({ aberto, onFechar, focar, tipoInicial }: Props) {
   const { ticker: tickerGlobal, chain, chainCache, refresh, positions, livro, sincronizarLivro } = useMarket();
 
-  const [tipo, setTipo] = useState<Tipo>("abertura");
+  const [tipo, setTipo] = useState<Tipo>(tipoInicial ?? "abertura");
+  useEffect(() => {
+    if (tipoInicial) setTipo(tipoInicial);
+  }, [tipoInicial]);
   const [ticker, setTicker] = useState(tickerGlobal);
   const [selecao, setSelecao] = useState<SelecaoInstrumento>({ modo: "acao" });
   const [lado, setLado] = useState<1 | -1>(1);

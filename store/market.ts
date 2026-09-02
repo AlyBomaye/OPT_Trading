@@ -359,7 +359,9 @@ export const useMarket = create<MarketState>()(
           set({
             positions: j.posicoes,
             closed: j.fechadas,
-            capitalTotal: Math.max(0, Number(j.caixa?.saldo ?? 0)),
+            // Capital total = o que voce colocou (aportes - retiradas). O caixa depois das compras
+            // fica em livro.caixa.saldo — sao numeros diferentes e a tela mostra os dois.
+            capitalTotal: Math.max(0, Number(j.caixa?.aportes ?? 0) - Number(j.caixa?.retiradas ?? 0)),
             livro: { configurado: true, consultadoEm: new Date().toISOString(), totalBoletas: j.totalBoletas, aviso: null, caixa: j.caixa, estruturas: j.estruturas, boletas: j.boletas },
           });
         } catch (e: any) {

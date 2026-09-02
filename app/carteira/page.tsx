@@ -161,7 +161,10 @@ export default function CarteiraPage() {
 
   // WO-11: capital, journal e curva de patrimônio (semântica da planilha)
   const alocado = useMemo(() => allocatedCapital(positions), [positions]);
-  const caixaLivre = capitalTotal - alocado;
+  // Com o livro no banco, o caixa livre sai da razao (saldo apos compras e custos) menos a margem.
+  const saldoCaixa = livro.configurado && livro.totalBoletas > 0 && livro.caixa ? livro.caixa.saldo : capitalTotal;
+  const caixaLivre = saldoCaixa - alocado;
+  const [boletaTipoInicial, setBoletaTipoInicial] = useState<"abertura" | "fechamento" | "caixa" | undefined>(undefined);
   const journal = useMemo(() => journalStats(closed), [closed]);
   const curve = useMemo(() => equityCurve(closed, capitalTotal), [closed, capitalTotal]);
   const noEdge = journal != null && journal.n >= 20 && (journal.realizedKelly ?? 0) <= 0;
@@ -263,7 +266,7 @@ export default function CarteiraPage() {
       <MigracaoLivro />
       {boletaAberta ? (
         <div id="boleta">
-          <FormularioBoleta aberto onFechar={() => setBoletaAberta(false)} focar={focarBoleta} />
+          <FormularioBoleta aberto onFechar={() => { setBoletaAberta(false); setBoletaTipoInicial(undefined); }} focar={focarBoleta} tipoInicial={boletaTipoInicial} />
         </div>
       ) : (
         <button className="btn flex items-center gap-1 text-term-cyan" onClick={() => setBoletaAberta(true)}>
@@ -287,18 +290,29 @@ export default function CarteiraPage() {
       <div id="capital" className="grid grid-cols-2 md:grid-cols-6 gap-2">
         <div className="panel px-2 py-1.5">
           <div className="text-xxs text-term-dim uppercase tracking-wider">Capital total (R$)</div>
-          <input
-            type="number"
-            step="1000"
-            value={capitalTotal}
-            onChange={(e) => setCapitalTotal(Number(e.target.value) || 0)}
-            disabled={livroNoBanco}
-            title={livroNoBanco ? "Com o livro no banco, o caixa vem das boletas (aporte/retirada) — registre pela boleta" : undefined}
-            className="cell-input !w-full font-mono font-semibold"
-          />
+          {livroNoBanco ? (
+            <div className="flex items-center justify-between gap-2">
+              <span className="font-mono font-semibold text-sm" title="Aportes menos retiradas registrados na razão">{fmtBRL(capitalTotal, 0)}</span>
+              <button
+                className="btn text-xxs py-0.5 px-2 text-term-cyan whitespace-nowrap"
+                title="Registrar aporte ou retirada pela boleta"
+                onClick={() => { setBoletaTipoInicial("caixa"); setBoletaAberta(true); setFocarBoleta(true); document.getElementById("boleta")?.scrollIntoView({ behavior: "smooth", block: "start" }); }}
+              >
+                Aporte/Retirada
+              </button>
+            </div>
+          ) : (
+            <input
+              type="number"
+              step="1000"
+              value={capitalTotal}
+              onChange={(e) => setCapitalTotal(Number(e.target.value) || 0)}
+              className="cell-input !w-full font-mono font-semibold"
+            />
+          )}
         </div>
         <Kpi label="Alocado (margem 20% K)" value={fmtBRL(alocado, 0)} />
-        <Kpi label="Caixa livre" value={fmtBRL(caixaLivre, 0)} cls={caixaLivre < 0 ? "text-term-down" : "text-term-up"} />
+        <Kpi label={livroNoBanco ? "Caixa livre (razão − margem)" : "Caixa livre"} value={fmtBRL(caixaLivre, 0)} cls={caixaLivre < 0 ? "text-term-down" : "text-term-up"} />
         <Kpi label="Win rate (encerradas)" value={journal ? `${fmtPct(journal.winRate)} (${journal.wins}/${journal.n})` : "—"} />
         <Kpi label="Payoff ratio" value={journal?.payoffRatio != null ? fmtNum(journal.payoffRatio, 2) : "—"} />
         <Kpi
