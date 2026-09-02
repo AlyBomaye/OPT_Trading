@@ -103,7 +103,15 @@ export function montarPrateleira(p: ParametrosPrateleira): ItemPrateleira[] {
         spot: chain.spot,
         du: venc.du,
       });
-      const resumo = resumirCriterios(criterios);
+      // `resumirCriterios` ignora `indefinido` (na Estratégia o trader vê a lista inteira). Aqui uma
+      // compra a seco sem payoff finito apareceria "dentro dos critérios" só por não ter critério
+      // aplicável — e ficaria acima de uma trava julgada de verdade. Indefinido fica declarado.
+      const base = resumirCriterios(criterios);
+      const indefinidos = criterios.filter((c) => c.situacao === "indefinido").length;
+      const resumo =
+        base.situacao === "ok" && indefinidos > 0
+          ? { situacao: "indefinido" as Situacao, texto: `${indefinidos} critério(s) sem medida (${criterios.filter((c) => c.situacao === "indefinido").map((c) => c.medido).join(", ")})` }
+          : base;
       const adereRegime = regime == null || regime === "indefinido" ? null : e.regime === regime;
       const adereVol =
         vol == null || vol === "indefinida" ? null : e.volIdeal === "indiferente" ? true : vol === "media" ? null : e.volIdeal === vol;

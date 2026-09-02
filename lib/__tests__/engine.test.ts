@@ -5257,9 +5257,11 @@ async function testesWo28Restaurados() {
     const semIlimitadas = ilimitadas.every((k) => !presets.has(k));
     const temTrava = itens.some((i) => i.preset === "bullCallSpread");
     const liquidos = itens.every((i) => i.custos != null && i.custos > 0 && i.metrics.liquido != null && i.dec === i.metrics.liquido && i.criterios.length > 0 && i.du === 20 && !i.foraDaJanela);
-    const t1 = itens.length >= 2 && semIlimitadas && temTrava && liquidos;
+    const secaIndefinida = itens.filter((i) => i.preset === "compraCallSeca").every((i) => i.situacao === "indefinido" && /sem medida/.test(i.resumoCriterios));
+    const travaJulgada = itens.filter((i) => i.preset === "bullCallSpread").every((i) => i.situacao !== "indefinido");
+    const t1 = itens.length >= 2 && semIlimitadas && temTrava && liquidos && secaIndefinida && travaJulgada;
     if (t1) console.log(`✔ WO-51 Teste 1: prateleira com ${itens.length} estrutura(s) de risco definido, líquidas de custos e julgadas (${Array.from(presets).join(", ")})`);
-    else { console.log(`✘ WO-51 Teste 1 falhou: n=${itens.length} semIlimitadas=${semIlimitadas} trava=${temTrava} liquidos=${liquidos}`); failures++; }
+    else { console.log(`✘ WO-51 Teste 1 falhou: n=${itens.length} semIlimitadas=${semIlimitadas} trava=${temTrava} liquidos=${liquidos} secaIndef=${secaIndefinida} travaJulgada=${travaJulgada}`); failures++; }
 
     // ---- Teste 2: ordem — aderência a regime/vol antes dos critérios, e critérios antes do EV
     const alta = itens.find((i) => i.preset === "bullCallSpread")!;

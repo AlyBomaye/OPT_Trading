@@ -103,12 +103,19 @@ export function PrateleiraMetodo() {
     return ordenarPrateleira(tudo);
   }, [chainCache, itensRank, watchRows, ranks, selic, tabelaCustos, regimes]);
 
+  // Uma linha por (papel, estrutura) — a melhor candidata entre os vencimentos — e no máximo
+  // `porPapel` estruturas por papel. Sem isso, três vencimentos da mesma compra a seco ocupavam as
+  // três vagas do papel e as travas nem apareciam.
   const visiveis = useMemo(() => {
     const contagem = new Map<string, number>();
+    const vistos = new Set<string>();
     return itens.filter((i) => {
       if (soAderentes && !(i.adereRegime === true && i.adereVol !== false)) return false;
+      const chave = `${i.ticker}|${i.preset}`;
+      if (vistos.has(chave)) return false;
       const n = contagem.get(i.ticker) ?? 0;
       if (n >= porPapel) return false;
+      vistos.add(chave);
       contagem.set(i.ticker, n + 1);
       return true;
     });
