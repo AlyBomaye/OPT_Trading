@@ -188,24 +188,39 @@ export function dataIso(v: unknown): string | null {
  * ========================================================================== */
 
 let schemaGarantido = false;
+let schemaEmAndamento: Promise<boolean> | null = null;
 
-/** Aplica `db/002_boletagem.sql` uma vez por processo. Idempotente por construção. */
+/**
+ * Aplica `db/002_boletagem.sql` uma vez por processo. Idempotente por construção.
+ *
+ * Chamadas concorrentes (a primeira tela dispara três rotas de uma vez) compartilham a MESMA
+ * execução: duas transações fazendo o mesmo DDL ao mesmo tempo fazem uma delas reverter, e
+ * aquela leitura devolvia 503 sem motivo real.
+ */
 export async function garantirSchema(): Promise<boolean> {
   if (schemaGarantido) return true;
   if (!bancoConfigurado()) return false;
-  const arquivo = path.join(process.cwd(), "db", "002_boletagem.sql");
-  let sql: string;
+  if (schemaEmAndamento) return schemaEmAndamento;
+  schemaEmAndamento = (async () => {
+    const arquivo = path.join(process.cwd(), "db", "002_boletagem.sql");
+    let sql: string;
+    try {
+      sql = fs.readFileSync(arquivo, "utf-8");
+    } catch {
+      return false;
+    }
+    const ok = await emTransacao(async (c) => {
+      await c.query(sql);
+      return true;
+    });
+    schemaGarantido = ok === true;
+    return schemaGarantido;
+  })();
   try {
-    sql = fs.readFileSync(arquivo, "utf-8");
-  } catch {
-    return false;
+    return await schemaEmAndamento;
+  } finally {
+    schemaEmAndamento = null;
   }
-  const ok = await emTransacao(async (c) => {
-    await c.query(sql);
-    return true;
-  });
-  schemaGarantido = ok === true;
-  return schemaGarantido;
 }
 
 /* ========================================================================== *

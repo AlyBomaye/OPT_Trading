@@ -2382,6 +2382,24 @@ async function testesAjustes0209() {
     failures++;
   }
 
+  // ---- Teste 10: pernas com estruturaId ficam juntas mesmo boletadas em horarios diferentes
+  // Real: straddle PETR4 boletado as 10:01 (put) e 10:03 (call) aparecia como duas estruturas.
+  const { estruturasAbertas: estrAb } = await import("../position-flags");
+  const { groupTrades: grp } = await import("../performance");
+  const perna = (id: string, op: string, type: "CALL" | "PUT", openedAt: string): any => ({
+    id, estruturaId: "10", kind: "OPTION", opTicker: op, underlying: "PETR4", type, strike: 45.92, expiry: "2026-09-18", du: 12,
+    side: 1, qty: 100, price: 1, openedAt, fees: 0,
+  });
+  const pernas = [perna("db-1", "PETRI482_2026", "CALL", "2026-09-02T13:03:00.000Z"), perna("db-2", "PETRU482_2026", "PUT", "2026-09-02T13:01:00.000Z")];
+  const juntas = estrAb(pernas, {}, 0.1425);
+  const grupos = grp(pernas, []);
+  if (juntas.length === 1 && juntas[0].pernas.length === 2 && grupos.length === 1 && grupos[0].legs.length === 2) {
+    console.log("✔ AJ Teste 10: duas pernas com o mesmo estruturaId formam UMA estrutura, mesmo com openedAt diferentes");
+  } else {
+    console.log(`✘ AJ Teste 10 falhou: estruturas=${juntas.length}, grupos=${grupos.length}`);
+    failures++;
+  }
+
   // ---- Teste 9: apuracao fiscal cita opcoes SEM isencao e IRRF 0,005% (regras vigentes)
   const { IRRF_SWING_SOBRE_VENDA, ALIQUOTA_SWING } = await import("../fiscal");
   const semIsencaoOpcao = /NÃO vale para opções/.test(ler("lib/fiscal.ts"));

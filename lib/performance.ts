@@ -40,7 +40,8 @@ export function groupTrades(positions: Position[], closed: Position[]): TradeGro
   const all = [...positions, ...closed];
 
   for (const p of all) {
-    const key = `${p.underlying}|${p.openedAt}`;
+    // WO-48: prefere o id da estrutura do banco; a chave antiga e o fallback do navegador.
+    const key = p.estruturaId ? `db|${p.estruturaId}` : `${p.underlying}|${p.openedAt}`;
     const list = map.get(key) ?? [];
     list.push(p);
     map.set(key, list);

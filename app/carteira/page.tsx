@@ -161,9 +161,12 @@ export default function CarteiraPage() {
 
   // WO-11: capital, journal e curva de patrimônio (semântica da planilha)
   const alocado = useMemo(() => allocatedCapital(positions), [positions]);
-  // Com o livro no banco, o caixa livre sai da razao (saldo apos compras e custos) menos a margem.
-  const saldoCaixa = livro.configurado && livro.totalBoletas > 0 && livro.caixa ? livro.caixa.saldo : capitalTotal;
-  const caixaLivre = saldoCaixa - alocado;
+  // Com o livro no banco, o caixa livre sai da razao (saldo apos compras e custos) menos a margem
+  // exigida pelas pernas VENDIDAS. Os premios das compradas ja sairam do saldo — descontar o
+  // 'alocado' inteiro contaria o premio duas vezes.
+  const livroAtivo = livro.configurado && livro.totalBoletas > 0 && livro.caixa != null;
+  const margemVendidas = useMemo(() => allocatedCapital(positions.filter((p) => p.side === -1)), [positions]);
+  const caixaLivre = livroAtivo ? livro.caixa!.saldo - margemVendidas : capitalTotal - alocado;
   const [boletaTipoInicial, setBoletaTipoInicial] = useState<"abertura" | "fechamento" | "caixa" | undefined>(undefined);
   const journal = useMemo(() => journalStats(closed), [closed]);
   const curve = useMemo(() => equityCurve(closed, capitalTotal), [closed, capitalTotal]);
@@ -312,7 +315,7 @@ export default function CarteiraPage() {
           )}
         </div>
         <Kpi label="Alocado (margem 20% K)" value={fmtBRL(alocado, 0)} />
-        <Kpi label={livroNoBanco ? "Caixa livre (razão − margem)" : "Caixa livre"} value={fmtBRL(caixaLivre, 0)} cls={caixaLivre < 0 ? "text-term-down" : "text-term-up"} />
+        <Kpi label={livroNoBanco ? "Caixa livre (razão − margem de vendas)" : "Caixa livre"} value={fmtBRL(caixaLivre, 0)} cls={caixaLivre < 0 ? "text-term-down" : "text-term-up"} />
         <Kpi label="Win rate (encerradas)" value={journal ? `${fmtPct(journal.winRate)} (${journal.wins}/${journal.n})` : "—"} />
         <Kpi label="Payoff ratio" value={journal?.payoffRatio != null ? fmtNum(journal.payoffRatio, 2) : "—"} />
         <Kpi

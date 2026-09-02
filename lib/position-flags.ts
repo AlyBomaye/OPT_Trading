@@ -114,7 +114,9 @@ export function estruturasAbertas(
   const porChave = new Map<string, Position[]>();
   for (const p of positions) {
     if (p.closedAt != null) continue;
-    const chave = `${p.underlying}|${p.openedAt}`;
+    // WO-48: a estrutura do banco tem id; a chave antiga (ativo|abertaEm) e so o fallback do que
+    // veio do navegador. Sem isso, pernas boletadas em horarios diferentes se separavam.
+    const chave = p.estruturaId ? `db|${p.estruturaId}` : `${p.underlying}|${p.openedAt}`;
     porChave.set(chave, [...(porChave.get(chave) ?? []), p]);
   }
   const saida: EstruturaAberta[] = [];
