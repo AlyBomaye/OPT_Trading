@@ -58,6 +58,11 @@ export interface CenarioPnl {
 }
 
 export interface AnalisePnl {
+  /**
+   * WO-49: custos ida-e-volta descontados de tudo abaixo (0 quando a análise é bruta). Os
+   * números desta análise são os que a Carteira vai medir — não os do prêmio na tela da corretora.
+   */
+  custos: number;
   /** O que se perde no pior caso. `null` quando a perda é ilimitada. */
   capitalEmRisco: number | null;
   pctDoPatrimonio: number | null;
@@ -160,8 +165,15 @@ export function analisarPnl(args: {
   netDebit: number;
   sigma: number | null;
   patrimonio: number | null;
+  /**
+   * WO-49: custos ida-e-volta (R$). Quando informados, `maxProfit`, `maxLoss` e `netDebit` devem
+   * ser os LÍQUIDOS (de `strategyMetrics(...).liquido`); os cenários e o alvo descontam `custos`
+   * do P&L bruto de `pnlAtDay`/`pnlAtExpiry`, que não sabem de custo.
+   */
+  custos?: number;
 }): AnalisePnl {
   const { legs, spot, r, maxProfit, maxLoss, netDebit, sigma, patrimonio } = args;
+  const custos = args.custos ?? 0;
 
   const dus = legs.filter((l) => l.kind === "OPTION").map((l) => l.du ?? 0).filter((d) => d > 0);
   const duEstrutura = dus.length ? Math.min(...dus) : null;
@@ -184,7 +196,8 @@ export function analisarPnl(args: {
     // Avalia no dia em que a regra manda rolar; se a estrutura for mais curta que isso, no
     // vencimento. Avaliar sempre no vencimento mostraria um preço que só vale no último dia.
     const horizonteDu = duEstrutura > DU_ROLAR ? duEstrutura - DU_ROLAR : 0;
-    const precoAlvo = precoParaLucro(legs, spot, r, lucroAlvo, horizonteDu);
+    // O alvo é líquido; o P&L que `precoParaLucro` varre é bruto — o preço tem de cobrir os custos.
+    const precoAlvo = precoParaLucro(legs, spot, r, lucroAlvo + custos, horizonteDu);
     return {
       pctDoMaximo: REALIZAR_PCT_LUCRO_MAXIMO,
       lucroAlvo,
@@ -200,20 +213,22 @@ export function analisarPnl(args: {
     return {
       variacao: v,
       spot: s,
-      hoje: pnlAtDay(legs, s, 0, r),
-      aoRolar: podeRolar ? pnlAtDay(legs, s, duEstrutura! - DU_ROLAR, r) : null,
-      vencimento: pnlAtExpiry(legs, s),
+      hoje: pnlAtDay(legs, s, 0, r) - custos,
+      aoRolar: podeRolar ? pnlAtDay(legs, s, duEstrutura! - DU_ROLAR, r) - custos : null,
+      vencimento: pnlAtExpiry(legs, s) - custos,
     };
   });
 
+  const ve = sigma != null && duEstrutura != null ? valorEsperado(legs, spot, r, sigma, duEstrutura) : null;
+
   return {
+    custos,
     capitalEmRisco,
     pctDoPatrimonio,
     acimaDoTeto: pctDoPatrimonio != null && pctDoPatrimonio > TETO_POR_OPERACAO,
     payoffRatio,
     acertoMinimo: payoffRatio != null ? acertoMinimoParaEmpatar(payoffRatio) : null,
-    valorEsperado:
-      sigma != null && duEstrutura != null ? valorEsperado(legs, spot, r, sigma, duEstrutura) : null,
+    valorEsperado: ve == null ? null : ve - custos,
     alvoRealizacao,
     cenarios,
     duEstrutura,

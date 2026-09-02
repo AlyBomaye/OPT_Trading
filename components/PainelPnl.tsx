@@ -40,6 +40,8 @@ interface Props {
   /** Taxa de acerto histórica do trader e sobre quantas operações fechadas. */
   acertoHistorico: number | null;
   operacoesFechadas: number;
+  /** WO-49: custos ida-e-volta (R$). Com eles, `maxProfit/maxLoss/netDebit` já vêm líquidos. */
+  custos?: number | null;
 }
 
 export function PainelPnl({
@@ -53,10 +55,11 @@ export function PainelPnl({
   patrimonio,
   acertoHistorico,
   operacoesFechadas,
+  custos = null,
 }: Props) {
   const a = useMemo(
-    () => analisarPnl({ legs, spot, r, maxProfit, maxLoss, netDebit, sigma, patrimonio }),
-    [legs, spot, r, maxProfit, maxLoss, netDebit, sigma, patrimonio]
+    () => analisarPnl({ legs, spot, r, maxProfit, maxLoss, netDebit, sigma, patrimonio, custos: custos ?? 0 }),
+    [legs, spot, r, maxProfit, maxLoss, netDebit, sigma, patrimonio, custos]
   );
 
   const amostra = useMemo(
@@ -78,6 +81,15 @@ export function PainelPnl({
       <div className="panel-title flex items-center gap-2">
         <Scale size={14} className="text-term-cyan" />
         <span className="font-bold">P&amp;L da operação — o que decide a ordem</span>
+        {custos != null && custos > 0 ? (
+          <span className="tag bg-term-panel2 text-term-dim ml-auto" title="Corretagem, taxas B3 e taxa operacional de abrir e (estimativa) fechar todas as pernas, pela tabela de custos vigente. É o que a Carteira vai descontar.">
+            líquido de {fmtBRL(custos)} de custos
+          </span>
+        ) : (
+          <span className="tag bg-term-gold/15 text-term-gold ml-auto" title="Sem tabela de custos: os números abaixo são brutos e a Carteira vai medir menos.">
+            bruto — sem custos
+          </span>
+        )}
       </div>
 
       <div className="p-3 space-y-3">

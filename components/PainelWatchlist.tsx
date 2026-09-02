@@ -17,7 +17,6 @@ import type { Candle } from "@/app/api/history/route";
  * cross-sectional do universo inteiro. Fila sequencial com no máx. 2 fetches
  * concorrentes contra /api/opcoes (respeita o cache de 60 s da rota).
  * Última varredura persiste para a página abrir instantânea com tag STALE.
- * Hotkey 8.
  *
  * WO-46 §5: deixou de ser rota propria e passou a abrir o Cockpit. E o mapa de onde o
  * trader escolhe o papel — os blocos abaixo dela ja falam do ativo selecionado.

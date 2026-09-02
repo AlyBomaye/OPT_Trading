@@ -150,6 +150,24 @@ export interface StrategyMetrics {
   maxLoss: number | null; // null = ilimitado
   breakevens: number[];
   pop: number | null; // probabilidade de lucro (risco-neutra)
+  /**
+   * WO-49: os mesmos números líquidos de custos (abertura + fechamento estimado), quando a
+   * tabela de custos foi informada. `null` = sem tabela; a tela então mostra só o bruto e diz.
+   */
+  liquido: MetricasLiquidas | null;
+}
+
+export interface MetricasLiquidas {
+  /** Custos ida-e-volta considerados (R$). */
+  custos: number;
+  /** Débito líquido = débito bruto + custo de abertura (crédito líquido fica menor). */
+  netDebit: number;
+  maxProfit: number | null;
+  maxLoss: number | null;
+  /** Preços em que o P&L no vencimento cobre os custos. */
+  breakevens: number[];
+  /** Probabilidade de o P&L no vencimento superar os custos. */
+  pop: number | null;
 }
 
 export interface PayoffPoint {

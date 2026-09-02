@@ -4,7 +4,8 @@ import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useMarket } from "@/store/market";
 import { DEFAULT_POZINHO_FILTERS, scanPozinhos, type PozinhoFilters } from "@/lib/scanner";
-import { allocatedCapital, journalStats } from "@/lib/portfolio";
+import { journalStats } from "@/lib/portfolio";
+import { useLivro } from "@/lib/hooks/useLivro";
 import { legFromOption } from "@/lib/strategies";
 import { sectorOf } from "@/lib/universe";
 import { fmtBRL, fmtCompact, fmtDateBR, fmtNum, fmtPct } from "@/lib/format";
@@ -12,14 +13,15 @@ import { AgentPanel } from "@/components/AgentPanel";
 import { TruthBar } from "@/components/TruthBar";
 
 export default function ScannerPage() {
-  const { chain, ticker, selic, selectedExpiry, addLeg, positions, closed, capitalTotal } = useMarket();
+  const { chain, ticker, selic, selectedExpiry, addLeg, closed } = useMarket();
   const router = useRouter();
   const [f, setF] = useState<PozinhoFilters>(DEFAULT_POZINHO_FILTERS);
 
   const rows = useMemo(() => (chain ? scanPozinhos(chain, f) : []), [chain, f]);
 
   // WO-11: subtotal por setor com checagem de orçamento ¼-Kelly (planilha)
-  const capitalLivre = capitalTotal - allocatedCapital(positions);
+  // WO-49: o mesmo caixa livre da Carteira e da Estratégia.
+  const capitalLivre = useLivro().caixaLivre.valor;
   const journal = useMemo(() => journalStats(closed), [closed]);
   // Fração de Kelly: realizada (journal ≥ 20 trades) ou 10% conservador sem histórico
   const kellyFrac = journal != null && journal.n >= 20 && journal.realizedKelly != null ? Math.max(journal.realizedKelly, 0) : 0.1;

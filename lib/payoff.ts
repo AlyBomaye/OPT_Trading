@@ -57,15 +57,16 @@ export function buildPayoffCurve(
 }
 
 /** Breakevens por mudança de sinal do payoff no vencimento (grade fina). */
-export function findBreakevens(legs: Leg[], spot: number): number[] {
+export function findBreakevens(legs: Leg[], spot: number, custos = 0): number[] {
   const lo = spot * 0.4;
   const hi = spot * 1.9;
   const n = 3000;
   const bes: number[] = [];
-  let prev = pnlAtExpiry(legs, lo);
+  // WO-49: com `custos`, o breakeven é onde o P&L cobre os custos, não onde ele zera.
+  let prev = pnlAtExpiry(legs, lo) - custos;
   for (let i = 1; i <= n; i++) {
     const s = lo + ((hi - lo) * i) / n;
-    const cur = pnlAtExpiry(legs, s);
+    const cur = pnlAtExpiry(legs, s) - custos;
     if ((prev < 0 && cur >= 0) || (prev > 0 && cur <= 0)) {
       // interpolação linear
       const s0 = lo + ((hi - lo) * (i - 1)) / n;
@@ -83,7 +84,17 @@ export function findBreakevens(legs: Leg[], spot: number): number[] {
  * na integração lognormal da PoP — a média enviesa estruturas com skew
  * (backspreads, ratios).
  */
-export function strategyMetrics(legs: Leg[], spot: number, r: number, atmIv?: number | null): StrategyMetrics {
+export function strategyMetrics(
+  legs: Leg[],
+  spot: number,
+  r: number,
+  atmIv?: number | null,
+  /**
+   * WO-49: custos da operação. `total` é o ida-e-volta descontado do lucro (e somado à perda);
+   * `abertura` entra no débito líquido. Sem isso, `liquido` sai `null` e nada muda.
+   */
+  custos?: { abertura: number; total: number } | null
+): StrategyMetrics {
   const optLegs = legs.filter((l) => l.kind === "OPTION");
   const netDebit = legs.reduce((a, l) => a + l.side * l.qty * l.price, 0);
 
@@ -112,24 +123,45 @@ export function strategyMetrics(legs: Leg[], spot: number, r: number, atmIv?: nu
   // PoP risco-neutra: integra densidade lognormal na região lucrativa.
   // Sigma: IV ATM do vencimento (WO-13) quando disponível; senão média das pernas.
   let pop: number | null = null;
+  let popLiquida: number | null = null;
+  const c = custos ?? null;
   const ivs = optLegs.map((l) => l.iv ?? 0).filter((x) => x > 0);
   const du = Math.min(...optLegs.map((l) => l.du ?? 0));
   if ((atmIv != null || ivs.length) && Number.isFinite(du) && du > 0) {
     const sigma = atmIv ?? ivs.reduce((a, b) => a + b, 0) / ivs.length;
     const t = du / 252;
     let acc = 0;
+    let accLiq = 0;
     const m = 1200;
     const glo = spot * 0.2;
     const ghi = spot * 2.5;
     const dx = (ghi - glo) / m;
     for (let i = 0; i <= m; i++) {
       const s = glo + i * dx;
-      if (pnlAtExpiry(legs, s) > 0) acc += lognormalPdf(s, spot, r, sigma, t) * dx;
+      const v = pnlAtExpiry(legs, s);
+      const w = lognormalPdf(s, spot, r, sigma, t) * dx;
+      if (v > 0) acc += w;
+      if (c && v > c.total) accLiq += w;
     }
     pop = Math.min(Math.max(acc, 0), 1);
+    if (c) popLiquida = Math.min(Math.max(accLiq, 0), 1);
   }
 
-  return { netDebit, maxProfit, maxLoss, breakevens: findBreakevens(legs, spot), pop };
+  // WO-49: a mesma leitura, descontados os custos. Máx lucro cai pelo ida-e-volta; máx perda
+  // piora pelo mesmo tanto; o débito sobe pelo custo de abrir (o crédito encolhe).
+  const liquido =
+    c == null
+      ? null
+      : {
+          custos: c.total,
+          netDebit: netDebit + c.abertura,
+          maxProfit: maxProfit == null ? null : maxProfit - c.total,
+          maxLoss: maxLoss == null ? null : maxLoss - c.total,
+          breakevens: findBreakevens(legs, spot, c.total),
+          pop: popLiquida,
+        };
+
+  return { netDebit, maxProfit, maxLoss, breakevens: findBreakevens(legs, spot), pop, liquido };
 }
 
 export interface StructureGreeks {

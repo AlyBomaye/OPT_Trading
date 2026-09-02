@@ -7,7 +7,7 @@ import clsx from "clsx";
 import { useMarket } from "@/store/market";
 import { PRESETS } from "@/lib/strategies";
 import { strategyMetrics, structureGreeks } from "@/lib/payoff";
-import { allocatedCapital, journalStats } from "@/lib/portfolio";
+import { journalStats } from "@/lib/portfolio";
 import { atmIvNearest, skewInfo, suggestFromSkew, kellyFraction } from "@/lib/scanner";
 import { detectStrategy } from "@/lib/strategy-detect";
 import { suggestStructures, type SuggestionCandidate } from "@/lib/suggest";
@@ -28,6 +28,8 @@ import { PainelPnl } from "@/components/PainelPnl";
 import { SemaforoCriterios } from "@/components/SemaforoCriterios";
 import { FormularioAbertura, type DadosAbertura } from "@/components/FormularioAbertura";
 import { analisarPnl } from "@/lib/pnl-operacao";
+import { custosDaOperacao } from "@/lib/custos-operacao";
+import { useLivro } from "@/lib/hooks/useLivro";
 import { performanceStats, groupTrades } from "@/lib/performance";
 
 /* ============================================================================
@@ -127,10 +129,16 @@ function Workbench() {
   }, [legs]);
   const atmIvStruct = chain && structExpiry ? atmIvNearest(chain, structExpiry) : null;
 
+  // WO-49: a decisão é líquida de custos. A tabela vem do livro (vigente) ou da sugestão oficial;
+  // o caixa livre é o mesmo da Carteira. `dec` são as métricas que decidem; `metrics` guarda o bruto.
+  const { tabelaCustos, caixaLivre: caixa } = useLivro();
+  const custos = useMemo(() => custosDaOperacao(legs, tabelaCustos), [legs, tabelaCustos]);
+
   const metrics = useMemo(
-    () => (chain && legs.length ? strategyMetrics(legs, chain.spot, selic, atmIvStruct) : null),
-    [chain, legs, selic, atmIvStruct]
+    () => (chain && legs.length ? strategyMetrics(legs, chain.spot, selic, atmIvStruct, custos) : null),
+    [chain, legs, selic, atmIvStruct, custos]
   );
+  const dec = metrics ? metrics.liquido ?? metrics : null;
 
   // Gregas líquidas da estrutura em edição (Workbench)
   const greeks = useMemo(
@@ -145,17 +153,17 @@ function Workbench() {
 
   // Kelly ¼ com base na PoP e razão ganho/perda da estrutura
   const kelly = useMemo(() => {
-    if (!metrics || metrics.pop == null || metrics.maxProfit == null || metrics.maxLoss == null || metrics.maxLoss >= 0)
+    if (!dec || dec.pop == null || dec.maxProfit == null || dec.maxLoss == null || dec.maxLoss >= 0)
       return null;
-    const b = metrics.maxProfit / Math.abs(metrics.maxLoss);
-    const f = kellyFraction(metrics.pop, b);
+    const b = dec.maxProfit / Math.abs(dec.maxLoss);
+    const f = kellyFraction(dec.pop, b);
     return f != null ? { quarter: f / 4, half: f / 2, full: f, b } : { quarter: 0, half: 0, full: 0, b };
-  }, [metrics]);
+  }, [dec]);
 
-  // WO-11: Kelly amarrado ao bankroll real (capital livre do book)
-  const capitalLivre = capitalTotal - allocatedCapital(positions);
+  // WO-11: Kelly amarrado ao bankroll real — WO-49: o mesmo caixa livre da Carteira.
+  const capitalLivre = caixa.valor;
   const custoEstrutura =
-    metrics == null ? null : metrics.netDebit > 0 ? metrics.netDebit : metrics.maxLoss != null ? Math.abs(metrics.maxLoss) : null;
+    dec == null ? null : dec.netDebit > 0 ? dec.netDebit : dec.maxLoss != null ? Math.abs(dec.maxLoss) : null;
   const orcamentoKelly = kelly && kelly.quarter > 0 ? kelly.quarter * Math.max(capitalLivre, 0) : null;
   const alocSugerida =
     orcamentoKelly != null && custoEstrutura != null ? Math.min(orcamentoKelly, custoEstrutura) : orcamentoKelly;
@@ -174,7 +182,7 @@ function Workbench() {
   // WO-16: Clique no preset abre as sugestões ranqueadas e carrega a #1
   const handlePresetClick = (key: string) => {
     if (!chain || !selectedExpiry) return;
-    const candidates = suggestStructures(chain, selectedExpiry, key, selic, 3);
+    const candidates = suggestStructures(chain, selectedExpiry, key, selic, 3, tabelaCustos);
     setSuggestPreset(key);
     setSuggestions(candidates);
     if (candidates.length > 0) {
@@ -213,19 +221,20 @@ function Workbench() {
   // O alvo dos 70% também alimenta a sugestão de alvo do formulário de abertura.
   const analise = useMemo(
     () =>
-      chain && metrics && legs.length
+      chain && dec && legs.length
         ? analisarPnl({
             legs,
             spot: chain.spot,
             r: selic,
-            maxProfit: metrics.maxProfit,
-            maxLoss: metrics.maxLoss,
-            netDebit: metrics.netDebit,
+            maxProfit: dec.maxProfit,
+            maxLoss: dec.maxLoss,
+            netDebit: dec.netDebit,
             sigma: atmIvStruct,
             patrimonio: capitalTotal,
+            custos: custos?.total ?? 0,
           })
         : null,
-    [chain, metrics, legs, selic, atmIvStruct, capitalTotal]
+    [chain, dec, legs, selic, atmIvStruct, capitalTotal, custos]
   );
 
   // WO-48: boletar grava no banco como boletas `origem: workbench`; sem banco, recusa com a
@@ -404,7 +413,8 @@ function Workbench() {
             <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
               {suggestions.map((cand, idx) => {
                 const isSelected = selectedSuggestion === cand.id;
-                const netDeb = cand.metrics.netDebit;
+                const cm = cand.metrics.liquido ?? cand.metrics;
+                const netDeb = cm.netDebit;
                 return (
                   <div
                     key={cand.id}
@@ -445,20 +455,20 @@ function Workbench() {
                       </div>
                       <div>
                         <span className="text-term-dim">Máx Lucro: </span>
-                        <b className="text-term-up">{cand.metrics.maxProfit == null ? "Ilimitado" : fmtBRL(cand.metrics.maxProfit)}</b>
+                        <b className="text-term-up">{cm.maxProfit == null ? "Ilimitado" : fmtBRL(cm.maxProfit)}</b>
                       </div>
                       <div>
                         <span className="text-term-dim">Máx Perda: </span>
-                        <b className="text-term-down">{cand.metrics.maxLoss == null ? "Ilimitada" : fmtBRL(cand.metrics.maxLoss)}</b>
+                        <b className="text-term-down">{cm.maxLoss == null ? "Ilimitada" : fmtBRL(cm.maxLoss)}</b>
                       </div>
                       <div>
                         <span className="text-term-dim">PoP: </span>
-                        <b className="text-term-cyan">{cand.metrics.pop != null ? fmtPct(cand.metrics.pop) : "—"}</b>
+                        <b className="text-term-cyan">{cm.pop != null ? fmtPct(cm.pop) : "—"}</b>
                       </div>
                       <div>
                         <span className="text-term-dim">BE: </span>
                         <b className="text-term-text">
-                          {cand.metrics.breakevens.length ? cand.metrics.breakevens.map((b) => fmtNum(b)).join(" · ") : "—"}
+                          {cm.breakevens.length ? cm.breakevens.map((b) => fmtNum(b)).join(" · ") : "—"}
                         </b>
                       </div>
                     </div>
@@ -478,7 +488,7 @@ function Workbench() {
           )}
 
           <div className="text-xxs text-term-dim font-mono">
-            Ranking por EV ajustado a risco = valor esperado (lognormal, IV ATM) ÷ perda máxima. Estruturas de perda ilimitada não entram no ranking.
+            Ranking por EV ajustado a risco = valor esperado (lognormal, IV ATM) ÷ perda máxima — líquidos de custos pela tabela vigente ({tabelaCustos.vigenteDesde === "sugestao" ? "sugestão XP/B3, confirme na Carteira" : `vigente desde ${tabelaCustos.vigenteDesde}`}). Estruturas de perda ilimitada não entram no ranking.
           </div>
         </div>
       )}
@@ -683,13 +693,14 @@ function Workbench() {
               legs={legs}
               spot={chain.spot}
               r={selic}
-              maxProfit={metrics.maxProfit}
-              maxLoss={metrics.maxLoss}
-              netDebit={metrics.netDebit}
+              maxProfit={dec!.maxProfit}
+              maxLoss={dec!.maxLoss}
+              netDebit={dec!.netDebit}
               sigma={atmIvStruct}
               patrimonio={capitalTotal}
               acertoHistorico={acerto.taxa}
               operacoesFechadas={acerto.n}
+              custos={custos?.total ?? null}
             />
           )}
 
@@ -714,21 +725,34 @@ function Workbench() {
           </div>
           <div className="min-w-0 space-y-2">
           {/* Métricas da operação */}
-          {chain && metrics && (
+          {chain && metrics && dec && (
             <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+              {/* WO-49: o líquido decide; o bruto (o prêmio na tela da corretora) fica como nota. */}
               <Kpi
-                label={metrics.netDebit >= 0 ? "Débito líquido" : "Crédito líquido"}
-                value={fmtBRL(Math.abs(metrics.netDebit))}
-                cls={metrics.netDebit >= 0 ? "text-term-down" : "text-term-up"}
+                label={dec.netDebit >= 0 ? "Débito (líquido de custos)" : "Crédito (líquido de custos)"}
+                value={fmtBRL(Math.abs(dec.netDebit))}
+                cls={dec.netDebit >= 0 ? "text-term-down" : "text-term-up"}
+                nota={custos ? `bruto ${fmtBRL(Math.abs(metrics.netDebit))} · abrir ${fmtBRL(custos.abertura)}` : "sem tabela de custos"}
               />
-              <Kpi label="Máx lucro" value={metrics.maxProfit == null ? "Ilimitado" : fmtBRL(metrics.maxProfit)} cls="text-term-up" />
-              <Kpi label="Máx perda" value={metrics.maxLoss == null ? "Ilimitada" : fmtBRL(metrics.maxLoss)} cls="text-term-down" />
               <Kpi
-                label={atmIvStruct != null ? "PoP (lognormal, IV ATM)" : "PoP (lognormal, IV média)"}
-                value={metrics.pop != null ? fmtPct(metrics.pop) : "—"}
+                label="Máx lucro (líquido)"
+                value={dec.maxProfit == null ? "Ilimitado" : fmtBRL(dec.maxProfit)}
+                cls="text-term-up"
+                nota={custos && metrics.maxProfit != null ? `bruto ${fmtBRL(metrics.maxProfit)} · ida e volta ${fmtBRL(custos.total)}` : undefined}
+              />
+              <Kpi
+                label="Máx perda (líquida)"
+                value={dec.maxLoss == null ? "Ilimitada" : fmtBRL(dec.maxLoss)}
+                cls="text-term-down"
+                nota={custos && metrics.maxLoss != null ? `bruto ${fmtBRL(metrics.maxLoss)}` : undefined}
+              />
+              <Kpi
+                label={(atmIvStruct != null ? "PoP (lognormal, IV ATM)" : "PoP (lognormal, IV média)") + (custos ? " · cobre custos" : "")}
+                value={dec.pop != null ? fmtPct(dec.pop) : "—"}
                 cls="text-term-cyan"
+                nota={custos && metrics.pop != null ? `bruta ${fmtPct(metrics.pop)}` : undefined}
               />
-              <Kpi label="Breakeven(s)" value={metrics.breakevens.length ? metrics.breakevens.map((b) => fmtNum(b)).join(" · ") : "—"} />
+              <Kpi label={custos ? "Breakeven(s) líquidos" : "Breakeven(s)"} value={dec.breakevens.length ? dec.breakevens.map((b) => fmtNum(b)).join(" · ") : "—"} />
               <Kpi
                 label="¼-Kelly (fração)"
                 value={kelly ? fmtPct(kelly.quarter) : "sem edge/indef."}
@@ -781,11 +805,12 @@ function Workbench() {
   );
 }
 
-function Kpi({ label, value, cls }: { label: string; value: string; cls?: string }) {
+function Kpi({ label, value, cls, nota }: { label: string; value: string; cls?: string; nota?: string }) {
   return (
     <div className="panel px-2 py-1.5">
       <div className="text-xxs text-term-dim uppercase tracking-wider">{label}</div>
       <div className={`font-mono font-semibold text-sm ${cls ?? ""}`}>{value}</div>
+      {nota && <div className="text-[9px] text-term-dim font-mono leading-tight mt-0.5">{nota}</div>}
     </div>
   );
 }

@@ -102,6 +102,27 @@ export function realizedPnl(p: Position): number | null {
  * com haircut de 20% do strike × qtd (semântica da planilha, Dashboard).
  * qty aqui já é a quantidade de contratos/ações — sem multiplicador de lote.
  */
+/**
+ * WO-49 §B — o único caixa livre da plataforma.
+ *
+ * Com o livro no banco: saldo da razão (aportes − retiradas − prêmios pagos + recebidos − custos)
+ * menos a margem estimada das pernas VENDIDAS. Os prêmios das compradas já saíram do saldo —
+ * descontar o alocado inteiro contaria o prêmio duas vezes. Sem livro: capital − alocado.
+ * Carteira, Estratégia e Scanner leem daqui; antes cada uma fazia a sua conta.
+ */
+export function caixaLivre(args: {
+  capitalTotal: number;
+  positions: Position[];
+  livro: { configurado: boolean; totalBoletas: number; caixa: { saldo: number } | null } | null;
+}): { valor: number; livroAtivo: boolean; margemVendidas: number; alocado: number } {
+  const { capitalTotal, positions, livro } = args;
+  const alocado = allocatedCapital(positions);
+  const margemVendidas = allocatedCapital(positions.filter((p) => p.side === -1));
+  const livroAtivo = !!livro && livro.configurado && livro.totalBoletas > 0 && livro.caixa != null;
+  const valor = livroAtivo ? livro!.caixa!.saldo - margemVendidas : capitalTotal - alocado;
+  return { valor, livroAtivo, margemVendidas, alocado };
+}
+
 export function allocatedCapital(positions: Position[]): number {
   let total = 0;
   for (const p of positions) {

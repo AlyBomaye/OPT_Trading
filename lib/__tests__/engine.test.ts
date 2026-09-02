@@ -589,7 +589,7 @@ const legPutSell: Leg = { id: "2", kind: "OPTION", underlying: "PETR4", type: "P
 const legStock: Leg = { id: "3", kind: "STOCK", underlying: "PETR4", side: 1, qty: 100, price: 30 };
 
 const rCall = classificarRisco([legCall], null);
-const rNaked = classificarRisco([legPutSell], { netDebit: 100, maxProfit: 100, maxLoss: null, breakevens: [27], pop: 0.7 });
+const rNaked = classificarRisco([legPutSell], { netDebit: 100, maxProfit: 100, maxLoss: null, breakevens: [27], pop: 0.7, liquido: null });
 const rCovered = classificarRisco([legStock, { ...legCall, side: -1 }], null);
 
 if (rCall === "ALTO" && rNaked === "ALTO" && rCovered === "BAIXO") {
@@ -5086,6 +5086,100 @@ async function testesWo28Restaurados() {
       console.log(`✘ SK Teste 45 falhou: ${problemas.join("; ") || "pastas: " + pastas.join(",")}`);
       failures++;
     }
+  }
+
+  // ================= WO-49 — o número certo para Boletar =================
+  {
+    const fs = await import("node:fs");
+    const path = await import("node:path");
+    const raiz = process.cwd();
+    const lerSrc = (rel: string) => fs.readFileSync(path.join(raiz, rel), "utf8");
+    const { custosDaOperacao } = await import("../custos-operacao");
+    const { analisarPnl } = await import("../pnl-operacao");
+    const { caixaLivre } = await import("../portfolio");
+    const { CUSTOS_SUGERIDOS_XP_B3 } = await import("../custos-sugeridos");
+    const { HOTKEYS_MANUAL, RESUMO_TELAS } = await import("../manual-content");
+
+    const tab = { ...CUSTOS_SUGERIDOS_XP_B3, vigenteDesde: "2026-01-01" };
+    const trava: Leg[] = [
+      { id: "a", kind: "OPTION", underlying: "PETR4", type: "CALL", strike: 30, du: 20, side: 1, qty: 100, price: 2.0, iv: 0.3 },
+      { id: "b", kind: "OPTION", underlying: "PETR4", type: "CALL", strike: 32, du: 20, side: -1, qty: 100, price: 1.0, iv: 0.3 },
+    ];
+
+    // ---- Teste 1: custos da operação — parte fixa exata, ida e volta = 2× abertura
+    const c = custosDaOperacao(trava, tab)!;
+    const fixaPorPerna = 18.9 * 1.0965 * 1.059;
+    const t1 = c != null && c.porPerna.length === 2 && c.abertura > 2 * fixaPorPerna && c.abertura < 2 * fixaPorPerna + 2 && Math.abs(c.total - 2 * c.abertura) < 1e-9 && custosDaOperacao(trava, null) == null;
+    if (t1) console.log(`✔ WO-49 Teste 1: trava de 2 pernas custa ${c.abertura.toFixed(2)} para abrir e ${c.total.toFixed(2)} ida e volta; sem tabela, null`);
+    else { console.log(`✘ WO-49 Teste 1 falhou: ${JSON.stringify(c)}`); failures++; }
+
+    // ---- Teste 2: strategyMetrics líquido — lucro cai, perda piora, débito sobe, PoP cai, BE afasta
+    const bruto = strategyMetrics(trava, 30, 0.1, 0.3);
+    const liq = strategyMetrics(trava, 30, 0.1, 0.3, c);
+    const L = liq.liquido!;
+    const t2 = bruto.liquido == null && L != null
+      && Math.abs(L.maxProfit! - (bruto.maxProfit! - c.total)) < 1e-9
+      && Math.abs(L.maxLoss! - (bruto.maxLoss! - c.total)) < 1e-9
+      && Math.abs(L.netDebit - (bruto.netDebit + c.abertura)) < 1e-9
+      && L.pop != null && bruto.pop != null && L.pop < bruto.pop
+      && L.breakevens.length === 1 && bruto.breakevens.length === 1 && L.breakevens[0] > bruto.breakevens[0]
+      && liq.maxProfit === bruto.maxProfit;
+    if (t2) console.log(`✔ WO-49 Teste 2: líquido: máx lucro ${L.maxProfit!.toFixed(0)} (bruto ${bruto.maxProfit!.toFixed(0)}), PoP ${(L.pop! * 100).toFixed(1)}% < ${(bruto.pop! * 100).toFixed(1)}%, BE ${L.breakevens[0].toFixed(2)} > ${bruto.breakevens[0].toFixed(2)}; o bruto não muda`);
+    else { console.log(`✘ WO-49 Teste 2 falhou: ${JSON.stringify({ bruto, L })}`); failures++; }
+
+    // ---- Teste 3: analisarPnl com custos — alvo dos 70% líquido, preço-alvo mais longe, cenários descontados
+    const aB = analisarPnl({ legs: trava, spot: 30, r: 0.1, maxProfit: bruto.maxProfit, maxLoss: bruto.maxLoss, netDebit: bruto.netDebit, sigma: 0.3, patrimonio: 10000 });
+    const aL = analisarPnl({ legs: trava, spot: 30, r: 0.1, maxProfit: L.maxProfit, maxLoss: L.maxLoss, netDebit: L.netDebit, sigma: 0.3, patrimonio: 10000, custos: c.total });
+    const cen0B = aB.cenarios.find((x) => x.variacao === 0)!;
+    const cen0L = aL.cenarios.find((x) => x.variacao === 0)!;
+    const t3 = aL.custos === c.total && aB.custos === 0
+      && Math.abs(aL.alvoRealizacao!.lucroAlvo - 0.7 * L.maxProfit!) < 1e-9
+      && aL.alvoRealizacao!.precoAlvo! > aB.alvoRealizacao!.precoAlvo!
+      && Math.abs(cen0L.vencimento - (cen0B.vencimento - c.total)) < 1e-9
+      && aL.valorEsperado! < aB.valorEsperado!
+      && aL.capitalEmRisco! > aB.capitalEmRisco!;
+    if (t3) console.log(`✔ WO-49 Teste 3: alvo líquido ${aL.alvoRealizacao!.lucroAlvo.toFixed(0)} exige ${aL.alvoRealizacao!.precoAlvo!.toFixed(2)} (bruto ${aB.alvoRealizacao!.precoAlvo!.toFixed(2)}); cenários e EV descontam ${c.total.toFixed(2)}`);
+    else { console.log(`✘ WO-49 Teste 3 falhou: ${JSON.stringify({ aB: aB.alvoRealizacao, aL: aL.alvoRealizacao, cen0B, cen0L })}`); failures++; }
+
+    // ---- Teste 4: um só caixa livre — com livro: saldo − margem das vendidas; sem: capital − alocado
+    const pos: any[] = [
+      { id: "1", kind: "OPTION", underlying: "PETR4", type: "CALL", strike: 46, side: 1, qty: 100, price: 2.08 },
+      { id: "2", kind: "OPTION", underlying: "PETR4", type: "PUT", strike: 46, side: -1, qty: 100, price: 0.96 },
+    ];
+    const comLivro = caixaLivre({ capitalTotal: 600, positions: pos, livro: { configurado: true, totalBoletas: 3, caixa: { saldo: 35 } } });
+    const semLivro = caixaLivre({ capitalTotal: 600, positions: pos, livro: { configurado: false, totalBoletas: 0, caixa: null } });
+    const t4 = comLivro.livroAtivo && Math.abs(comLivro.valor - (35 - 0.2 * 46 * 100)) < 1e-9 && !semLivro.livroAtivo && Math.abs(semLivro.valor - (600 - (208 + 920))) < 1e-9;
+    if (t4) console.log(`✔ WO-49 Teste 4: caixa livre com livro ${comLivro.valor.toFixed(0)} (saldo − margem das vendidas) e sem livro ${semLivro.valor.toFixed(0)} (capital − alocado)`);
+    else { console.log(`✘ WO-49 Teste 4 falhou: ${JSON.stringify({ comLivro, semLivro })}`); failures++; }
+
+    // ---- Teste 5: as três abas leem o mesmo caixa livre; a Estratégia decide líquido
+    const srcEst = lerSrc("app/estrategia/page.tsx");
+    const srcSc = lerSrc("app/scanner/page.tsx");
+    const srcCa = lerSrc("app/carteira/page.tsx");
+    const t5 = /useLivro\(\)/.test(srcEst) && /useLivro\(\)/.test(srcSc) && /caixaLivreLib\(/.test(srcCa)
+      && !/capitalTotal - allocatedCapital\(positions\)/.test(srcEst) && !/capitalTotal - allocatedCapital\(positions\)/.test(srcSc)
+      && /strategyMetrics\(legs, chain\.spot, selic, atmIvStruct, custos\)/.test(srcEst)
+      && /suggestStructures\(chain, selectedExpiry, key, selic, 3, tabelaCustos\)/.test(srcEst)
+      && /custos=\{custos\?\.total \?\? null\}/.test(srcEst);
+    if (t5) console.log("✔ WO-49 Teste 5: Estratégia, Scanner e Carteira usam o mesmo caixa livre; métricas, sugestões e P&L da Estratégia recebem os custos");
+    else { console.log("✘ WO-49 Teste 5 falhou: alguma aba ainda calcula o caixa por conta própria ou a Estratégia decide bruto"); failures++; }
+
+    // ---- Teste 6: Manual e Nav concordam; textos com atalhos antigos sumiram; Consultor usa netGreeks
+    const srcNav = lerSrc("components/Nav.tsx");
+    const itens = Array.from(srcNav.matchAll(/label: "([^"]+)", key: "(\d)"/g)).map((m) => ({ label: m[1], key: m[2] }));
+    const manualOk = itens.length === 8 && itens.every((it, i) => {
+      const hk = HOTKEYS_MANUAL.find((h) => h.atalho === it.key);
+      return hk != null && hk.descricao.startsWith(it.label) && RESUMO_TELAS[i]?.modulo === `${it.key}. ${it.label}`;
+    });
+    const arquivos = ["app/consultor/page.tsx", "app/noticias/page.tsx", "app/manual/page.tsx", "components/PayoffChart.tsx", "components/PainelWatchlist.tsx", "lib/manual-content.ts"];
+    const velhos = /tecla 8|HOTKEY 9|Hotkey 3|atalho 8|tecla <kbd>2|Hotkey 8\./;
+    const semVelhos = arquivos.every((a) => !velhos.test(lerSrc(a)));
+    const srcCons = lerSrc("app/consultor/page.tsx");
+    const consOk = /netGreeks\(positions, chain, selic\)/.test(srcCons) && !/pAny\.delta/.test(srcCons) && /chain\?\.dataEfetiva/.test(srcCons);
+    const srcNot = lerSrc("app/noticias/page.tsx");
+    const notOk = !/setSelectedTicker\("PETR4"\)/.test(srcNot) && /setPainelTickerAberto\(false\)/.test(srcNot);
+    if (manualOk && semVelhos && consOk && notOk) console.log("✔ WO-49 Teste 6: Manual (atalhos e resumo das telas) bate com a Nav; textos com atalhos antigos removidos; Consultor usa netGreeks e a data da cadeia; Notícias recolhe em vez de selecionar PETR4");
+    else { console.log(`✘ WO-49 Teste 6 falhou: manual=${manualOk} semVelhos=${semVelhos} consultor=${consOk} noticias=${notOk}`); failures++; }
   }
 }
 

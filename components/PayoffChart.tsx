@@ -40,7 +40,7 @@ export function PayoffChart({
   if (!legs.length) {
     return (
       <div className="panel p-8 text-center text-term-dim">
-        Adicione pernas pelo Chain (tecla <kbd>2</kbd>) ou aplique um preset para ver o payoff.
+        Adicione pernas pela Cadeia (a linha recolhível no topo) ou aplique um preset para ver o payoff.
       </div>
     );
   }

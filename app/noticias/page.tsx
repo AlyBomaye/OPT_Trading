@@ -92,6 +92,8 @@ export default function NoticiasPage() {
   // Editor de Balanços Popover
   const [showEarningsEditor, setShowEarningsEditor] = useState(false);
   const [updatingWatchlist, setUpdatingWatchlist] = useState(false);
+  // WO-49: "Fechar" recolhe o painel do ticker; antes selecionava PETR4 fixo.
+  const [painelTickerAberto, setPainelTickerAberto] = useState(true);
 
   // Carrega preferências do localStorage
   useEffect(() => {
@@ -130,6 +132,7 @@ export default function NoticiasPage() {
   // navegação para fora da aba.
   const selecionarPeloMapa = (t: string) => {
     setSelectedTicker(t);
+    setPainelTickerAberto(true);
     document.getElementById("cobertura-acoes")?.scrollIntoView({ behavior: "smooth", block: "start" });
   };
 
@@ -543,7 +546,7 @@ export default function NoticiasPage() {
 
             {!chain ? (
               <div className="p-4 text-center text-xs text-term-dim border border-dashed border-term-line rounded">
-                Nenhum chain de opções carregado no terminal. Navegue até o <b>Chain (atalho 8)</b> e selecione um ativo para visualizar o radar de volatilidade por vencimento.
+                Nenhum chain de opções carregado no terminal. Abra a <b>Estratégia (tecla 7), modo Cadeia</b>, e selecione um ativo para visualizar o radar de volatilidade por vencimento.
               </div>
             ) : (
               <>
@@ -730,7 +733,7 @@ export default function NoticiasPage() {
                 return (
                   <button
                     key={u.ticker}
-                    onClick={() => setSelectedTicker(u.ticker)}
+                    onClick={() => { setSelectedTicker(u.ticker); setPainelTickerAberto(true); }}
                     className={clsx(
                       "tag text-xs font-mono py-1 px-2.5 flex items-center gap-1.5 transition-colors cursor-pointer",
                       isSelected
@@ -750,7 +753,7 @@ export default function NoticiasPage() {
             </div>
 
             {/* Painel Dedicado do Ticker Selecionado */}
-            {selectedTicker && (
+            {selectedTicker && painelTickerAberto && (
               <div className="p-3 bg-term-panel rounded border border-term-cyan/40 space-y-3">
                 <div className="flex flex-wrap items-center justify-between gap-2 border-b border-term-line/60 pb-2">
                   <div className="flex items-center gap-2">
@@ -776,8 +779,9 @@ export default function NoticiasPage() {
                       Carregar chain ({selectedTicker}) →
                     </button>
                     <button
-                      onClick={() => setSelectedTicker("PETR4")}
+                      onClick={() => setPainelTickerAberto(false)}
                       className="text-term-dim hover:text-term-text text-xs"
+                      title="Recolher o painel deste ativo (a seleção continua)"
                     >
                       Fechar ✕
                     </button>

@@ -1,5 +1,7 @@
 import { lognormalPdf } from "./black-scholes";
 import { pnlAtExpiry, strategyMetrics } from "./payoff";
+import { custosDaOperacao } from "./custos-operacao";
+import type { TabelaCustos } from "./boleta-calculos";
 import { atmIvNearest } from "./scanner";
 import { legFromOption, liquid, nearest, otmAt, stockLeg } from "./strategies";
 import type { ChainData, Leg, OptionQuote, OptionType, StrategyMetrics } from "./types";
@@ -88,7 +90,9 @@ export function suggestStructures(
   expiry: string,
   presetKey: string,
   r: number,
-  top = 3
+  top = 3,
+  /** WO-49: com a tabela, EV e score saem líquidos de custos (ida e volta). */
+  tabela: TabelaCustos | null = null
 ): SuggestionCandidate[] {
   const spot = chain.spot;
   const atmIv = atmIvNearest(chain, expiry);
@@ -325,18 +329,20 @@ export function suggestStructures(
     if (seenIds.has(id)) continue;
     seenIds.add(id);
 
-    const metrics = strategyMetrics(legs, spot, r, atmIv);
+    const custos = custosDaOperacao(legs, tabela);
+    const metrics = strategyMetrics(legs, spot, r, atmIv, custos);
+    const maxLossRef = metrics.liquido ? metrics.liquido.maxLoss : metrics.maxLoss;
 
     // Exclusão: candidatas com maxLoss == null (perda ilimitada) ou maxLoss >= 0 saem do ranking
-    if (metrics.maxLoss == null || metrics.maxLoss >= 0) continue;
+    if (maxLossRef == null || maxLossRef >= 0) continue;
 
     const optLegs = legs.filter((l) => l.kind === "OPTION");
     const du = Math.min(...optLegs.map((l) => l.du ?? 0));
     const ivs = optLegs.map((l) => l.iv ?? 0).filter((x) => x > 0);
     const sigma = atmIv ?? (ivs.length ? ivs.reduce((a, b) => a + b, 0) / ivs.length : 0.3);
 
-    const ev = expectedValue(legs, spot, r, sigma, du);
-    const absLoss = Math.abs(metrics.maxLoss);
+    const ev = expectedValue(legs, spot, r, sigma, du) - (custos?.total ?? 0);
+    const absLoss = Math.abs(maxLossRef);
     const score = absLoss > 0 ? ev / absLoss : 0;
     const label = buildLabel(legs, spot);
 

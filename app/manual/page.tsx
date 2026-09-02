@@ -59,7 +59,7 @@ export default function ManualPage() {
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <span className="tag tag-cyan font-mono text-xxs">HOTKEY 9</span>
+          <span className="tag tag-cyan font-mono text-xxs">TECLA 8</span>
           <span className="tag bg-term-panel2 border border-term-line text-term-dim text-xxs font-mono">
             B3 · OPERAÇÕES DE OPÇÕES
           </span>
@@ -151,7 +151,7 @@ export default function ManualPage() {
                   <span>2. Como Montar Operações no Workbench de Estratégia</span>
                 </div>
                 <p className="text-xs text-term-dim mb-3">
-                  Exemplo prático de montagem de uma **Trava de Alta com Calls (Bull Call Spread)** no Workbench (Hotkey 3):
+                  Exemplo prático de montagem de uma **Trava de Alta com Calls (Bull Call Spread)** na Estratégia (tecla 7):
                 </p>
                 <ol className="space-y-2 text-xs list-decimal list-inside text-term-dim">
                   {PASSO_A_PASSO_WORKBENCH.map((item, idx) => (

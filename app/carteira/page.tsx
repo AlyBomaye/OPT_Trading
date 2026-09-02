@@ -6,6 +6,7 @@ import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YA
 import { markInfo, useMarket } from "@/store/market";
 import {
   allocatedCapital,
+  caixaLivre as caixaLivreLib,
   equityCurve,
   journalStats,
   netGreeks,
@@ -179,12 +180,9 @@ export default function CarteiraPage() {
 
   // WO-11: capital, journal e curva de patrimônio (semântica da planilha)
   const alocado = useMemo(() => allocatedCapital(positions), [positions]);
-  // Com o livro no banco, o caixa livre sai da razao (saldo apos compras e custos) menos a margem
-  // exigida pelas pernas VENDIDAS. Os premios das compradas ja sairam do saldo — descontar o
-  // 'alocado' inteiro contaria o premio duas vezes.
-  const livroAtivo = livro.configurado && livro.totalBoletas > 0 && livro.caixa != null;
-  const margemVendidas = useMemo(() => allocatedCapital(positions.filter((p) => p.side === -1)), [positions]);
-  const caixaLivre = livroAtivo ? livro.caixa!.saldo - margemVendidas : capitalTotal - alocado;
+  // WO-49 §B: o caixa livre vem de `caixaLivre` em lib/portfolio — a mesma conta que a
+  // Estratégia e o Scanner usam. Com o livro: saldo da razão menos a margem das vendidas.
+  const caixaLivre = useMemo(() => caixaLivreLib({ capitalTotal, positions, livro }).valor, [capitalTotal, positions, livro]);
   const [boletaTipoInicial, setBoletaTipoInicial] = useState<"abertura" | "fechamento" | "caixa" | undefined>(undefined);
   const journal = useMemo(() => journalStats(closed), [closed]);
   const curve = useMemo(() => equityCurve(closed, capitalTotal), [closed, capitalTotal]);

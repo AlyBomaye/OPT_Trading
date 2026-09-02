@@ -15,6 +15,8 @@ import type { AgentReport, Recomendacao, Achado, Melhoria, CycleResponse } from 
 import type { RunState } from "@/lib/agents/orchestrator";
 import { useWatchlist } from "@/lib/sector-dashboard";
 import { sessionInfo } from "@/lib/session";
+import { netGreeks } from "@/lib/portfolio";
+import { fmtDateBR } from "@/lib/format";
 
 // Gráficos do WO-26 (D.1)
 import { RiskTargetChart } from "@/components/agents/RiskTargetChart";
@@ -94,24 +96,14 @@ export default function ConsultorPage() {
 
   const alocacao = alocacaoPorBalde(positions, capitalTotal);
 
-  // Net greeks do book se existirem posições
-  let netGreeksDisplay: { delta: string; theta: string } | null = null;
-  if (hasPositions) {
-    let totDelta = 0;
-    let totTheta = 0;
-    let validGreeks = false;
-    for (const p of positions) {
-      const pAny = p as any;
-      if (pAny.delta != null) { totDelta += pAny.delta * p.qty * p.side; validGreeks = true; }
-      if (pAny.theta != null) { totTheta += pAny.theta * p.qty * p.side; validGreeks = true; }
-    }
-    if (validGreeks) {
-      netGreeksDisplay = {
-        delta: totDelta.toFixed(2),
-        theta: `R$ ${totTheta.toFixed(0)}`,
-      };
-    }
-  }
+  // WO-49: gregas do book pela mesma função das outras abas. A versão anterior somava `p.delta`
+  // e `p.theta`, campos que a posição não tem — o KPI ficava sempre em "—".
+  const selic = useMarket((st) => st.selic);
+  const gregasBook = hasPositions && hasChain ? netGreeks(positions, chain, selic) : null;
+  const netGreeksDisplay =
+    gregasBook != null && positions.some((p) => p.kind === "OPTION")
+      ? { delta: gregasBook.deltaShares.toFixed(0), theta: `R$ ${gregasBook.thetaPerDay.toFixed(0)}` }
+      : null;
 
   // VaR 95% do report da carteira ou do ciclo
   const carteiraReport = cycleResult?.reports?.["carteira"];
@@ -436,7 +428,7 @@ export default function ConsultorPage() {
               <div className="flex items-center space-x-2">
                 <AlertTriangle size={16} className="text-yellow-400 shrink-0" />
                 <span>
-                  <strong>⚠ Relatório gerado com contexto incompleto</strong> — {baixaConfCount} de {totalAgentes} agentes rodaram sem dado real. Carregue um chain (tecla <kbd className="px-1 bg-yellow-900 border border-yellow-700 rounded text-yellow-200">8</kbd>) e gere novamente.
+                  <strong>⚠ Relatório gerado com contexto incompleto</strong> — {baixaConfCount} de {totalAgentes} agentes rodaram sem dado real. Carregue uma cadeia na Estratégia (tecla <kbd className="px-1 bg-yellow-900 border border-yellow-700 rounded text-yellow-200">7</kbd>, modo Cadeia) e gere novamente.
                 </span>
               </div>
             </div>
@@ -478,7 +470,7 @@ export default function ConsultorPage() {
               {veredito}
             </h2>
             <div className="mt-4 flex flex-wrap justify-center gap-2 text-xxs font-mono opacity-80">
-              <span className="px-2 py-1 bg-neutral-800 rounded">Dados: {new Date().toISOString().slice(0, 10)}</span>
+              <span className="px-2 py-1 bg-neutral-800 rounded" title="Data efetiva da cadeia carregada — não a hora do relógio">Dados: {chain?.dataEfetiva ? fmtDateBR(chain.dataEfetiva) : "sem cadeia"}</span>
               <span className="px-2 py-1 bg-neutral-800 rounded">Agentes: {cycleResult?.executados?.length ?? 0}/{totalAgentes}</span>
               <span className={clsx("px-2 py-1 rounded", !cycleResult ? "bg-neutral-800 text-neutral-500" : isContextoIncompleto ? "bg-red-900/30 text-red-400" : "bg-green-900/30 text-green-400")}>
                 Confiança: {cycleResult ? (isContextoIncompleto ? "BAIXA" : "ALTA") : "—"}

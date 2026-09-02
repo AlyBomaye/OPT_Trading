@@ -67,45 +67,47 @@ export const PASSO_A_PASSO_WORKBENCH = [
 ];
 
 export const RESUMO_TELAS = [
+  // WO-49: as oito abas, na ordem da barra lateral — a tecla é a posição. O Teste WO-49 6 confere
+  // esta lista contra a Nav; se a barra mudar, o Manual tem de mudar junto.
   {
-    modulo: "1. Cockpit Matinal",
-    pergunta: "Qual o diagnóstico geral de risco do meu book e as melhores oportunidades do dia?",
-    resposta: "Consolida choque de portfólio, VaR 95%, mapa de exposição a Gamma (GEX Flip/Walls), topo do scanner de pozinhos e o Foco do dia combinando regime × skew × book.",
+    modulo: "1. Consultor",
+    pergunta: "O que a mesa de agentes diz do meu book e do mercado hoje?",
+    resposta: "Roda o ciclo de 13 agentes (aba por aba, depois o Gestor), consolida KPIs de risco, alertas, leitura de mercado e a Carta do Gestor; o Pipeline de Melhorias guarda o backlog sugerido.",
   },
   {
-    modulo: "2. Chain de Opções",
-    pergunta: "Como as opções de todos os vencimentos estão precificadas na B3 agora?",
-    resposta: "Exibe a grade completa Call|Strike|Put com IV recalculada por Newton-Raphson, gregas analíticas, negócios/volume, ITM sombreado, smile de vol e estrutura a termo.",
+    modulo: "2. Cockpit",
+    pergunta: "Qual o diagnóstico de pré-abertura e onde está o risco do dia?",
+    resposta: "Leitura de pré-abertura, perfil de GEX por strike (posições em aberto da B3, com override manual), Foco do dia (regime × skew × book), Watchlist do universo, choque do portfólio e pozinhos.",
   },
   {
-    modulo: "3. Estratégia (Workbench)",
-    pergunta: "Como montar, simular e dimensionar operações de múltiplas pernas?",
-    resposta: "Disponibiliza 13 presets da B3, editor multi-perna com prêmio/vol offset, gráfico de payoff Expiração·T+0·T+n, breakevens exatos, PoP risco-neutra, ¼-Kelly e matriz What-If.",
+    modulo: "3. Carteira",
+    pergunta: "O que tenho aberto, o que o método manda fazer e quanto isso custa?",
+    resposta: "Boleta (B) e livro no banco, vencimentos pendentes, tabela de custos, flags de ação por estrutura, P&L líquido e zeragem a custo zero, apuração fiscal, stress, VaR e exportação em Excel.",
   },
   {
-    modulo: "4. Scanner de Pozinhos",
-    pergunta: "Onde estão as opções OTM baratas com maior assimetria de convexidade?",
-    resposta: "Varre opções OTM com prêmio R$ 0,01–0,10, ordenando por convexidade (Δ/R$), distância em desvios padrões (σ) e percentual até o breakeven.",
+    modulo: "4. Notícias",
+    pergunta: "Onde está o calor do dia e quais eventos vão mexer na vol?",
+    resposta: "Dashboard setorial, Mapa de Oportunidades do universo, radar de eventos por vencimento (macro, balanços, ex-dividendo), cobertura por ação e feed agregado com agenda de 45 dias.",
   },
   {
-    modulo: "5. Carteira & Journal",
-    pergunta: "Qual a exposição agregada da minha carteira e o histórico de performance?",
-    resposta: "Gerencia posições mantidas no navegador, P&L aberto/realizado, gregas líquidas reavaliadas pelo chain ao vivo, estresse de spot, VaR 95% 1d e curva de patrimônio.",
+    modulo: "5. Macro",
+    pergunta: "O que o mundo fez enquanto a B3 estava fechada, e como isso chega aos meus papéis?",
+    resposta: "Sessões globais, painéis de índices, futuros, VIX, moedas e commodities, Rates & FX (pré, Treasuries, cupom cambial, NTN-B, inflação), Boletim Focus e impacto por driver no universo.",
   },
   {
-    modulo: "6. Notícias & Macro",
-    pergunta: "Quais eventos macroeconômicos podem impactar a volatilidade hoje?",
-    resposta: "Agrega notícias em tempo real via RSS e apresenta o calendário de eventos econômicos (Copom, Fed, IPCA, Payroll e Vencimentos de Opções B3).",
+    modulo: "6. Scanner",
+    pergunta: "Quais opções OTM baratas têm mais convexidade — e por que o método desaconselha?",
+    resposta: "Varre pozinhos por Δ/R$, distância em σ e % até o breakeven, com o aviso do método e a alocação por setor sob orçamento ¼-Kelly.",
   },
   {
-    modulo: "7. Histórico & Volatilidade",
-    pergunta: "A volatilidade do ativo objeto está esticada ou barata graficamente?",
-    resposta: "Apresenta gráfico de preços com bandas de volatilidade histórica (HV10, HV21, HV63), estimador de Parkinson, Cone de Volatilidade e spread IV−HV21.",
+    modulo: "7. Estratégia",
+    pergunta: "Como montar, medir líquido de custos e Boletar uma estrutura?",
+    resposta: "Três modos: Montagem (cadeia recolhível, pernas, payoff, P&L da operação líquido de custos, semáforo do método, sensibilidade e a porta das 3 perguntas), Cadeia (grade completa, smile e estrutura a termo) e Contexto (tendência, vol realizada, IV×HV e cone).",
   },
   {
-    modulo: "8. Watchlist & Skew Ratio",
-    pergunta: "Quais ativos apresentam as maiores distorções de Skew Ratio no momento?",
-    resposta: "Monitora múltiplos ativos da B3 calculando o Skew Ratio (IV Put ATM ÷ IV Call ATM) ponderado por volume financeiro e destaca desalinhamentos de volatilidade.",
+    modulo: "8. Manual",
+    pergunta: "Onde encontro cada informação e o que cada termo significa?",
+    resposta: "Rotina pré-market, passo a passo da montagem, o que cada tela responde, atalhos, proveniência dos dados, mapa de informações e glossário.",
   },
 ];
 
