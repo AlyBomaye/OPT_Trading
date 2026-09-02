@@ -1,5 +1,16 @@
 # WO-48 — Boletagem: a Carteira vira o livro de ordens da mesa
 
+> **Executado em 02/09/2026** — commit `25c68c0`. 17 testes novos, 299 verificações verdes,
+> typecheck limpo, build de produção limpo (19 páginas, 4 rotas novas), console sem erros.
+> Diferenças em relação ao texto abaixo, todas para mais rigor: os cálculos puros vivem em
+> `lib/boleta-calculos.ts` (sem banco) e o servidor grava com **exatamente** essas funções;
+> `POST /api/boletas?simular=1` roda a boleta e força ROLLBACK — é a prévia da tela e foi o jeito
+> de exercitar o SQL ao vivo sem gravar nada; a boleta de fechamento guarda `preco_medio_ref` e
+> `custos_abertura_ref` (a base fiscal daquela saída); a proposta de vencimento é montada no
+> cliente com `/api/history`, e o schema `002` é aplicado sob demanda — não exige rodar o
+> `setup:db` de novo. **A migração ainda não foi executada:** ela aparece na Carteira do navegador
+> que tem posições, pede confirmação com o resumo, e roda uma vez.
+
 > **Como usar.** Prompt de execução. A seção 1 é o diagnóstico verificado no código — cada
 > afirmação tem arquivo e linha. A seção 2 fixa as quatro decisões que você tomou. As seções 3 a 9
 > especificam. A 10 lista os testes; a 11, a verificação; a 12, a sequência.
