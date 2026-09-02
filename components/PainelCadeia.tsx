@@ -7,6 +7,7 @@ import { TermStructure } from "@/components/TermStructure";
 import { VolSmile } from "@/components/VolSmile";
 import { AgentPanel } from "@/components/AgentPanel";
 import { useSkewAtm } from "@/lib/hooks/useSkewAtm";
+import { PainelParidade } from "@/components/PainelParidade";
 
 /**
  * WO-46 §4 — modo Cadeia da Estratégia. Era a aba Chain.
@@ -47,6 +48,8 @@ export function PainelCadeia() {
           <OptionChain />
         </div>
       </div>
+      {/* WO-54 — paridade put-call: o controle de qualidade da cadeia, antes da estrutura a termo */}
+      <PainelParidade />
       <div id="estrutura-a-termo">
         <TermStructure />
       </div>

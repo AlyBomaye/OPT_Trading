@@ -28,6 +28,7 @@ import { MigracaoLivro } from "@/components/MigracaoLivro";
 import { PainelVencimentos } from "@/components/PainelVencimentos";
 import { PainelCustos } from "@/components/PainelCustos";
 import { PainelLimites } from "@/components/PainelLimites";
+import { PainelVarHistorico } from "@/components/PainelVarHistorico";
 import { estruturasAbertas } from "@/lib/position-flags";
 import { strategyMetrics } from "@/lib/payoff";
 import { CUSTOS_SUGERIDOS_XP_B3 } from "@/lib/custos-sugeridos";
@@ -614,6 +615,9 @@ export default function CarteiraPage() {
           </div>
         </div>
       )}
+
+      {/* WO-54 — VaR histórico com expected shortfall, ao lado da grade */}
+      <PainelVarHistorico positions={positions} chainCache={chainCache} selic={selic} capitalTotal={capitalTotal} varGrade={risk?.var95 ?? null} />
 
       {/* WO-17 Bloco C: Suíte de Gráficos e Riscos da Carteira */}
       <PerformanceCharts

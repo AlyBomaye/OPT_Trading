@@ -5454,6 +5454,99 @@ async function testesWo28Restaurados() {
     if (t6) console.log(`✔ WO-53 Teste 6: put comprada perde no máximo o prêmio (−120), straddle comprado −300; VaR/stress ignoram pernas de outro papel; VaR do book soma por papel (${book!.var95.toFixed(0)}) e lista quem ficou sem medida`);
     else { console.log(`✘ WO-53 Teste 6 falhou: ${JSON.stringify({ mPut: mPut.maxLoss, mStr: mStr.maxLoss, mPutV: [mPutV.maxLoss, mPutV.maxProfit], soPetr, soPetrRef, stressFiltrado, book, semCadeia })}`); failures++; }
   }
+
+  // ================= WO-54 — Risco de verdade =================
+  {
+    const fs = await import("node:fs");
+    const path = await import("node:path");
+    const lerSrc = (rel: string) => fs.readFileSync(path.join(process.cwd(), rel), "utf8");
+    const { varHistoricoBook } = await import("../var-historico");
+    const { sensitivityMatrix, pnlAtExpiry: pnlExp } = await import("../payoff");
+    const { curvaSmile, popNoSmile, sigmaNoSmile } = await import("../smile");
+    const { residuosParidade } = await import("../paridade");
+    const { betaVolSpot, BETA_VOL_PADRAO } = await import("../vol-acoplada");
+
+    // Candles sintéticos determinísticos (random walk com seno) para dois papéis, 300 pregões
+    const mkCandles = (base: number, fase: number) => {
+      const out: { date: string; close: number }[] = [];
+      let c = base;
+      for (let i = 0; i < 300; i++) {
+        c = c * (1 + 0.02 * Math.sin(i * 0.7 + fase) + 0.004 * Math.cos(i * 1.3));
+        const d = new Date(Date.UTC(2025, 0, 1) + i * 86_400_000).toISOString().slice(0, 10);
+        out.push({ date: d, close: c });
+      }
+      return out;
+    };
+    const candles = { PETR4: mkCandles(40, 0), BHIA3: mkCandles(0.9, 1) };
+    const callPetr: Leg = { id: "c", kind: "OPTION", underlying: "PETR4", type: "CALL", strike: 40, du: 20, side: 1, qty: 100, price: 1.8, iv: 0.3 };
+    const callBhia: Leg = { id: "b", kind: "OPTION", underlying: "BHIA3", type: "CALL", strike: 0.8, du: 12, side: 1, qty: 200, price: 0.24, iv: 2.4 };
+    const chainB: any = { ...synthChain, ticker: "BHIA3", spot: 0.9, options: [] };
+    const cc = { PETR4: synthChain, BHIA3: chainB };
+
+    // ---- Teste 1: VaR histórico — n, ordem VaR ≥ ES, dentro do prêmio, 5d com menos cenários, sem candles = sem medida
+    const h1 = varHistoricoBook([callPetr, callBhia], cc, candles, 0.1, 1)!;
+    const h5 = varHistoricoBook([callPetr, callBhia], cc, candles, 0.1, 5)!;
+    const semB = varHistoricoBook([callPetr, callBhia], cc, { PETR4: candles.PETR4 }, 0.1, 1)!;
+    const t1 = h1 != null && h1.n === 252 && h5.n === 252 && h1.var95 <= 0 && h1.es <= h1.var95 && h1.var95 >= -(180 + 48) && h1.pior != null && h1.pior.pnl <= h1.var95
+      && h5.ultimaData === h1.ultimaData && semB.semMedida.join() === "BHIA3" && varHistoricoBook([callPetr], cc, {}, 0.1, 1) == null;
+    if (t1) console.log(`✔ WO-54 Teste 1: VaR histórico 1d ${h1.var95.toFixed(0)} (ES ${h1.es.toFixed(0)}, ${h1.n} cenários), 5d ${h5.var95.toFixed(0)}; papel sem candles fica 'sem medida'`);
+    else { console.log(`✘ WO-54 Teste 1 falhou: ${JSON.stringify({ h1, h5: h5 && { n: h5.n, var95: h5.var95, primeira: h5.primeiraData }, semB: semB?.semMedida })}`); failures++; }
+
+    // ---- Teste 2: vol acoplada — spot −10% com β=1 equivale a vol +10 pontos com vol parada; β estimado da série
+    const m0 = sensitivityMatrix([callPetr], 40, 0.1, 0, [-0.1], [0, 10], 0);
+    const m1 = sensitivityMatrix([callPetr], 40, 0.1, 0, [-0.1], [0], 1);
+    const acoplaOk = Math.abs(m1[0].cells[0].pnl - m0[0].cells[1].pnl) < 1e-9 && m1[0].cells[0].pnl > m0[0].cells[0].pnl;
+    const serie = Array.from({ length: 40 }, (_, i) => ({ spot: 40 * (1 + 0.01 * Math.sin(i)), atmIvMean: 0.3 - 0.02 * Math.sin(i) }));
+    const beta = betaVolSpot(serie);
+    const t2 = acoplaOk && beta != null && beta.n === 39 && beta.beta < 0 && Math.abs(beta.beta + 2) < 0.2 && betaVolSpot(serie.slice(0, 10)) == null && BETA_VOL_PADRAO === 1;
+    if (t2) console.log(`✔ WO-54 Teste 2: vol acoplada — −10% de spot com β=1 = +10 pp de vol; β estimado ${beta!.beta.toFixed(2)} pp por +1% em ${beta!.n} pares (null abaixo de 20)`);
+    else { console.log(`✘ WO-54 Teste 2 falhou: ${JSON.stringify({ m0, m1, beta })}`); failures++; }
+
+    // ---- Teste 3: PoP no smile — smile plano = lognormal; smile descendente muda a PoP e fica em [0,1]
+    const legsTrava: Leg[] = [callPetr, { ...callPetr, id: "c2", strike: 44, side: -1, price: 0.4 }];
+    const plano = [{ strike: 36, iv: 0.3 }, { strike: 40, iv: 0.3 }, { strike: 44, iv: 0.3 }];
+    const descendente = [{ strike: 36, iv: 0.45 }, { strike: 40, iv: 0.3 }, { strike: 44, iv: 0.22 }];
+    const popLog = strategyMetrics(legsTrava, 40, 0.1, 0.3).pop!;
+    const popPlano = popNoSmile(legsTrava, 40, 0.1, 20, plano)!;
+    const popDesc = popNoSmile(legsTrava, 40, 0.1, 20, descendente)!;
+    const smileChain = curvaSmile(synthChain, "2026-04-17");
+    const t3 = Math.abs(popPlano - popLog) < 0.02 && popDesc > 0 && popDesc < 1 && Math.abs(popDesc - popPlano) > 0.005
+      && Math.abs(sigmaNoSmile(descendente, 42) - 0.26) < 1e-9 && sigmaNoSmile(descendente, 10) === 0.45 && smileChain != null && smileChain.length >= 3 && popNoSmile(legsTrava, 40, 0.1, 20, null) == null;
+    if (t3) console.log(`✔ WO-54 Teste 3: PoP no smile plano ${(popPlano * 100).toFixed(1)}% ≈ lognormal ${(popLog * 100).toFixed(1)}%; smile descendente dá ${(popDesc * 100).toFixed(1)}%; interpolação e pontas corretas`);
+    else { console.log(`✘ WO-54 Teste 3 falhou: ${JSON.stringify({ popLog, popPlano, popDesc, s42: sigmaNoSmile(descendente, 42), n: smileChain?.length })}`); failures++; }
+
+    // ---- Teste 4: paridade — cadeia coerente dá resíduo ~0; put inflada vira suspeito; provento desconhecido vira dividendo implícito
+    const S = 40, rr = 0.1, du = 20, tt = du / 252;
+    const mkPar = (ks: number[], pvD = 0, inflar: number | null = null) => {
+      const opts = ks.flatMap((k) => {
+        const c = bsPrice({ s: S - pvD, k, t: tt, r: rr, sigma: 0.3 }, "CALL");
+        const pt = bsPrice({ s: S - pvD, k, t: tt, r: rr, sigma: 0.3 }, "PUT") + (inflar === k ? 3 : 0);
+        return [
+          { opTicker: `C${k}`, type: "CALL", strike: k, expiry: "2026-04-17", du, last: c, trades: 10, markQuality: "fresh", iv: 0.3 },
+          { opTicker: `P${k}`, type: "PUT", strike: k, expiry: "2026-04-17", du, last: pt, trades: 10, markQuality: "fresh", iv: 0.3 },
+        ];
+      });
+      return { ...synthChain, spot: S, options: opts } as any;
+    };
+    const coerente = residuosParidade(mkPar([36, 38, 40, 42, 44]), "2026-04-17", rr)!;
+    const inflada = residuosParidade(mkPar([36, 38, 40, 42, 44], 0, 40), "2026-04-17", rr)!;
+    const comProvento = residuosParidade(mkPar([36, 38, 40, 42, 44], 1.0), "2026-04-17", rr)!;
+    const corrigido = residuosParidade(mkPar([36, 38, 40, 42, 44], 1.0), "2026-04-17", rr, 1.0 * Math.exp(-rr * 20 / 365))!;
+    const t4 = coerente.strikes.length === 5 && coerente.ok === 5 && coerente.dividendoImplicito == null
+      && inflada.suspeitos === 1 && inflada.strikes.find((s) => s.strike === 40)!.situacao === "suspeito"
+      && comProvento.dividendoImplicito != null && Math.abs(comProvento.dividendoImplicito - 1.0) < 0.05
+      && corrigido.ok >= 4 && corrigido.dividendoImplicito == null;
+    if (t4) console.log(`✔ WO-54 Teste 4: paridade — 5 strikes ok na cadeia coerente; put inflada em 40 é 'suspeito'; provento de R$ 1,00 desconhecido aparece como dividendo implícito ${comProvento.dividendoImplicito!.toFixed(2)} e some quando informado`);
+    else { console.log(`✘ WO-54 Teste 4 falhou: ${JSON.stringify({ coerente: [coerente.ok, coerente.strikes.length], inflada: inflada.suspeitos, comProvento: comProvento.dividendoImplicito, corrigido: [corrigido.ok, corrigido.dividendoImplicito] })}`); failures++; }
+
+    // ---- Teste 5: as telas — VaR histórico na Carteira, paridade no modo Cadeia, PoP no smile e β na Estratégia, interruptor na matriz
+    const t5 = /<PainelVarHistorico /.test(lerSrc("app/carteira/page.tsx")) && /<PainelParidade \/>/.test(lerSrc("components/PainelCadeia.tsx"))
+      && /PoP no smile/.test(lerSrc("app/estrategia/page.tsx")) && /betaEstimado=\{betaEstimado\}/.test(lerSrc("app/estrategia/page.tsx"))
+      && /vol acoplada/.test(lerSrc("components/SensitivityMatrix.tsx")) && /betaVol = 0/.test(lerSrc("lib/payoff.ts"))
+      && /expected shortfall/i.test(lerSrc("components/PainelVarHistorico.tsx")) && /dividendo implícito/.test(lerSrc("components/PainelParidade.tsx"));
+    if (t5) console.log("✔ WO-54 Teste 5: VaR histórico na Carteira, paridade no modo Cadeia, PoP no smile e β estimado na Estratégia, vol acoplada na matriz");
+    else { console.log("✘ WO-54 Teste 5 falhou: alguma tela sem o instrumento novo"); failures++; }
+  }
 }
 
 testesAssincronos()

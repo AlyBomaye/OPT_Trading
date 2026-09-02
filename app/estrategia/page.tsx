@@ -30,6 +30,9 @@ import { FormularioAbertura, type DadosAbertura } from "@/components/FormularioA
 import { analisarPnl } from "@/lib/pnl-operacao";
 import { custosDaOperacao } from "@/lib/custos-operacao";
 import { useLivro } from "@/lib/hooks/useLivro";
+import { curvaSmile, popNoSmile } from "@/lib/smile";
+import { betaVolSpot } from "@/lib/vol-acoplada";
+import { useSerieIv } from "@/lib/hooks/useIvRank";
 import { performanceStats, groupTrades } from "@/lib/performance";
 
 /* ============================================================================
@@ -139,6 +142,19 @@ function Workbench() {
     [chain, legs, selic, atmIvStruct, custos]
   );
   const dec = metrics ? metrics.liquido ?? metrics : null;
+
+  // WO-54: PoP no smile (IV por strike do vencimento da estrutura) e β vol/spot estimado da série.
+  const smile = useMemo(() => (chain && structExpiry ? curvaSmile(chain, structExpiry) : null), [chain, structExpiry]);
+  const duEstrutura = useMemo(() => {
+    const dus = legs.filter((l) => l.kind === "OPTION").map((l) => l.du ?? 0).filter((d) => d > 0);
+    return dus.length ? Math.min(...dus) : null;
+  }, [legs]);
+  const popSmile = useMemo(
+    () => (chain && legs.length && duEstrutura ? popNoSmile(legs, chain.spot, selic, duEstrutura, smile, custos?.total ?? 0) : null),
+    [chain, legs, duEstrutura, smile, selic, custos]
+  );
+  const { serie: serieIvPapel } = useSerieIv(ticker);
+  const betaEstimado = useMemo(() => betaVolSpot(serieIvPapel), [serieIvPapel]);
 
   // Gregas líquidas da estrutura em edição (Workbench)
   const greeks = useMemo(
@@ -752,6 +768,12 @@ function Workbench() {
                 cls="text-term-cyan"
                 nota={custos && metrics.pop != null ? `bruta ${fmtPct(metrics.pop)}` : undefined}
               />
+              <Kpi
+                label={"PoP no smile" + (custos ? " · cobre custos" : "")}
+                value={popSmile != null ? fmtPct(popSmile) : "—"}
+                cls="text-term-cyan"
+                nota={smile ? `IV por strike, ${smile.length} pontos — pesa a cauda que o mercado paga` : "sem smile: menos de 3 strikes com IV fresca"}
+              />
               <Kpi label={custos ? "Breakeven(s) líquidos" : "Breakeven(s)"} value={dec.breakevens.length ? dec.breakevens.map((b) => fmtNum(b)).join(" · ") : "—"} />
               <Kpi
                 label="¼-Kelly (fração)"
@@ -797,7 +819,7 @@ function Workbench() {
         </div>
 
         {/* 6. Sensibilidade */}
-          {chain && <SensitivityMatrix legs={legs} spot={chain.spot} r={selic} dayOffset={tnDay} />}
+          {chain && <SensitivityMatrix legs={legs} spot={chain.spot} r={selic} dayOffset={tnDay} betaEstimado={betaEstimado} />}
       </div>
         </>
       )}

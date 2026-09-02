@@ -82,7 +82,7 @@ export const RESUMO_TELAS = [
   {
     modulo: "3. Carteira",
     pergunta: "O que tenho aberto, o que o método manda fazer e quanto isso custa?",
-    resposta: "Ação do dia, estruturas (rolagem numa boleta composta, zeragem líquida por estrutura, fechamento), capital e limites de risco com vigência, boleta (B) e livro no banco, vencimentos pendentes, tabela de custos, apuração fiscal, stress, VaR e exportação em Excel.",
+    resposta: "Ação do dia, estruturas (rolagem numa boleta composta, zeragem líquida por estrutura, fechamento), capital e limites de risco com vigência, boleta (B) e livro no banco, vencimentos pendentes, tabela de custos, apuração fiscal, stress, VaR da grade e VaR histórico com expected shortfall, e exportação em Excel.",
   },
   {
     modulo: "4. Notícias",
@@ -102,7 +102,7 @@ export const RESUMO_TELAS = [
   {
     modulo: "7. Estratégia",
     pergunta: "Como montar, medir líquido de custos e Boletar uma estrutura?",
-    resposta: "Três modos: Montagem (cadeia recolhível, pernas, payoff, P&L da operação líquido de custos, semáforo do método, sensibilidade e a porta das 3 perguntas), Cadeia (grade completa, smile e estrutura a termo) e Contexto (tendência, vol realizada, IV×HV e cone).",
+    resposta: "Três modos: Montagem (cadeia recolhível, pernas, payoff, P&L da operação líquido de custos, semáforo do método, sensibilidade e a porta das 3 perguntas), Cadeia (grade completa, paridade put-call como qualidade, smile e estrutura a termo) e Contexto (tendência, vol realizada, IV×HV e cone).",
   },
   {
     modulo: "8. Manual",

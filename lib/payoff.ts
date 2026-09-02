@@ -204,12 +204,15 @@ export function sensitivityMatrix(
   r: number,
   dayOffset: number,
   spotSteps = [-0.1, -0.05, -0.02, 0, 0.02, 0.05, 0.1],
-  volSteps = [-5, -2.5, 0, 2.5, 5]
+  volSteps = [-5, -2.5, 0, 2.5, 5],
+  /** WO-54: pontos de vol somados por cada −1% de spot (vol acoplada). 0 = sticky strike. */
+  betaVol = 0
 ): { spotPct: number; cells: { volPts: number; pnl: number }[] }[] {
   return spotSteps.map((sp) => ({
     spotPct: sp,
     cells: volSteps.map((vp) => {
-      const shifted = legs.map((l) => ({ ...l, volOffset: (l.volOffset ?? 0) + vp }));
+      const acoplado = -betaVol * sp * 100;
+      const shifted = legs.map((l) => ({ ...l, volOffset: (l.volOffset ?? 0) + vp + acoplado }));
       return { volPts: vp, pnl: pnlAtDay(shifted, spot * (1 + sp), dayOffset, r) };
     }),
   }));
