@@ -25,6 +25,7 @@ import { markInfo, useMarket } from "@/store/market";
 import { UNIVERSE } from "@/lib/universe";
 import { fmtBRL, fmtNum, fmtDateBR } from "@/lib/format";
 import type { ConfigCustos, EstruturaRegistrada } from "@/lib/boletas";
+import { calcularCustos } from "@/lib/boleta-calculos";
 import type { Position } from "@/lib/types";
 
 type Tipo = "abertura" | "fechamento" | "caixa";
@@ -64,6 +65,9 @@ export function FormularioBoleta({ aberto, onFechar, focar }: Props) {
   const [corretagem, setCorretagem] = useState("");
   const [emolumentos, setEmolumentos] = useState("");
   const [liquidacao, setLiquidacao] = useState("");
+  const [registro, setRegistro] = useState("");
+  const [taxaOperacional, setTaxaOperacional] = useState("");
+  const [custosSaoSugestao, setCustosSaoSugestao] = useState(false);
   const [estruturaAlvo, setEstruturaAlvo] = useState<string>("__nova__");
   const [pernaAlvo, setPernaAlvo] = useState<string>("");
   const [tese, setTese] = useState("");
@@ -91,7 +95,18 @@ export function FormularioBoleta({ aberto, onFechar, focar }: Props) {
     const data = executadoEm.slice(0, 10);
     fetch(`/api/custos?data=${data}`, { signal: AbortSignal.timeout(10_000) })
       .then((r) => (r.ok ? r.json() : null))
-      .then((j) => setCustosCfg(j?.custos ?? null))
+      .then((j) => {
+        // Tabela gravada vale; sem ela, a sugestão (com proveniência) entra como default editável.
+        if (j?.custos) {
+          setCustosCfg(j.custos);
+          setCustosSaoSugestao(false);
+        } else if (j?.sugestao) {
+          setCustosCfg({ ...j.sugestao, id: 0, vigenteDesde: "sugestao" });
+          setCustosSaoSugestao(true);
+        } else {
+          setCustosCfg(null);
+        }
+      })
       .catch(() => setCustosCfg(null));
   }, [aberto, executadoEm]);
 
@@ -132,13 +147,18 @@ export function FormularioBoleta({ aberto, onFechar, focar }: Props) {
 
   // Custos sugeridos pela tabela; editáveis.
   const financeiro = (Number(preco.replace(",", ".")) || 0) * (Number(qtd) || 0);
+  const ehOpcao = tipo === "fechamento" ? (pernasAbertas.find((x) => x.id === pernaAlvo)?.kind ?? "OPTION") === "OPTION" : instrumento !== "__acao__";
   useEffect(() => {
     if (tipo === "caixa") return;
     if (!custosCfg) return;
-    setCorretagem(custosCfg.corretagemFixa.toFixed(2));
-    setEmolumentos((financeiro * custosCfg.emolumentosPct).toFixed(2));
-    setLiquidacao((financeiro * custosCfg.liquidacaoPct).toFixed(2));
-  }, [custosCfg, financeiro, tipo]);
+    const c = calcularCustos(custosCfg, financeiro, ehOpcao ? "OPTION" : "STOCK");
+    if (!c) return;
+    setCorretagem(c.corretagem.toFixed(2));
+    setEmolumentos(c.emolumentos.toFixed(2));
+    setLiquidacao(c.liquidacao.toFixed(2));
+    setRegistro(c.registro.toFixed(2));
+    setTaxaOperacional(c.taxaOperacional.toFixed(2));
+  }, [custosCfg, financeiro, tipo, ehOpcao]);
 
   const num = (v: string) => {
     const n = Number(v.replace(",", "."));
@@ -159,6 +179,8 @@ export function FormularioBoleta({ aberto, onFechar, focar }: Props) {
       corretagem: corretagem === "" ? null : num(corretagem),
       emolumentos: emolumentos === "" ? null : num(emolumentos),
       liquidacao: liquidacao === "" ? null : num(liquidacao),
+      registro: registro === "" ? null : num(registro),
+      taxaOperacional: taxaOperacional === "" ? null : num(taxaOperacional),
     };
     if (tipo === "fechamento") {
       const m = /^db-(\d+)$/.exec(pernaAlvo);
@@ -213,9 +235,9 @@ export function FormularioBoleta({ aberto, onFechar, focar }: Props) {
       if (simular) {
         const c = r?.custos;
         setPrevia({
-          custos: c ? c.corretagem + c.emolumentos + c.liquidacao : undefined,
+          custos: c ? c.corretagem + c.emolumentos + c.liquidacao + (c.registro ?? 0) + (c.taxaOperacional ?? 0) : undefined,
           texto: c
-            ? `Custos ${c.calculadoPelaTabela ? "pela tabela" : "informados"}: ${fmtBRL(c.corretagem + c.emolumentos + c.liquidacao)}${r?.estruturaId ? ` · estrutura #${r.estruturaId}` : ""}`
+            ? `Custos ${c.calculadoPelaTabela ? "pela tabela" : "informados"}: ${fmtBRL(c.corretagem + c.emolumentos + c.liquidacao + (c.registro ?? 0) + (c.taxaOperacional ?? 0))}${r?.estruturaId ? ` · estrutura #${r.estruturaId}` : ""}`
             : "Prévia sem custos.",
         });
         return;
@@ -266,7 +288,11 @@ export function FormularioBoleta({ aberto, onFechar, focar }: Props) {
               </button>
             ))}
             <span className="text-term-dim ml-auto">
-              {custosCfg ? `custos pela tabela vigente desde ${fmtDateBR(custosCfg.vigenteDesde)}` : "tabela de custos não configurada — digite os custos"}
+              {custosCfg
+                ? custosSaoSugestao
+                  ? "custos pela tabela SUGERIDA (B3 oficial + XP a confirmar) — confirme em Custos por boleta"
+                  : `custos pela tabela vigente desde ${fmtDateBR(custosCfg.vigenteDesde)}`
+                : "tabela de custos não configurada — digite os custos"}
             </span>
           </div>
 
@@ -322,7 +348,7 @@ export function FormularioBoleta({ aberto, onFechar, focar }: Props) {
             </div>
           )}
 
-          <div className="grid grid-cols-2 md:grid-cols-6 gap-2">
+          <div className="grid grid-cols-2 md:grid-cols-8 gap-2">
             {tipo !== "caixa" && (
               <label className="space-y-0.5">
                 <div className="text-term-dim">Quantidade</div>
@@ -356,6 +382,14 @@ export function FormularioBoleta({ aberto, onFechar, focar }: Props) {
                 <label className="space-y-0.5">
                   <div className="text-term-dim">Liquidação</div>
                   <input value={liquidacao} onChange={(e) => setLiquidacao(e.target.value)} inputMode="decimal" className="cell-input !w-full text-right" />
+                </label>
+                <label className="space-y-0.5">
+                  <div className="text-term-dim">Registro (B3)</div>
+                  <input value={registro} onChange={(e) => setRegistro(e.target.value)} inputMode="decimal" className="cell-input !w-full text-right" />
+                </label>
+                <label className="space-y-0.5">
+                  <div className="text-term-dim">Taxa operacional</div>
+                  <input value={taxaOperacional} onChange={(e) => setTaxaOperacional(e.target.value)} inputMode="decimal" className="cell-input !w-full text-right" />
                 </label>
               </>
             )}

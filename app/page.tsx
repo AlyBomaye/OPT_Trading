@@ -302,7 +302,7 @@ export default function CockpitPage() {
         {suggestion && (
           <div className="px-3 pb-3 text-xs text-term-dim">
             Estrutura favorecida: <b className="text-term-text">{suggestion.title}</b> — {suggestion.reason}{" "}
-            <Link href="/estrategia" className="text-term-cyan">montar na Estratégia (3) →</Link>
+            <Link href="/estrategia" className="text-term-cyan">montar na Estratégia (7) →</Link>
           </div>
         )}
         <div className="px-3 pb-2 text-xxs text-term-dim">

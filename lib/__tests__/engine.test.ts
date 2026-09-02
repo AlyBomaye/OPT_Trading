@@ -2236,9 +2236,160 @@ async function testesWo33() {
   await testesWo46();
   await testesWo47();
   await testesWo48();
+  await testesAjustes0209();
 }
 
 // ============ WO-44 — TENDENCIA, FISCAL, AMOSTRA E JOURNAL ============
+
+// ============ AJUSTES 02/09 — HOTKEYS POR POSICAO, IR DE ACOES, CUSTOS XP/B3, EXCEL ============
+
+async function testesAjustes0209() {
+  const fs = await import("fs");
+  const path = await import("path");
+  const raiz = path.resolve(__dirname, "..", "..");
+  const ler = (rel: string) => fs.readFileSync(path.join(raiz, rel), "utf-8");
+  const semComentarios = (src: string) => src.split("\n").filter((l) => !/^\s*(\/\/|\*|\/\*|--)/.test(l)).join("\n");
+
+  // ---- Teste 1: as teclas seguem a posicao da barra, 1..8
+  const srcNav = ler("components/Nav.tsx");
+  const itens = Array.from(srcNav.matchAll(/\{ href: "([^"]+)", label: "([^"]+)", key: "([^"]+)"/g)).map((m) => ({ href: m[1], label: m[2], key: m[3] }));
+  const porPosicao = itens.length === 8 && itens.every((i, idx) => i.key === String(idx + 1));
+  const rodape = /<kbd>1<\/kbd>–<kbd>8<\/kbd> abas/.test(srcNav);
+  if (porPosicao && rodape) {
+    console.log("✔ AJ Teste 1: teclas 1..8 seguem a ordem da barra (Consultor 1 … Manual 8)");
+  } else {
+    console.log(`✘ AJ Teste 1 falhou: ${itens.map((i) => `${i.label}=${i.key}`).join(" ")}, rodape=${rodape}`);
+    failures++;
+  }
+
+  // ---- Teste 2: o Manual e os textos das telas citam as teclas certas
+  const srcManual = ler("lib/manual-content.ts");
+  const hotkeys = Array.from(srcManual.matchAll(/\{ atalho: "([^"]+)", descricao: "([^"]+)"/g)).map((m) => [m[1], m[2]] as const);
+  const mapa = new Map(hotkeys);
+  const manualOk =
+    /Consultor/.test(mapa.get("1") ?? "") && /Cockpit/.test(mapa.get("2") ?? "") && /Carteira/.test(mapa.get("3") ?? "") &&
+    /Notícias/.test(mapa.get("4") ?? "") && /Macro/.test(mapa.get("5") ?? "") && /Scanner/.test(mapa.get("6") ?? "") &&
+    /Estratégia/.test(mapa.get("7") ?? "") && /Manual/.test(mapa.get("8") ?? "") && mapa.has("B") && mapa.has("[");
+  const semTeclaVelha = !/Hotkey [0-9]\)/.test(srcManual.replace(/tecla 7\)/g, "")) && !/Watchlist & Skew \(Hotkey/.test(srcManual);
+  const cockpitOk = /montar na Estratégia \(7\)/.test(ler("app/page.tsx"));
+  if (manualOk && semTeclaVelha && cockpitOk) {
+    console.log("✔ AJ Teste 2: o Manual e o Cockpit citam as teclas novas; nenhuma referencia a 'Hotkey N' antiga sobrou");
+  } else {
+    console.log(`✘ AJ Teste 2 falhou: manual=${manualOk}, semVelha=${semTeclaVelha}, cockpit=${cockpitOk}`);
+    failures++;
+  }
+
+  // ---- Teste 3: isencao dos R$ 20 mil vale para ACOES a vista, nunca para opcoes
+  const { apurarMeses, ISENCAO_ACOES_VENDAS_MES } = await import("../fiscal");
+  const base = (id: string, kind: "STOCK" | "OPTION", resultado: number, valorVenda: number) =>
+    ({ id, ticker: "PETR4", opTicker: null, kind, natureza: "swing" as const, competencia: "2026-03", resultado, valorVenda, custos: 0 });
+  // Acoes vendidas por 15 mil com lucro 2 mil -> isento. Opcao com lucro 1 mil -> tributa.
+  const m1 = apurarMeses([base("a", "STOCK", 2000, 15_000), base("b", "OPTION", 1000, 4_000)])[0];
+  // Acoes vendidas por 25 mil -> nao isento: os 2 mil entram na base.
+  const m2 = apurarMeses([base("a", "STOCK", 2000, 25_000), base("b", "OPTION", 1000, 4_000)])[0];
+  // Prejuizo de acoes em mes isento continua compensavel (nao e "isento" de prejuizo).
+  const m3 = apurarMeses([base("a", "STOCK", -500, 10_000)])[0];
+  const ok3 =
+    ISENCAO_ACOES_VENDAS_MES === 20_000 &&
+    m1.acoesIsentas && m1.ganhoAcoesIsento === 2000 && Math.abs(m1.baseSwing - 1000) < 1e-9 &&
+    !m2.acoesIsentas && Math.abs(m2.baseSwing - 3000) < 1e-9 &&
+    m3.acoesIsentas && m3.saldoPrejuizoSwing === 500;
+  if (ok3) {
+    console.log("✔ AJ Teste 3: acoes ate R$ 20 mil/mes isentas (base so com a opcao); acima, tudo na base; prejuizo de acoes continua compensavel");
+  } else {
+    console.log(`✘ AJ Teste 3 falhou: m1=${JSON.stringify({ i: m1.acoesIsentas, g: m1.ganhoAcoesIsento, b: m1.baseSwing })}, m2=${m2.baseSwing}, m3=${m3.saldoPrejuizoSwing}`);
+    failures++;
+  }
+
+  // ---- Teste 4: custos com registro (so opcoes) e taxa operacional (sobre corretagem + taxas)
+  const { calcularCustos } = await import("../boleta-calculos");
+  const cfg = { vigenteDesde: "2026-01-01", corretagemFixa: 10, emolumentosPct: 0.00037, liquidacaoPct: 0.000275, registroPct: 0.000695, taxaOperacionalPct: 0.059 };
+  const op = calcularCustos(cfg, 10_000, "OPTION")!;
+  const ac = calcularCustos(cfg, 10_000, "STOCK")!;
+  // opcao: 10 + 3,70 + 2,75 + 6,95 = 23,40; taxa operacional 5,9% de 23,40 = 1,3806; total 24,7806
+  const okOp = Math.abs(op.registro - 6.95) < 1e-9 && Math.abs(op.taxaOperacional - 23.4 * 0.059) < 1e-9 && Math.abs(op.total - 24.7806) < 1e-6;
+  // acao: sem registro; 10 + 3,70 + 2,75 = 16,45; taxa 0,97055; total 17,42055
+  const okAc = ac.registro === 0 && Math.abs(ac.total - 16.45 * 1.059) < 1e-6;
+  if (okOp && okAc) {
+    console.log("✔ AJ Teste 4: opcao de 10 mil custa R$ 24,78 (com registro e 5,9%); acao R$ 17,42 (sem registro)");
+  } else {
+    console.log(`✘ AJ Teste 4 falhou: op=${JSON.stringify(op)}, ac=${JSON.stringify(ac)}`);
+    failures++;
+  }
+
+  // ---- Teste 5: a sugestao de custos carrega proveniencia e e marcada como "a confirmar"
+  const { CUSTOS_SUGERIDOS_XP_B3: sug } = await import("../custos-sugeridos");
+  const b3Oficial = Math.abs(sug.emolumentosPct + sug.liquidacaoPct + sug.registroPct - 0.00134) < 1e-9;
+  const comFonte = /B3 \(oficial\)/.test(sug.fonte) && /XP \(terceiros, a confirmar\)/.test(sug.fonte) && sug.confirmar === true && sug.observacoes.length >= 3;
+  const rotaEntrega = /sugestao: custos \? null : CUSTOS_SUGERIDOS_XP_B3/.test(ler("app/api/custos/route.ts"));
+  const telaAvisa = /tabela SUGERIDA/.test(ler("components/FormularioBoleta.tsx")) && /Preencher com a sugestão/.test(ler("components/PainelCustos.tsx"));
+  if (b3Oficial && comFonte && rotaEntrega && telaAvisa) {
+    console.log("✔ AJ Teste 5: sugestao = B3 0,1340% oficial + XP a confirmar, com fonte, entregue pela rota e sinalizada na tela");
+  } else {
+    console.log(`✘ AJ Teste 5 falhou: b3=${b3Oficial}, fonte=${comFonte}, rota=${rotaEntrega}, tela=${telaAvisa}`);
+    failures++;
+  }
+
+  // ---- Teste 6: o schema evolui sem perder dados (ALTER guardado) e a boleta soma as 5 parcelas
+  const sql = ler("db/002_boletagem.sql");
+  const guardado = /IF NOT EXISTS \(SELECT 1 FROM information_schema\.columns WHERE table_name = 'boleta' AND column_name = 'registro'\)/.test(sql);
+  const soma5 = /custos_total\s+numeric\s+GENERATED ALWAYS AS \(corretagem \+ emolumentos \+ liquidacao \+ registro \+ taxa_operacional\) STORED/.test(sql);
+  const semDrop = !/DROP TABLE/i.test(sql);
+  if (guardado && soma5 && semDrop) {
+    console.log("✔ AJ Teste 6: 002 acrescenta registro e taxa_operacional com ALTER guardado, recria custos_total com 5 parcelas, sem DROP TABLE");
+  } else {
+    console.log(`✘ AJ Teste 6 falhou: guardado=${guardado}, soma5=${soma5}, semDrop=${semDrop}`);
+    failures++;
+  }
+
+  // ---- Teste 7: o xlsx e um ZIP valido com CRC e as celulas numericas sao numeros
+  const { gerarXlsx, lerZipStored } = await import("../xlsx-minimo");
+  const xlsx = gerarXlsx([
+    { nome: "Boletas", cabecalho: ["ID", "Ativo", "Preço"], linhas: [[1, "PETR4", 1.25], [2, "VALE3 & Cia <x>", 60.5]] },
+    { nome: "Apuração/DARF:2026", cabecalho: ["Mês", "DARF"], linhas: [["2026-03", 450]] },
+  ]);
+  const entradas = lerZipStored(xlsx);
+  const nomes = entradas.map((e) => e.nome);
+  const dec = new TextDecoder();
+  const sheet1 = dec.decode(entradas.find((e) => e.nome === "xl/worksheets/sheet1.xml")!.dados);
+  const wb = dec.decode(entradas.find((e) => e.nome === "xl/workbook.xml")!.dados);
+  const ok7 =
+    xlsx[0] === 0x50 && xlsx[1] === 0x4b &&
+    nomes.includes("[Content_Types].xml") && nomes.includes("xl/workbook.xml") && nomes.includes("xl/worksheets/sheet2.xml") &&
+    /<c r="C2"><v>1\.25<\/v><\/c>/.test(sheet1) &&                 // numero e numero
+    /VALE3 &amp; Cia &lt;x&gt;/.test(sheet1) &&                      // texto escapado
+    /name="Apuração-DARF-2026"/.test(wb);                            // nome de planilha saneado
+  if (ok7) {
+    console.log(`✔ AJ Teste 7: xlsx = ZIP valido (CRC confere) com ${entradas.length} entradas, numeros como numeros, texto escapado, nome de planilha saneado`);
+  } else {
+    console.log(`✘ AJ Teste 7 falhou: nomes=${nomes.join(",")}`);
+    failures++;
+  }
+
+  // ---- Teste 8: a exportacao consolida TODAS as operacoes, com e sem banco
+  const srcRota = ler("app/api/carteira/excel/route.ts");
+  const usaLivro = /estadoLivro\(\)/.test(srcRota) && /planilhasDoLivro/.test(srcRota);
+  const temFallback = /export async function POST/.test(srcRota) && /planilhasDePosicoes\(corpo\.positions, corpo\.closed/.test(srcRota);
+  const planilhas = ["Boletas", "Estruturas", "Pernas abertas", "Saídas (fiscal)", "Apuração DARF", "Caixa", "Tabela de custos", "Resumo"].every((n) => srcRota.includes(`nome: "${n}"`));
+  const contentType = /spreadsheetml\.sheet/.test(srcRota);
+  const botao = /exportExcel/.test(ler("app/carteira/page.tsx")) && /\/api\/carteira\/excel/.test(ler("app/carteira/page.tsx"));
+  if (usaLivro && temFallback && planilhas && contentType && botao) {
+    console.log("✔ AJ Teste 8: Excel com 8 planilhas (boletas, estruturas, pernas, saidas, DARF, caixa, custos, resumo), GET do livro e POST sem banco, botao na Carteira");
+  } else {
+    console.log(`✘ AJ Teste 8 falhou: livro=${usaLivro}, fallback=${temFallback}, planilhas=${planilhas}, ct=${contentType}, botao=${botao}`);
+    failures++;
+  }
+
+  // ---- Teste 9: apuracao fiscal cita opcoes SEM isencao e IRRF 0,005% (regras vigentes)
+  const { IRRF_SWING_SOBRE_VENDA, ALIQUOTA_SWING } = await import("../fiscal");
+  const semIsencaoOpcao = /NÃO vale para opções/.test(ler("lib/fiscal.ts"));
+  if (ALIQUOTA_SWING === 0.15 && IRRF_SWING_SOBRE_VENDA === 0.00005 && semIsencaoOpcao) {
+    console.log("✔ AJ Teste 9: opcoes 15% sem isencao; IRRF 0,005% sobre a venda — e o codigo diz isso");
+  } else {
+    console.log("✘ AJ Teste 9 falhou: regras fiscais ou o aviso de nao-isencao das opcoes");
+    failures++;
+  }
+}
 
 // ============ WO-48 — BOLETAGEM: A BOLETA E O FATO, A POSICAO E A CONSEQUENCIA ============
 
@@ -3313,8 +3464,8 @@ async function testesWo44() {
   // Prejuizo de day nao pode abater lucro de swing. E o erro que a Receita audita.
   const { apurarMeses } = await import("../fiscal");
   const meses = apurarMeses([
-    { id: "a", ticker: "PETR4", opTicker: null, natureza: "day", competencia: "2026-01", resultado: -2000, valorVenda: 5000, custos: 0 },
-    { id: "b", ticker: "PETR4", opTicker: null, natureza: "swing", competencia: "2026-02", resultado: 5000, valorVenda: 20000, custos: 0 },
+    { id: "a", ticker: "PETR4", opTicker: null, kind: "OPTION", natureza: "day", competencia: "2026-01", resultado: -2000, valorVenda: 5000, custos: 0 },
+    { id: "b", ticker: "PETR4", opTicker: null, kind: "OPTION", natureza: "swing", competencia: "2026-02", resultado: 5000, valorVenda: 20000, custos: 0 },
   ]);
   const fev = meses.find((m) => m.competencia === "2026-02");
   const naoCruzou = fev != null && fev.compensadoSwing === 0 && fev.baseSwing === 5000;
@@ -3329,8 +3480,8 @@ async function testesWo44() {
   // ---- Teste 5: o exemplo do manual bate
   // "Janeiro prejuizo R$2.000 swing; fevereiro lucro R$5.000 swing; imposto = 15% x 3.000 = R$450"
   const exemplo = apurarMeses([
-    { id: "a", ticker: "PETR4", opTicker: null, natureza: "swing", competencia: "2026-01", resultado: -2000, valorVenda: 8000, custos: 0 },
-    { id: "b", ticker: "PETR4", opTicker: null, natureza: "swing", competencia: "2026-02", resultado: 5000, valorVenda: 20000, custos: 0 },
+    { id: "a", ticker: "PETR4", opTicker: null, kind: "OPTION", natureza: "swing", competencia: "2026-01", resultado: -2000, valorVenda: 8000, custos: 0 },
+    { id: "b", ticker: "PETR4", opTicker: null, kind: "OPTION", natureza: "swing", competencia: "2026-02", resultado: 5000, valorVenda: 20000, custos: 0 },
   ]);
   const fev2 = exemplo.find((m) => m.competencia === "2026-02");
   const bate = fev2 != null && Math.abs(fev2.impostoSwing - 450) < 0.01 && fev2.compensadoSwing === 2000;
@@ -4361,9 +4512,10 @@ async function testesWo36() {
   const itens = Array.from(srcNav.matchAll(/\{ href: "([^"]+)", label: "([^"]+)", key: "([^"]+)"/g))
     .map((m) => ({ href: m[1], label: m[2], key: m[3] }));
   const primeiro = itens[0];
-  const consultorKeepsC = itens.find((i) => i.href === "/consultor")?.key === "C";
-  const carteiraKeeps1 = itens.find((i) => i.href === "/carteira")?.key === "1";
-  const manualKeeps0 = itens.find((i) => i.href === "/manual")?.key === "0";
+  // 02/09/2026: as teclas passaram a seguir a posicao (1..8). O invariante agora e "tecla = posicao".
+  const consultorKeepsC = itens.every((i, idx) => i.key === String(idx + 1));
+  const carteiraKeeps1 = itens.find((i) => i.href === "/carteira")?.key === "3";
+  const manualKeeps0 = itens.find((i) => i.href === "/manual")?.key === "8";
   // WO-46: 11 abas viraram 8 (Watchlist, Chain e Historico foram absorvidas). As teclas das que
   // sobraram nao mudaram — que e o invariante deste teste.
   if (primeiro?.href === "/consultor" && consultorKeepsC && carteiraKeeps1 && manualKeeps0 && itens.length === 8) {

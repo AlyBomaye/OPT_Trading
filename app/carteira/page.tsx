@@ -174,6 +174,37 @@ export default function CarteiraPage() {
     downloadText("carteira.csv", [header, ...lines].join("\n"), "text/csv");
   };
 
+  // Exportação em Excel — todas as operações consolidadas. O arquivo vem do servidor (xlsx de
+  // verdade, sem dependência), com o livro do banco quando há, ou com o estado do navegador.
+  const [exportandoExcel, setExportandoExcel] = useState(false);
+  const exportExcel = async () => {
+    setExportandoExcel(true);
+    try {
+      const res = livroNoBanco
+        ? await fetch("/api/carteira/excel", { signal: AbortSignal.timeout(60_000) })
+        : await fetch("/api/carteira/excel", {
+            method: "POST", headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ positions, closed, capitalTotal }), signal: AbortSignal.timeout(60_000),
+          });
+      if (!res.ok) {
+        const j = await res.json().catch(() => null);
+        alert(j?.error ?? `Falha ao exportar (${res.status}).`);
+        return;
+      }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `carteira-${new Date().toISOString().slice(0, 10)}.xlsx`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 2_000);
+    } finally {
+      setExportandoExcel(false);
+    }
+  };
+
   const exportJson = () =>
     downloadText(
       "carteira.json",
@@ -385,7 +416,10 @@ export default function CarteiraPage() {
             <RefreshCw size={12} className={reval != null && reval.done < reval.total ? "animate-spin" : ""} />
             {reval ? `Reavaliando ${reval.done}/${reval.total}${reval.failed.length ? ` · falhou: ${reval.failed.join(",")}` : ""}` : "Reavaliar tudo"}
           </button>
-          <button className="btn flex items-center gap-1" onClick={exportCsv}>
+          <button className="btn flex items-center gap-1 text-term-cyan" onClick={() => void exportExcel()} disabled={exportandoExcel} title="Todas as operações consolidadas: boletas, estruturas, pernas, saídas, apuração de DARF, caixa e tabela de custos">
+            <FileSpreadsheet size={12} /> {exportandoExcel ? "Gerando…" : "Excel"}
+          </button>
+          <button className="btn flex items-center gap-1 ml-1" onClick={exportCsv}>
             <FileSpreadsheet size={12} /> CSV
           </button>
           <button className="btn flex items-center gap-1 ml-1" onClick={exportJson}>

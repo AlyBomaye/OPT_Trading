@@ -70,7 +70,9 @@ CREATE TABLE IF NOT EXISTS boleta (
   corretagem         numeric      NOT NULL DEFAULT 0,
   emolumentos        numeric      NOT NULL DEFAULT 0,
   liquidacao         numeric      NOT NULL DEFAULT 0,
-  custos_total       numeric      GENERATED ALWAYS AS (corretagem + emolumentos + liquidacao) STORED,
+  registro           numeric      NOT NULL DEFAULT 0,   -- B3, só no mercado de opções
+  taxa_operacional   numeric      NOT NULL DEFAULT 0,   -- XP, % sobre corretagem + taxas
+  custos_total       numeric      GENERATED ALWAYS AS (corretagem + emolumentos + liquidacao + registro + taxa_operacional) STORED,
   motivo_saida       text         CHECK (motivo_saida IN ('alvo','stop','regime','vencimento','manual')),
   -- Em fechamentos: o preço médio e o custo de abertura proporcional da perna NO MOMENTO da
   -- saída. É o que a apuração fiscal usa; sem isso, um fechamento parcial perderia a base.
@@ -86,9 +88,29 @@ CREATE TABLE IF NOT EXISTS config_custos (
   id               bigserial    PRIMARY KEY,
   vigente_desde    date         NOT NULL,
   corretagem_fixa  numeric      NOT NULL,
-  emolumentos_pct  numeric      NOT NULL,      -- fração do financeiro
-  liquidacao_pct   numeric      NOT NULL,      -- fração do financeiro
+  emolumentos_pct  numeric      NOT NULL,      -- fração do financeiro (B3 negociação)
+  liquidacao_pct   numeric      NOT NULL,      -- fração do financeiro (B3 liquidação)
+  registro_pct     numeric      NOT NULL DEFAULT 0,  -- fração do financeiro (B3 registro, só opções)
+  taxa_operacional_pct numeric  NOT NULL DEFAULT 0,  -- fração sobre corretagem + taxas (XP)
   fonte            text,                       -- de onde veio a tabela (URL/nota)
   criado_em        timestamptz  NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS config_custos_vigencia_idx ON config_custos (vigente_desde DESC);
+
+-- ---------------------------------------------------------------------------
+-- Evolução idempotente para bancos criados antes de 02/09/2026: registro e taxa
+-- operacional. Nada é apagado; custos_total é recriado incluindo as colunas novas.
+-- ---------------------------------------------------------------------------
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'boleta' AND column_name = 'registro') THEN
+    ALTER TABLE boleta ADD COLUMN registro numeric NOT NULL DEFAULT 0;
+    ALTER TABLE boleta ADD COLUMN taxa_operacional numeric NOT NULL DEFAULT 0;
+    ALTER TABLE boleta DROP COLUMN custos_total;
+    ALTER TABLE boleta ADD COLUMN custos_total numeric GENERATED ALWAYS AS (corretagem + emolumentos + liquidacao + registro + taxa_operacional) STORED;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'config_custos' AND column_name = 'registro_pct') THEN
+    ALTER TABLE config_custos ADD COLUMN registro_pct numeric NOT NULL DEFAULT 0;
+    ALTER TABLE config_custos ADD COLUMN taxa_operacional_pct numeric NOT NULL DEFAULT 0;
+  END IF;
+END $$;

@@ -1,5 +1,5 @@
 /**
- * WO-15: Conteúdo estático do Módulo Manual (/manual, hotkey 9).
+ * WO-15: Conteúdo estático do Módulo Manual (/manual, hotkey 8).
  * Guia de uso, Mapa de informações ("onde encontro o quê") e Glossário de verbetes do trader.
  * Todos os valores numéricos, limiares e fórmulas refletem 100% o código-fonte do terminal.
  */
@@ -33,31 +33,31 @@ export const SECTIONS: Secao[] = [
 
 export const ROTINA_PRE_MARKET = [
   {
-    passo: "1. Notícias & Macro (Hotkey 6)",
-    detalhe: "Consulte o calendário macroeconômico e o feed de notícias para identificar decisões de juros (Copom/Fed), divulgação de inflação (IPCA/CPI) e payroll que possam disparar surtos de volatilidade.",
+    passo: "1. Consultor (tecla 1)",
+    detalhe: "Leia o relatório consolidado dos agentes: riscos do book, cobertura por aba e as recomendações do dia. É a visão de cima antes de descer para qualquer tela.",
   },
   {
-    passo: "2. Watchlist & Skew (Hotkey 8)",
-    detalhe: "Varra os tickers da B3 em busca de distorções de Skew Ratio (IV Put ÷ IV Call) e assimetrias de volatilidade entre ativos para escolher os melhores papéis da sessão.",
+    passo: "2. Cockpit (tecla 2)",
+    detalhe: "Perfil de GEX por strike, o Foco do dia e a Watchlist do universo inteiro — skew, IV−HV21 e IV Rank por ativo. Clicar num ativo seleciona; os blocos abaixo (choque do book, skew, pozinhos) seguem a seleção.",
   },
   {
-    passo: "3. Histórico de Volatilidade (Hotkey 7)",
-    detalhe: "Avalie se a volatilidade atual do ativo está esticada ou barata checando o spread IV−HV21, o Cone de Volatilidade e o IV Rank (percentil contra o histórico próprio).",
+    passo: "3. Notícias e Macro (teclas 4 e 5)",
+    detalhe: "Dashboard setorial, Mapa de Oportunidades, radar de eventos por vencimento e calendário macro (Copom/Fed, IPCA/CPI, payroll) — o que pode disparar volatilidade na sessão.",
   },
   {
-    passo: "4. Cockpit Matinal (Hotkey 1)",
-    detalhe: "Examine o diagnóstico do seu book: choque de portfólio (Δ/Γ/Vega/Θ), VaR 95% 1d, níveis manuais de GEX (Gamma Flip e Walls), top pozinhos do dia e a sugestão automática do Foco do Dia.",
+    passo: "4. Estratégia (tecla 7)",
+    detalhe: "Cadeia recolhível no topo, pernas logo abaixo, preço e vol histórica, payoff e P&L da operação, critérios do método. O modo Contexto traz cone de vol, IV×HV e a marcação de tendência.",
   },
   {
-    passo: "5. Workbench de Estratégia (Hotkey 3)",
-    detalhe: "Selecione a estrutura ideal no Workbench, ajuste as pernas e prêmios, valide breakevens, PoP e matriz Spot×Vol, dimensione a mão via ¼-Kelly e registre na Carteira.",
+    passo: "5. Carteira (tecla 3, boleta com B)",
+    detalhe: "Bolete o que executou — abrir, aumentar, reduzir, fechar, caixa — e acompanhe por estrutura: % do lucro máximo, DU restantes, alvo, regime. Apuração mensal de DARF e exportação em Excel.",
   },
 ];
 
 export const PASSO_A_PASSO_WORKBENCH = [
-  "No Workbench (Hotkey 3), selecione o vencimento desejado no MiniChain situado no painel esquerdo.",
+  "Na Estratégia (tecla 7), modo Montagem, selecione o vencimento na Cadeia — a linha recolhível no topo da tela.",
   "Para montar uma Trava de Alta com Calls (Bull Call Spread): clique no botão C (Call) da opção ATM desejada para comprar (+1) e no botão V (Call) de um strike superior OTM para vender (-1).",
-  "Confirme se o nome da estrutura detectada automaticamente no topo é 'Trava de Alta (calls)'.",
+  "Confirme se o nome da estrutura detectada automaticamente nas pernas é 'Trava de Alta com Call'.",
   "Observe o mapa de strikes: setas ▲/▼ indicam direcionalidade, a zona verde destaca o intervalo de lucro e as linhas verticais mostram os breakevens.",
   "Ajuste quantidade de contratos, prêmios unitários ou vol offset (pontos de vol) no editor de pernas, se necessário.",
   "Valide o custo de montagem (débito), lucro máximo, perda máxima, probabilidade de lucro (PoP risco-neutra) e as gregas líquidas resultantes.",
@@ -110,19 +110,19 @@ export const RESUMO_TELAS = [
 ];
 
 export const HOTKEYS_MANUAL = [
-  { atalho: "1", descricao: "Navega para a Carteira & Journal" },
-  { atalho: "2", descricao: "Navega para Macro Global & Rates" },
-  { atalho: "3", descricao: "Navega para Notícias & Central de Contexto" },
-  { atalho: "4", descricao: "Navega para o Scanner de Pozinhos" },
-  { atalho: "5", descricao: "Navega para a Watchlist & Skew" },
-  { atalho: "6", descricao: "Navega para o Workbench de Estratégias" },
-  { atalho: "7", descricao: "Navega para o Cockpit Matinal" },
-  { atalho: "8", descricao: "Navega para o Chain de Opções" },
-  { atalho: "9", descricao: "Navega para o Manual da Plataforma" },
-  { atalho: "0", descricao: "Navega para Histórico & Volatilidade" },
+  { atalho: "1", descricao: "Consultor — relatório consolidado dos agentes" },
+  { atalho: "2", descricao: "Cockpit — GEX, Foco do dia, Watchlist, choque do book, pozinhos" },
+  { atalho: "3", descricao: "Carteira — estruturas, pernas, boleta, apuração fiscal" },
+  { atalho: "4", descricao: "Notícias — setorial, Mapa de Oportunidades, radar de eventos, feed" },
+  { atalho: "5", descricao: "Macro — sessões, painéis, Rates & FX, Focus, impacto no universo" },
+  { atalho: "6", descricao: "Scanner — pozinhos e alocação por setor" },
+  { atalho: "7", descricao: "Estratégia — montagem, cadeia completa e contexto de volatilidade" },
+  { atalho: "8", descricao: "Manual — este guia" },
+  { atalho: "B", descricao: "Abre a Carteira com a boleta focada, de qualquer aba" },
+  { atalho: "[", descricao: "Recolhe / expande a barra lateral" },
+  { atalho: "G", descricao: "Abre o Gestor (chat com o agente da aba)" },
   { atalho: "R", descricao: "Força o refresh instantâneo do Chain de Opções (ignora cache de 60s)" },
   { atalho: "?", descricao: "Abre / fecha o modal overlay de ajuda com os atalhos de teclado" },
-  { atalho: "Esc", descricao: "Fecha modais ou overlays abertos na tela" },
 ];
 
 export const DADOS_LIMITACOES = [

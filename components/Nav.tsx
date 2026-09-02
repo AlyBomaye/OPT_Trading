@@ -18,22 +18,19 @@ import { PanelLeftClose, PanelLeftOpen } from "lucide-react";
  * WO-36: o Consultor abre a barra — é a tela que consolida as outras.
  * WO-46: o Cockpit vem logo depois, já contendo a Watchlist; Chain e Histórico foram absorvidos
  * pela Estratégia. Onze abas viraram oito.
- *
- * A tecla de atalho de cada aba NÃO acompanha a posição: o Consultor continua em `C` e as demais
- * mantêm o número que sempre tiveram. Renumerar por causa da ordem visual trocaria o significado
- * de teclas que já estão na memória muscular, e a ordem da barra é uma escolha de leitura, não um
- * contrato de atalho. Por isso 5, 8 e 9 (Watchlist, Chain, Histórico) simplesmente deixam de
- * existir em vez de serem reaproveitadas pelas abas seguintes.
+ * 02/09/2026: as teclas passam a SEGUIR A POSIÇÃO — 1 a 8, de cima para baixo. O WO-36 as
+ * mantinha fixas por memória muscular quando a barra ainda mudava; com oito abas estáveis, a
+ * posição é o mapa mental, e a tecla igual à posição é o que se decora sem esforço.
  */
 const ITEMS = [
-  { href: "/consultor", label: "Consultor", key: "C", icon: Bot },
-  { href: "/", label: "Cockpit", key: "4", icon: Gauge },
-  { href: "/carteira", label: "Carteira", key: "1", icon: Briefcase },
-  { href: "/noticias", label: "Notícias", key: "2", icon: Newspaper },
-  { href: "/macro", label: "Macro", key: "3", icon: Globe },
+  { href: "/consultor", label: "Consultor", key: "1", icon: Bot },
+  { href: "/", label: "Cockpit", key: "2", icon: Gauge },
+  { href: "/carteira", label: "Carteira", key: "3", icon: Briefcase },
+  { href: "/noticias", label: "Notícias", key: "4", icon: Newspaper },
+  { href: "/macro", label: "Macro", key: "5", icon: Globe },
   { href: "/scanner", label: "Scanner", key: "6", icon: Search },
   { href: "/estrategia", label: "Estratégia", key: "7", icon: GitBranch },
-  { href: "/manual", label: "Manual", key: "0", icon: BookOpen },
+  { href: "/manual", label: "Manual", key: "8", icon: BookOpen },
 ];
 
 export function Nav() {
@@ -56,7 +53,7 @@ export function Nav() {
     subText = chain?.dataEfetiva ? `B3 · fechado (${fmtDateBR(chain.dataEfetiva)})` : "B3 · fechado";
   }
 
-  // Atalhos: teclas 1–9 e 0 navegam entre módulos, ? abre a ajuda (fora de inputs)
+  // Atalhos: teclas 1–8 navegam entre as abas na ordem da barra, ? abre a ajuda (fora de inputs)
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const tag = (e.target as HTMLElement)?.tagName;
@@ -141,7 +138,7 @@ export function Nav() {
 
       {!recolhida && (
         <div className="px-3 py-2 text-xxs text-term-dim border-t border-term-line">
-          Atalhos: <kbd>1</kbd>–<kbd>0</kbd> abas · <kbd>B</kbd> boleta · <kbd>G</kbd> Gestor · <kbd>R</kbd> atualizar · <kbd>[</kbd> barra · <kbd>?</kbd> ajuda
+          Atalhos: <kbd>1</kbd>–<kbd>8</kbd> abas · <kbd>B</kbd> boleta · <kbd>G</kbd> Gestor · <kbd>R</kbd> atualizar · <kbd>[</kbd> barra · <kbd>?</kbd> ajuda
         </div>
       )}
 

@@ -16,6 +16,7 @@ import { Receipt } from "lucide-react";
 import { useMarket } from "@/store/market";
 import { fmtBRL, fmtDateBR, fmtPct } from "@/lib/format";
 import type { ConfigCustos } from "@/lib/boletas";
+import type { CustosSugeridos } from "@/lib/custos-sugeridos";
 
 export function PainelCustos() {
   const { livro } = useMarket();
@@ -24,6 +25,9 @@ export function PainelCustos() {
   const [corretagem, setCorretagem] = useState("");
   const [emol, setEmol] = useState("");
   const [liq, setLiq] = useState("");
+  const [reg, setReg] = useState("");
+  const [oper, setOper] = useState("");
+  const [sugestao, setSugestao] = useState<CustosSugeridos | null>(null);
   const [fonte, setFonte] = useState("");
   const [desde, setDesde] = useState(new Date().toISOString().slice(0, 10));
   const [msg, setMsg] = useState<string | null>(null);
@@ -31,7 +35,10 @@ export function PainelCustos() {
   const carregar = () =>
     fetch("/api/custos", { signal: AbortSignal.timeout(10_000) })
       .then((r) => (r.ok ? r.json() : null))
-      .then((j) => setVigente(j?.custos ?? null))
+      .then((j) => {
+        setVigente(j?.custos ?? null);
+        setSugestao(j?.sugestao ?? null);
+      })
       .catch(() => setVigente(null));
 
   useEffect(() => {
@@ -46,7 +53,7 @@ export function PainelCustos() {
     try {
       const r = await fetch("/api/custos", {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ vigenteDesde: desde, corretagemFixa: n(corretagem), emolumentosPct: n(emol), liquidacaoPct: n(liq), fonte: fonte.trim() || null }),
+        body: JSON.stringify({ vigenteDesde: desde, corretagemFixa: n(corretagem), emolumentosPct: n(emol), liquidacaoPct: n(liq), registroPct: reg === "" ? 0 : n(reg), taxaOperacionalPct: oper === "" ? 0 : n(oper), fonte: fonte.trim() || null }),
       });
       const j = await r.json().catch(() => null);
       if (!r.ok) {
@@ -70,8 +77,8 @@ export function PainelCustos() {
         </div>
         <span className="text-xxs font-normal text-term-dim">
           {vigente
-            ? `corretagem ${fmtBRL(vigente.corretagemFixa)} · emolumentos ${fmtPct(vigente.emolumentosPct)} · liquidação ${fmtPct(vigente.liquidacaoPct)} · desde ${fmtDateBR(vigente.vigenteDesde)}${vigente.fonte ? ` · ${vigente.fonte}` : ""}`
-            : "não configurada — a boleta pede os custos digitados"}
+            ? `corretagem ${fmtBRL(vigente.corretagemFixa)} · B3 ${fmtPct(vigente.emolumentosPct + vigente.liquidacaoPct + vigente.registroPct)} · taxa operacional ${fmtPct(vigente.taxaOperacionalPct)} · desde ${fmtDateBR(vigente.vigenteDesde)}`
+            : "não confirmada — a boleta usa a tabela SUGERIDA (B3 oficial + XP a confirmar)"}
         </span>
       </div>
       {aberto && (
@@ -80,11 +87,38 @@ export function PainelCustos() {
             Confirme contra a tabela vigente da B3 e a sua corretora. Percentuais em fração do financeiro
             (0,0003 = 0,03%). Gravar cria uma nova vigência; as boletas antigas ficam com a tabela da época.
           </p>
-          <div className="grid grid-cols-2 md:grid-cols-5 gap-2">
+          {sugestao && (
+            <div className="border border-term-gold/40 bg-term-gold/5 rounded p-2 space-y-1">
+              <div className="font-semibold text-term-gold">Sugestão com proveniência — confirme contra a sua nota</div>
+              <div className="font-mono">
+                corretagem {fmtBRL(sugestao.corretagemFixa)} · B3 negociação {fmtPct(sugestao.emolumentosPct)} + liquidação {fmtPct(sugestao.liquidacaoPct)} + registro {fmtPct(sugestao.registroPct)} · taxa operacional {fmtPct(sugestao.taxaOperacionalPct)}
+              </div>
+              <div className="text-term-dim leading-relaxed">{sugestao.fonte}</div>
+              <ul className="text-term-dim list-disc pl-4 space-y-0.5">
+                {sugestao.observacoes.map((o) => <li key={o}>{o}</li>)}
+              </ul>
+              <button
+                className="btn text-xxs"
+                onClick={() => {
+                  setCorretagem(String(sugestao.corretagemFixa));
+                  setEmol(String(sugestao.emolumentosPct));
+                  setLiq(String(sugestao.liquidacaoPct));
+                  setReg(String(sugestao.registroPct));
+                  setOper(String(sugestao.taxaOperacionalPct));
+                  setFonte(sugestao.fonte.slice(0, 200));
+                }}
+              >
+                Preencher com a sugestão
+              </button>
+            </div>
+          )}
+          <div className="grid grid-cols-2 md:grid-cols-7 gap-2">
             <label className="space-y-0.5"><div className="text-term-dim">Vigente desde</div><input type="date" value={desde} onChange={(e) => setDesde(e.target.value)} className="cell-input !w-full" /></label>
             <label className="space-y-0.5"><div className="text-term-dim">Corretagem fixa (R$)</div><input value={corretagem} onChange={(e) => setCorretagem(e.target.value)} inputMode="decimal" className="cell-input !w-full text-right" /></label>
             <label className="space-y-0.5"><div className="text-term-dim">Emolumentos (fração)</div><input value={emol} onChange={(e) => setEmol(e.target.value)} inputMode="decimal" placeholder="0,0003" className="cell-input !w-full text-right" /></label>
             <label className="space-y-0.5"><div className="text-term-dim">Liquidação (fração)</div><input value={liq} onChange={(e) => setLiq(e.target.value)} inputMode="decimal" placeholder="0,00025" className="cell-input !w-full text-right" /></label>
+            <label className="space-y-0.5"><div className="text-term-dim">Registro B3 (fração)</div><input value={reg} onChange={(e) => setReg(e.target.value)} inputMode="decimal" placeholder="0,000695" className="cell-input !w-full text-right" /></label>
+            <label className="space-y-0.5"><div className="text-term-dim">Taxa operacional (fração)</div><input value={oper} onChange={(e) => setOper(e.target.value)} inputMode="decimal" placeholder="0,059" className="cell-input !w-full text-right" /></label>
             <label className="space-y-0.5"><div className="text-term-dim">Fonte</div><input value={fonte} onChange={(e) => setFonte(e.target.value)} placeholder="URL da tabela / nota" className="cell-input !w-full !text-left" /></label>
           </div>
           <div className="flex items-center gap-2">

@@ -23,6 +23,12 @@
 import type { Position } from "./types";
 
 export const ALIQUOTA_SWING = 0.15;
+/**
+ * Isenção mensal para AÇÕES À VISTA no swing: vendas do mês até este valor não pagam IR sobre o
+ * ganho. NÃO vale para opções — todo ganho de opção é tributado (IN RFB 1.585/2015). Como o
+ * exercício vira perna de ação, a apuração distingue pelo `kind`.
+ */
+export const ISENCAO_ACOES_VENDAS_MES = 20_000;
 export const ALIQUOTA_DAY = 0.20;
 /** Retenção na fonte ("dedo duro") — abatível da DARF apurada. */
 export const IRRF_SWING_SOBRE_VENDA = 0.00005;
@@ -36,6 +42,8 @@ export interface OperacaoApurada {
   ticker: string;
   opTicker: string | null;
   natureza: Natureza;
+  /** Ação à vista ou opção — a isenção dos R$ 20 mil só existe para a primeira. */
+  kind: "STOCK" | "OPTION";
   /** Mês de competência, AAAA-MM — o do FECHAMENTO, que é quando o resultado se realiza. */
   competencia: string;
   resultado: number;
@@ -51,6 +59,11 @@ export interface ApuracaoMes {
   /** Prejuízo acumulado que entrou neste mês, por natureza. */
   compensadoSwing: number;
   compensadoDay: number;
+  /** Vendas de AÇÕES à vista no mês e se ficaram dentro da isenção dos R$ 20 mil. */
+  vendasAcoesSwing: number;
+  acoesIsentas: boolean;
+  /** Ganho de ações que ficou fora da base por isenção (informativo). */
+  ganhoAcoesIsento: number;
   /** Base tributável depois da compensação. Nunca negativa. */
   baseSwing: number;
   baseDay: number;
@@ -122,6 +135,7 @@ export function apurarOperacoes(fechadas: Position[]): OperacaoApurada[] {
       ticker: p.underlying,
       opTicker: p.opTicker ?? null,
       natureza: classificarNatureza(p),
+      kind: p.kind === "STOCK" ? "STOCK" : "OPTION",
       competencia: p.closedAt.slice(0, 7),
       resultado,
       valorVenda,
@@ -156,7 +170,15 @@ export function apurarMeses(ops: OperacaoApurada[]): ApuracaoMes[] {
     const swing = doMes.filter((o) => o.natureza === "swing");
     const day = doMes.filter((o) => o.natureza === "day");
 
-    const resSwing = swing.reduce((a, o) => a + o.resultado, 0);
+    // Isenção: ações à vista no swing com vendas do mês ≤ R$ 20 mil não tributam o GANHO. O
+    // prejuízo de ações continua compensável. Opções ficam sempre na base.
+    const acoesSwing = swing.filter((o) => o.kind === "STOCK");
+    const vendasAcoesSwing = acoesSwing.reduce((a, o) => a + o.valorVenda, 0);
+    const acoesIsentas = acoesSwing.length > 0 && vendasAcoesSwing <= ISENCAO_ACOES_VENDAS_MES;
+    const ganhoAcoes = acoesSwing.reduce((a, o) => a + o.resultado, 0);
+    const ganhoAcoesIsento = acoesIsentas && ganhoAcoes > 0 ? ganhoAcoes : 0;
+
+    const resSwing = swing.reduce((a, o) => a + o.resultado, 0) - ganhoAcoesIsento;
     const resDay = day.reduce((a, o) => a + o.resultado, 0);
 
     // Compensa até o limite do lucro do mês; o que sobrar de prejuízo continua acumulado.
@@ -183,6 +205,9 @@ export function apurarMeses(ops: OperacaoApurada[]): ApuracaoMes[] {
       day: { resultado: resDay, operacoes: day.length },
       compensadoSwing,
       compensadoDay,
+      vendasAcoesSwing,
+      acoesIsentas,
+      ganhoAcoesIsento,
       baseSwing,
       baseDay,
       impostoSwing,

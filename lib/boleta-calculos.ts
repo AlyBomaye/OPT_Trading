@@ -46,12 +46,18 @@ export interface TabelaCustos {
   corretagemFixa: number;
   emolumentosPct: number;
   liquidacaoPct: number;
+  /** B3 — registro, só no mercado de opções. */
+  registroPct?: number;
+  /** XP — "taxa operacional" sobre corretagem + taxas B3. */
+  taxaOperacionalPct?: number;
 }
 
 export interface CustosCalculados {
   corretagem: number;
   emolumentos: number;
   liquidacao: number;
+  registro: number;
+  taxaOperacional: number;
   total: number;
   vigenteDesde: string;
 }
@@ -62,10 +68,19 @@ export interface CustosCalculados {
  */
 export function calcularCustos(cfg: TabelaCustos | null, financeiro: number, kind: "OPTION" | "STOCK" | "CAIXA"): CustosCalculados | null {
   if (!cfg || kind === "CAIXA") return null;
+  const fin = Math.abs(financeiro);
   const corretagem = cfg.corretagemFixa;
-  const emolumentos = Math.abs(financeiro) * cfg.emolumentosPct;
-  const liquidacao = Math.abs(financeiro) * cfg.liquidacaoPct;
-  return { corretagem, emolumentos, liquidacao, total: corretagem + emolumentos + liquidacao, vigenteDesde: cfg.vigenteDesde };
+  const emolumentos = fin * cfg.emolumentosPct;
+  const liquidacao = fin * cfg.liquidacaoPct;
+  // Registro só existe no mercado de opções (B3); ação à vista não tem.
+  const registro = kind === "OPTION" ? fin * (cfg.registroPct ?? 0) : 0;
+  // A taxa operacional (XP) incide sobre corretagem + taxas da B3.
+  const taxaOperacional = (corretagem + emolumentos + liquidacao + registro) * (cfg.taxaOperacionalPct ?? 0);
+  return {
+    corretagem, emolumentos, liquidacao, registro, taxaOperacional,
+    total: corretagem + emolumentos + liquidacao + registro + taxaOperacional,
+    vigenteDesde: cfg.vigenteDesde,
+  };
 }
 
 /* -------------------------------- caixa -------------------------------- */

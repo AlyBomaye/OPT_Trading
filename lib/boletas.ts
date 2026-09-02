@@ -51,6 +51,8 @@ export interface ConfigCustos {
   corretagemFixa: number;
   emolumentosPct: number;
   liquidacaoPct: number;
+  registroPct: number;
+  taxaOperacionalPct: number;
   fonte: string | null;
 }
 
@@ -77,6 +79,8 @@ export interface EntradaBoleta {
   corretagem?: number | null;
   emolumentos?: number | null;
   liquidacao?: number | null;
+  registro?: number | null;
+  taxaOperacional?: number | null;
   /** Abertura: estrutura existente (id) ou nova (com o plano). */
   estruturaId?: number | null;
   novaEstrutura?: {
@@ -116,6 +120,8 @@ export interface BoletaRegistrada {
   corretagem: number;
   emolumentos: number;
   liquidacao: number;
+  registro: number;
+  taxaOperacional: number;
   custosTotal: number;
   motivoSaida: MotivoSaida | null;
   precoMedioRef: number | null;
@@ -194,6 +200,8 @@ function linhaParaConfig(r: Record<string, unknown>): ConfigCustos {
     corretagemFixa: Number(r.corretagem_fixa),
     emolumentosPct: Number(r.emolumentos_pct),
     liquidacaoPct: Number(r.liquidacao_pct),
+    registroPct: Number(r.registro_pct ?? 0),
+    taxaOperacionalPct: Number(r.taxa_operacional_pct ?? 0),
     fonte: (r.fonte as string) ?? null,
   };
 }
@@ -203,7 +211,7 @@ export async function configCustosVigente(dataIso: string): Promise<ConfigCustos
   if (!(await garantirSchema())) return null;
   const rows = await consultar<Record<string, unknown>>(
     `SELECT id, to_char(vigente_desde,'YYYY-MM-DD') AS vigente_desde, corretagem_fixa,
-            emolumentos_pct, liquidacao_pct, fonte
+            emolumentos_pct, liquidacao_pct, registro_pct, taxa_operacional_pct, fonte
        FROM config_custos
       WHERE vigente_desde <= $1::date
       ORDER BY vigente_desde DESC, id DESC
@@ -218,15 +226,17 @@ export async function gravarConfigCustos(c: {
   corretagemFixa: number;
   emolumentosPct: number;
   liquidacaoPct: number;
+  registroPct?: number;
+  taxaOperacionalPct?: number;
   fonte?: string | null;
 }): Promise<ConfigCustos | null> {
   if (!(await garantirSchema())) return null;
   const rows = await consultar<Record<string, unknown>>(
-    `INSERT INTO config_custos (vigente_desde, corretagem_fixa, emolumentos_pct, liquidacao_pct, fonte)
-     VALUES ($1::date, $2, $3, $4, $5)
+    `INSERT INTO config_custos (vigente_desde, corretagem_fixa, emolumentos_pct, liquidacao_pct, registro_pct, taxa_operacional_pct, fonte)
+     VALUES ($1::date, $2, $3, $4, $5, $6, $7)
      RETURNING id, to_char(vigente_desde,'YYYY-MM-DD') AS vigente_desde, corretagem_fixa,
-               emolumentos_pct, liquidacao_pct, fonte`,
-    [c.vigenteDesde, c.corretagemFixa, c.emolumentosPct, c.liquidacaoPct, c.fonte ?? null]
+               emolumentos_pct, liquidacao_pct, registro_pct, taxa_operacional_pct, fonte`,
+    [c.vigenteDesde, c.corretagemFixa, c.emolumentosPct, c.liquidacaoPct, c.registroPct ?? 0, c.taxaOperacionalPct ?? 0, c.fonte ?? null]
   );
   return rows && rows[0] ? linhaParaConfig(rows[0]) : null;
 }
@@ -256,6 +266,8 @@ async function inserirBoleta(
     corretagem: number;
     emolumentos: number;
     liquidacao: number;
+    registro: number;
+    taxaOperacional: number;
     precoMedioRef: number | null;
     custosAberturaRef: number | null;
   }
@@ -263,15 +275,15 @@ async function inserirBoleta(
   const r = await c.query(
     `INSERT INTO boleta
        (executado_em, tipo, origem, estrutura_id, posicao_id, ticker, op_ticker, kind, tipo_opcao,
-        strike, vencimento, lado, quantidade, preco, corretagem, emolumentos, liquidacao,
+        strike, vencimento, lado, quantidade, preco, corretagem, emolumentos, liquidacao, registro, taxa_operacional,
         motivo_saida, preco_medio_ref, custos_abertura_ref, estorna_id, nota)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24)
      RETURNING id`,
     [
       e.executadoEm, e.tipo, e.origem, extras.estruturaId, extras.posicaoId,
       e.ticker.toUpperCase(), e.opTicker ?? null, e.kind, e.tipoOpcao ?? null,
       e.strike ?? null, e.vencimento ?? null, e.lado ?? null, e.quantidade, e.preco,
-      extras.corretagem, extras.emolumentos, extras.liquidacao,
+      extras.corretagem, extras.emolumentos, extras.liquidacao, extras.registro, extras.taxaOperacional,
       e.motivoSaida ?? null, extras.precoMedioRef, extras.custosAberturaRef, e.estornaId ?? null, e.nota ?? null,
     ]
   );
@@ -282,7 +294,7 @@ export interface ResultadoRegistro {
   boletaId: number;
   estruturaId: number | null;
   posicaoId: number | null;
-  custos: { corretagem: number; emolumentos: number; liquidacao: number; calculadoPelaTabela: boolean };
+  custos: { corretagem: number; emolumentos: number; liquidacao: number; registro: number; taxaOperacional: number; calculadoPelaTabela: boolean };
 }
 
 /**
@@ -310,8 +322,11 @@ export async function registrarBoleta(e: EntradaBoleta, opcoes: { simular?: bool
   const corretagem = e.corretagem ?? calc?.corretagem ?? 0;
   const emolumentos = e.emolumentos ?? calc?.emolumentos ?? 0;
   const liquidacao = e.liquidacao ?? calc?.liquidacao ?? 0;
-  const custosTotal = corretagem + emolumentos + liquidacao;
-  const calculadoPelaTabela = calc != null && e.corretagem == null && e.emolumentos == null && e.liquidacao == null;
+  const registro = e.registro ?? calc?.registro ?? 0;
+  const taxaOperacional = e.taxaOperacional ?? calc?.taxaOperacional ?? 0;
+  const custosTotal = corretagem + emolumentos + liquidacao + registro + taxaOperacional;
+  const calculadoPelaTabela = calc != null && e.corretagem == null && e.emolumentos == null && e.liquidacao == null && e.registro == null && e.taxaOperacional == null;
+  const custosOut = { corretagem, emolumentos, liquidacao, registro, taxaOperacional, calculadoPelaTabela };
 
   const executar = async (c: PoolClient): Promise<ResultadoRegistro> => {
     switch (e.tipo) {
@@ -320,10 +335,10 @@ export async function registrarBoleta(e: EntradaBoleta, opcoes: { simular?: bool
         if (e.kind !== "CAIXA") throw new Error("Boleta de caixa precisa de kind CAIXA.");
         if (e.lado !== 1 && e.lado !== -1) throw new Error("Caixa: lado 1 = aporte, -1 = retirada.");
         const id = await inserirBoleta(c, e, {
-          estruturaId: null, posicaoId: null, corretagem: 0, emolumentos: 0, liquidacao: 0,
+          estruturaId: null, posicaoId: null, corretagem: 0, emolumentos: 0, liquidacao: 0, registro: 0, taxaOperacional: 0,
           precoMedioRef: null, custosAberturaRef: null,
         });
-        return { boletaId: id, estruturaId: null, posicaoId: null, custos: { corretagem: 0, emolumentos: 0, liquidacao: 0, calculadoPelaTabela: false } };
+        return { boletaId: id, estruturaId: null, posicaoId: null, custos: { corretagem: 0, emolumentos: 0, liquidacao: 0, registro: 0, taxaOperacional: 0, calculadoPelaTabela: false } };
       }
 
       /* ---------------- abertura: nova perna, ou aumento de uma existente ---------------- */
@@ -387,9 +402,9 @@ export async function registrarBoleta(e: EntradaBoleta, opcoes: { simular?: bool
         }
 
         const id = await inserirBoleta(c, e, {
-          estruturaId, posicaoId, corretagem, emolumentos, liquidacao, precoMedioRef: null, custosAberturaRef: null,
+          estruturaId, posicaoId, corretagem, emolumentos, liquidacao, registro, taxaOperacional, precoMedioRef: null, custosAberturaRef: null,
         });
-        return { boletaId: id, estruturaId, posicaoId, custos: { corretagem, emolumentos, liquidacao, calculadoPelaTabela } };
+        return { boletaId: id, estruturaId, posicaoId, custos: custosOut };
       }
 
       /* ---------------- fechamento / exercício / vencimento: reduz ou zera a perna ---------------- */
@@ -442,10 +457,10 @@ export async function registrarBoleta(e: EntradaBoleta, opcoes: { simular?: bool
           lado: (Number(p.lado) === 1 ? -1 : 1) as 1 | -1,
         };
         const id = await inserirBoleta(c, preenchida, {
-          estruturaId: Number(p.estrutura_id), posicaoId: Number(p.id), corretagem, emolumentos, liquidacao,
+          estruturaId: Number(p.estrutura_id), posicaoId: Number(p.id), corretagem, emolumentos, liquidacao, registro, taxaOperacional,
           precoMedioRef, custosAberturaRef,
         });
-        return { boletaId: id, estruturaId: Number(p.estrutura_id), posicaoId: Number(p.id), custos: { corretagem, emolumentos, liquidacao, calculadoPelaTabela } };
+        return { boletaId: id, estruturaId: Number(p.estrutura_id), posicaoId: Number(p.id), custos: custosOut };
       }
 
       /* ---------------- ajuste: estorna uma boleta e desfaz o efeito dela ---------------- */
@@ -496,9 +511,10 @@ export async function registrarBoleta(e: EntradaBoleta, opcoes: { simular?: bool
         const id = await inserirBoleta(c, espelho, {
           estruturaId: b.estrutura_id, posicaoId: b.posicao_id,
           corretagem: -Number(b.corretagem), emolumentos: -Number(b.emolumentos), liquidacao: -Number(b.liquidacao),
+          registro: -Number(b.registro ?? 0), taxaOperacional: -Number(b.taxa_operacional ?? 0),
           precoMedioRef: null, custosAberturaRef: null,
         });
-        return { boletaId: id, estruturaId: b.estrutura_id, posicaoId: b.posicao_id, custos: { corretagem: -Number(b.corretagem), emolumentos: -Number(b.emolumentos), liquidacao: -Number(b.liquidacao), calculadoPelaTabela: false } };
+        return { boletaId: id, estruturaId: b.estrutura_id, posicaoId: b.posicao_id, custos: { corretagem: -Number(b.corretagem), emolumentos: -Number(b.emolumentos), liquidacao: -Number(b.liquidacao), registro: -Number(b.registro ?? 0), taxaOperacional: -Number(b.taxa_operacional ?? 0), calculadoPelaTabela: false } };
       }
     }
   };
@@ -542,6 +558,8 @@ function linhaParaBoleta(r: Record<string, any>): BoletaRegistrada {
     corretagem: Number(r.corretagem),
     emolumentos: Number(r.emolumentos),
     liquidacao: Number(r.liquidacao),
+    registro: Number(r.registro ?? 0),
+    taxaOperacional: Number(r.taxa_operacional ?? 0),
     custosTotal: Number(r.custos_total),
     motivoSaida: r.motivo_saida ?? null,
     precoMedioRef: r.preco_medio_ref != null ? Number(r.preco_medio_ref) : null,
