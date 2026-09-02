@@ -40,11 +40,14 @@ export interface StressCell {
 
 /** Stress do book: choque de spot (reavaliação BS completa, T+0). */
 export function stressBook(positions: Leg[], chain: ChainData, r: number, shocks = [-0.15, -0.1, -0.05, -0.02, 0, 0.02, 0.05, 0.1, 0.15]): StressCell[] {
+  // WO-53: só as pernas DESTE papel — reavaliar uma call de BHIA3 (strike 0,80) com o spot de
+  // PETR4 dava um "P&L" de milhares de reais que não existe.
+  const doPapel = positions.filter((p) => p.underlying === chain.ticker);
   return shocks.map((sp) => ({
     spotPct: sp,
     pnl:
-      pnlAtDay(positions, chain.spot * (1 + sp), 0, r) -
-      pnlAtDay(positions, chain.spot, 0, r),
+      pnlAtDay(doPapel, chain.spot * (1 + sp), 0, r) -
+      pnlAtDay(doPapel, chain.spot, 0, r),
   }));
 }
 
@@ -61,7 +64,9 @@ export interface VarResult {
  * Sem choque de vol, um strangle vendido mostrava VaR ~zero — o eixo de vol
  * corrige isso.
  */
-export function varGrid(positions: Leg[], chain: ChainData, r: number, atmIv: number | null): VarResult | null {
+export function varGrid(positionsTodas: Leg[], chain: ChainData, r: number, atmIv: number | null): VarResult | null {
+  // WO-53: só as pernas deste papel (ver stressBook). O VaR do book inteiro é `varGridBook`.
+  const positions = positionsTodas.filter((p) => p.underlying === chain.ticker);
   if (atmIv == null || !positions.length) return null;
   const move = 1.645 * (atmIv / Math.sqrt(252));
   const base = pnlAtDay(positions, chain.spot, 0, r);
@@ -77,6 +82,39 @@ export function varGrid(positions: Leg[], chain: ChainData, r: number, atmIv: nu
   }
   const sorted = [...pnls].sort((a, b) => a - b);
   return { var95: Math.min(sorted[0], 0), es: Math.min((sorted[0] + sorted[1]) / 2, 0) };
+}
+
+/**
+ * WO-53 — VaR do book inteiro: a grade de cada papel com a sua cadeia e a sua IV ATM, somadas.
+ * Somar as piores células assume correlação perfeita entre os papéis — conservador de propósito:
+ * o dia ruim de uma carteira de vendas de vol na B3 costuma ser o dia ruim de todas.
+ * Papéis sem cadeia ou sem IV ficam de fora e são listados em `semMedida`.
+ */
+export function varGridBook(
+  positions: Leg[],
+  chainCache: Record<string, ChainData>,
+  r: number,
+  atmIvPorTicker: (chain: ChainData) => number | null
+): { var95: number; es: number; porTicker: Record<string, VarResult>; semMedida: string[] } | null {
+  const tickers = Array.from(new Set(positions.map((p) => p.underlying)));
+  if (!tickers.length) return null;
+  const porTicker: Record<string, VarResult> = {};
+  const semMedida: string[] = [];
+  let var95 = 0;
+  let es = 0;
+  for (const t of tickers) {
+    const chain = chainCache[t];
+    const g = chain ? varGrid(positions, chain, r, atmIvPorTicker(chain)) : null;
+    if (!g) {
+      semMedida.push(t);
+      continue;
+    }
+    porTicker[t] = g;
+    var95 += g.var95;
+    es += g.es;
+  }
+  if (Object.keys(porTicker).length === 0) return null;
+  return { var95, es, porTicker, semMedida };
 }
 
 /** VaR 95% 1d — pior célula da grade spot×vol (mantido por compatibilidade). */

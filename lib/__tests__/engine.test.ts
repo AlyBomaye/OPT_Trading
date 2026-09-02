@@ -5431,6 +5431,28 @@ async function testesWo28Restaurados() {
       && /<PainelRolagem /.test(srcPE) && /spotDeZeragem\(/.test(srcPE) && /zera líquida/.test(srcPE);
     if (t5) console.log("✔ WO-53 Teste 5: Carteira na ordem Ação do dia → Estruturas → Capital → Limites → boleta (recolhida) → vencimentos; estruturas com Rolar e zeragem do ativo");
     else { console.log(`✘ WO-53 Teste 5 falhou: ordem=${ordem}`); failures++; }
+
+    // ---- Teste 6: put comprada tem perda máxima finita; VaR e stress só do papel da cadeia; VaR do book soma por papel
+    const { varGrid, stressBook, varGridBook } = await import("../portfolio");
+    const putComprada: Leg[] = [{ id: "p", kind: "OPTION", underlying: "PETR4", type: "PUT", strike: 40, du: 20, side: 1, qty: 100, price: 1.2, iv: 0.3 }];
+    const straddleComprado: Leg[] = [...putComprada, { id: "c", kind: "OPTION", underlying: "PETR4", type: "CALL", strike: 40, du: 20, side: 1, qty: 100, price: 1.8, iv: 0.3 }];
+    const mPut = strategyMetrics(putComprada, 40, 0.1, 0.3);
+    const mStr = strategyMetrics(straddleComprado, 40, 0.1, 0.3);
+    const putVendida: Leg[] = [{ ...putComprada[0], side: -1 }];
+    const mPutV = strategyMetrics(putVendida, 40, 0.1, 0.3);
+    // A grade de 800 pontos não cai exatamente no strike: o straddle sai a −297,5 e não −300. A venda seca continua 'sem teto' na baixa (a grade não modela S = 0).
+    const perdasOk = mPut.maxLoss != null && Math.abs(mPut.maxLoss + 120) < 1e-9 && mStr.maxLoss != null && Math.abs(mStr.maxLoss + 300) < 5 && mPutV.maxProfit != null && Math.abs(mPutV.maxProfit - 120) < 1e-9;
+    const outro: Leg[] = [{ id: "b", kind: "OPTION", underlying: "BHIA3", type: "CALL", strike: 0.8, du: 12, side: 1, qty: 200, price: 0.24, iv: 2.4 }];
+    const soPetr = varGrid([...straddleComprado, ...outro], synthChain, 0.1, 0.3);
+    const soPetrRef = varGrid(straddleComprado, synthChain, 0.1, 0.3);
+    const stressFiltrado = stressBook([...straddleComprado, ...outro], synthChain, 0.1).every((c, i) => Math.abs(c.pnl - stressBook(straddleComprado, synthChain, 0.1)[i].pnl) < 1e-9);
+    const chainB: any = { ...synthChain, ticker: "BHIA3", spot: 0.9, options: [] };
+    const book = varGridBook([...straddleComprado, ...outro], { PETR4: synthChain, BHIA3: chainB }, 0.1, (c) => (c.ticker === "PETR4" ? 0.3 : 2.4));
+    const bookOk = book != null && Math.abs(book.var95 - (book.porTicker.PETR4.var95 + book.porTicker.BHIA3.var95)) < 1e-9 && book.semMedida.length === 0 && Math.abs(book.var95) <= 300 + 48 + 1e-6;
+    const semCadeia = varGridBook([...straddleComprado, ...outro], { PETR4: synthChain }, 0.1, () => 0.3);
+    const t6 = perdasOk && soPetr != null && soPetrRef != null && Math.abs(soPetr.var95 - soPetrRef.var95) < 1e-9 && stressFiltrado && bookOk && semCadeia?.semMedida.join() === "BHIA3";
+    if (t6) console.log(`✔ WO-53 Teste 6: put comprada perde no máximo o prêmio (−120), straddle comprado −300; VaR/stress ignoram pernas de outro papel; VaR do book soma por papel (${book!.var95.toFixed(0)}) e lista quem ficou sem medida`);
+    else { console.log(`✘ WO-53 Teste 6 falhou: ${JSON.stringify({ mPut: mPut.maxLoss, mStr: mStr.maxLoss, mPutV: [mPutV.maxLoss, mPutV.maxProfit], soPetr, soPetrRef, stressFiltrado, book, semCadeia })}`); failures++; }
   }
 }
 

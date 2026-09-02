@@ -115,9 +115,13 @@ export function strategyMetrics(
   const unboundedUp = slopeHi > 1e-9;
   const unboundedDown = slopeLo < -1e-9; // P&L cresce quando S cai
   const maxProfit = unboundedUp || unboundedDown ? null : maxP;
+  // WO-53: a perda é "sem teto" quando ela CRESCE em direção à borda — na alta, P&L(hi) < P&L(hi·0,99);
+  // na baixa, P&L(lo) < P&L(lo·1,01). A condição antiga do lado de baixo estava invertida e marcava
+  // uma put comprada (que GANHA na queda) como perda ilimitada: o straddle comprado do book saía sem
+  // perda máxima e o teto do método ficava "sem medida".
   const minSideUnbounded =
     pnlAtExpiry(legs, hi) < pnlAtExpiry(legs, hi * 0.99) || // perde cada vez mais na alta
-    pnlAtExpiry(legs, lo * 1.01) < pnlAtExpiry(legs, lo);
+    pnlAtExpiry(legs, lo) < pnlAtExpiry(legs, lo * 1.01); // perde cada vez mais na baixa
   const maxLoss = minSideUnbounded && maxL < 0 ? null : maxL;
 
   // PoP risco-neutra: integra densidade lognormal na região lucrativa.

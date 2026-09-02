@@ -13,7 +13,7 @@ import {
   realizedPnl,
   stressBook,
   unrealizedPnl,
-  varGrid,
+  varGridBook,
 } from "@/lib/portfolio";
 import { skewInfo } from "@/lib/scanner";
 import { ArquivoIv } from "@/components/ArquivoIv";
@@ -147,7 +147,12 @@ export default function CarteiraPage() {
     return pior;
   }, [positions, chainCache, selic]);
   const { skew, atmIv } = useSkewAtm();
-  const risk = chain && positions.length ? varGrid(positions, chain, selic, atmIv) : null;
+  // WO-53: VaR do book inteiro (cada papel com a sua cadeia e IV ATM, somados); antes era só o
+  // papel ativo — e com as pernas dos outros reavaliadas no spot errado.
+  const risk = useMemo(
+    () => varGridBook(positions, chainCache, selic, (c) => { const s = skewInfo(c, c.expiries.find((e) => e.isMonthly)?.date ?? c.expiries[0]?.date ?? ""); return s.ivCallAtm != null && s.ivPutAtm != null ? (s.ivCallAtm + s.ivPutAtm) / 2 : s.ivCallAtm ?? s.ivPutAtm ?? null; }),
+    [positions, chainCache, selic]
+  );
   const stress = chain && positions.length ? stressBook(positions, chain, selic) : [];
 
   const rows = positions.map((p) => {
@@ -590,11 +595,12 @@ export default function CarteiraPage() {
       {stress.length > 0 && (
         <div className="panel p-3">
           <div className="panel-title flex items-center justify-between">
-            <span>Stress ladder — choque de spot no book (±15%)</span>
+            <span>Stress ladder — choque de spot em {chain?.ticker ?? "—"} (±15%, só as pernas deste papel)</span>
             {risk != null && (
               <span className="text-xxs text-term-dim">
-                VaR95 (1d, grade 3×3): <span className="text-term-down font-semibold">{fmtBRL(risk.var95)}</span> · ES:{" "}
+                VaR95 do book (1d, grade 3×3 por papel, somada): <span className="text-term-down font-semibold">{fmtBRL(risk.var95)}</span> · ES:{" "}
                 <span className="text-term-down font-semibold">{fmtBRL(risk.es)}</span>
+                {risk.semMedida.length > 0 && <span className="text-term-gold"> · sem medida: {risk.semMedida.join(", ")}</span>}
               </span>
             )}
           </div>
