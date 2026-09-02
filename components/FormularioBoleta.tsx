@@ -26,6 +26,7 @@ import { UNIVERSE } from "@/lib/universe";
 import { fmtBRL, fmtNum, fmtDateBR } from "@/lib/format";
 import type { ConfigCustos, EstruturaRegistrada } from "@/lib/boletas";
 import { calcularCustos } from "@/lib/boleta-calculos";
+import { ComboInstrumento, type SelecaoInstrumento } from "@/components/ComboInstrumento";
 import type { Position } from "@/lib/types";
 
 type Tipo = "abertura" | "fechamento" | "caixa";
@@ -58,7 +59,7 @@ export function FormularioBoleta({ aberto, onFechar, focar }: Props) {
 
   const [tipo, setTipo] = useState<Tipo>("abertura");
   const [ticker, setTicker] = useState(tickerGlobal);
-  const [instrumento, setInstrumento] = useState<string>("__acao__");
+  const [selecao, setSelecao] = useState<SelecaoInstrumento>({ modo: "acao" });
   const [lado, setLado] = useState<1 | -1>(1);
   const [qtd, setQtd] = useState("100");
   const [preco, setPreco] = useState("");
@@ -114,7 +115,8 @@ export function FormularioBoleta({ aberto, onFechar, focar }: Props) {
     if (!chainDoTicker) return [];
     return [...chainDoTicker.options].sort((a, b) => a.expiry.localeCompare(b.expiry) || a.strike - b.strike);
   }, [chainDoTicker]);
-  const opcao = useMemo(() => opcoes.find((o) => o.opTicker === instrumento) ?? null, [opcoes, instrumento]);
+  const opcao = selecao.modo === "opcao" ? selecao.opcao : null;
+  const manual = selecao.modo === "manual" ? selecao.manual : null;
 
   const estruturasAbertas: EstruturaRegistrada[] = useMemo(
     () => livro.estruturas.filter((e) => !e.fechadaEm && e.ticker === ticker),
@@ -138,16 +140,17 @@ export function FormularioBoleta({ aberto, onFechar, focar }: Props) {
       }
       return;
     }
-    if (instrumento === "__acao__") {
+    if (selecao.modo === "acao") {
       setPreco(chainDoTicker?.spot != null ? chainDoTicker.spot.toFixed(2) : "");
-    } else if (opcao) {
-      setPreco(opcao.last != null ? opcao.last.toFixed(2) : "");
+    } else if (selecao.modo === "opcao") {
+      setPreco(selecao.opcao.last != null ? selecao.opcao.last.toFixed(2) : "");
     }
-  }, [aberto, tipo, instrumento, opcao, chainDoTicker, pernaAlvo, pernasAbertas, chainCache]);
+    // Manual: sem marcação — o preço é o da nota, e fica em branco até você digitar.
+  }, [aberto, tipo, selecao, chainDoTicker, pernaAlvo, pernasAbertas, chainCache]);
 
   // Custos sugeridos pela tabela; editáveis.
   const financeiro = (Number(preco.replace(",", ".")) || 0) * (Number(qtd) || 0);
-  const ehOpcao = tipo === "fechamento" ? (pernasAbertas.find((x) => x.id === pernaAlvo)?.kind ?? "OPTION") === "OPTION" : instrumento !== "__acao__";
+  const ehOpcao = tipo === "fechamento" ? (pernasAbertas.find((x) => x.id === pernaAlvo)?.kind ?? "OPTION") === "OPTION" : selecao.modo !== "acao";
   useEffect(() => {
     if (tipo === "caixa") return;
     if (!custosCfg) return;
@@ -188,19 +191,25 @@ export function FormularioBoleta({ aberto, onFechar, focar }: Props) {
       const perna = pernasAbertas.find((x) => x.id === pernaAlvo)!;
       return { tipo: "fechamento", origem: "manual", executadoEm: quando, ticker, kind: perna.kind, posicaoId: Number(m[1]), quantidade: q, preco: p, motivoSaida: motivo, ...custos };
     }
-    const ehAcao = instrumento === "__acao__";
-    if (!ehAcao && !opcao) throw new Error("Escolha o instrumento.");
+    const ehAcao = selecao.modo === "acao";
+    if (selecao.modo === "manual") {
+      const m = selecao.manual;
+      if (!m.opTicker || !(m.strike > 0) || !/^\d{4}-\d{2}-\d{2}$/.test(m.vencimento)) {
+        throw new Error("Instrumento manual: informe código, strike e vencimento — os mesmos da tela da corretora.");
+      }
+    }
     const base = {
       tipo: "abertura", origem: "manual", executadoEm: quando, ticker,
       kind: ehAcao ? "STOCK" : "OPTION",
-      opTicker: ehAcao ? null : opcao!.opTicker,
-      tipoOpcao: ehAcao ? null : opcao!.type,
-      modelo: ehAcao ? null : opcao!.model,
-      strike: ehAcao ? null : opcao!.strike,
-      vencimento: ehAcao ? null : opcao!.expiry,
+      opTicker: ehAcao ? null : opcao ? opcao.opTicker : manual!.opTicker,
+      tipoOpcao: ehAcao ? null : opcao ? opcao.type : manual!.tipoOpcao,
+      modelo: ehAcao ? null : opcao ? opcao.model : null,
+      strike: ehAcao ? null : opcao ? opcao.strike : manual!.strike,
+      vencimento: ehAcao ? null : opcao ? opcao.expiry : manual!.vencimento,
       lado, quantidade: q, preco: p,
-      ivEntrada: ehAcao ? null : opcao!.iv,
-      gregasEntrada: ehAcao ? { delta: 1, vega: 0, theta: 0 } : { delta: opcao!.delta, vega: opcao!.vega, theta: opcao!.theta },
+      // Manual: sem IV nem gregas de entrada — a cadeia não conhecia o papel. Fica null, não zero.
+      ivEntrada: ehAcao ? null : opcao ? opcao.iv : null,
+      gregasEntrada: ehAcao ? { delta: 1, vega: 0, theta: 0 } : opcao ? { delta: opcao.delta, vega: opcao.vega, theta: opcao.theta } : null,
       ...custos,
     };
     if (estruturaAlvo === "__nova__") {
@@ -300,7 +309,7 @@ export function FormularioBoleta({ aberto, onFechar, focar }: Props) {
             <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
               <label className="space-y-0.5">
                 <div className="text-term-dim">Ativo</div>
-                <select value={ticker} onChange={(e) => { setTicker(e.target.value.toUpperCase()); setInstrumento("__acao__"); setPernaAlvo(""); }} autoFocus={focar} className="cell-input !w-full">
+                <select value={ticker} onChange={(e) => { setTicker(e.target.value.toUpperCase()); setSelecao({ modo: "acao" }); setPernaAlvo(""); }} autoFocus={focar} className="cell-input !w-full">
                   {UNIVERSE.map((u) => <option key={u.ticker} value={u.ticker}>{u.ticker}</option>)}
                   {!UNIVERSE.some((u) => u.ticker === ticker) && <option value={ticker}>{ticker}</option>}
                 </select>
@@ -308,15 +317,15 @@ export function FormularioBoleta({ aberto, onFechar, focar }: Props) {
 
               {tipo === "abertura" ? (
                 <label className="space-y-0.5 md:col-span-2">
-                  <div className="text-term-dim">Instrumento {opcoes.length === 0 && <span className="text-term-gold">(chain carregando…)</span>}</div>
-                  <select value={instrumento} onChange={(e) => setInstrumento(e.target.value)} className="cell-input !w-full">
-                    <option value="__acao__">Ação — {ticker}{chainDoTicker?.spot != null ? ` (${fmtNum(chainDoTicker.spot, 2)})` : ""}</option>
-                    {opcoes.map((o) => (
-                      <option key={o.opTicker} value={o.opTicker}>
-                        {o.opTicker} · {o.type} {fmtNum(o.strike, 2)} · {fmtDateBR(o.expiry)} · últ {o.last != null ? fmtNum(o.last, 2) : "—"}{o.markQuality === "stale" ? " · STALE" : ""}
-                      </option>
-                    ))}
-                  </select>
+                  <div className="text-term-dim">Instrumento <span className="text-term-dim/70">— digite código, strike ou data; Enter escolhe</span></div>
+                  <ComboInstrumento
+                    ticker={ticker}
+                    spot={chainDoTicker?.spot ?? null}
+                    opcoes={opcoes}
+                    carregando={opcoes.length === 0}
+                    valor={selecao}
+                    onChange={setSelecao}
+                  />
                 </label>
               ) : (
                 <label className="space-y-0.5 md:col-span-2">
