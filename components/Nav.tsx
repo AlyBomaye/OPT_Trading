@@ -11,6 +11,8 @@ import { sessionInfo } from "@/lib/session";
 import { BotaoSync } from "@/components/BotaoSync";
 import { SeletorAtivo } from "@/components/SeletorAtivo";
 import { fmtDateBR } from "@/lib/format";
+import { usePersistedState } from "@/lib/use-persisted-state";
+import { PanelLeftClose, PanelLeftOpen } from "lucide-react";
 
 /**
  * WO-36: o Consultor abre a barra — é a tela que consolida as outras.
@@ -39,6 +41,8 @@ export function Nav() {
   const router = useRouter();
   const chain = useMarket((st) => st.chain);
   const [showHelp, setShowHelp] = useState(false);
+  // Barra retratil: recolhida mostra so os icones. Chave por secao, nunca por numero.
+  const [recolhida, setRecolhida] = usePersistedState<boolean>("nav-recolhida", false);
 
   const sess = sessionInfo();
   let subText = "B3 · tempo quase-real";
@@ -65,18 +69,39 @@ export function Nav() {
         setShowHelp(false);
         return;
       }
+      if (e.key === "[") {
+        setRecolhida(!recolhida);
+        return;
+      }
       const item = ITEMS.find((i) => i.key === e.key);
       if (item) router.push(item.href);
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [router]);
+  }, [router, recolhida, setRecolhida]);
 
   return (
-    <nav className="w-40 shrink-0 border-r border-term-line bg-term-panel flex flex-col">
-      <div className="px-3 py-3 border-b border-term-line">
-        <div className="font-mono font-bold text-term-cyan tracking-tight">OPÇÕES·TERMINAL</div>
-        <div className="text-xxs text-term-dim truncate" title={subText}>{subText}</div>
+    <nav
+      className={clsx(
+        "shrink-0 border-r border-term-line bg-term-panel flex flex-col transition-[width] duration-150",
+        recolhida ? "w-12" : "w-40"
+      )}
+    >
+      <div className={clsx("py-3 border-b border-term-line flex items-start gap-1", recolhida ? "px-1 justify-center" : "px-3")}>
+        {!recolhida && (
+          <div className="min-w-0 flex-1">
+            <div className="font-mono font-bold text-term-cyan tracking-tight">OPÇÕES·TERMINAL</div>
+            <div className="text-xxs text-term-dim truncate" title={subText}>{subText}</div>
+          </div>
+        )}
+        <button
+          onClick={() => setRecolhida(!recolhida)}
+          title={recolhida ? `Expandir a barra ([) — ${subText}` : "Recolher a barra ([)"}
+          aria-label={recolhida ? "Expandir a barra lateral" : "Recolher a barra lateral"}
+          className="text-term-dim hover:text-term-cyan shrink-0 mt-0.5"
+        >
+          {recolhida ? <PanelLeftOpen size={14} /> : <PanelLeftClose size={14} />}
+        </button>
       </div>
       {/* `py-2` sem `flex-1`: a lista ocupa só a própria altura, para o botão de sincronização
           ficar logo abaixo de Manual em vez de ser empurrado para o rodapé da barra. */}
@@ -85,31 +110,35 @@ export function Nav() {
           <Link
             key={href}
             href={href}
+            title={recolhida ? `${label} (${key})` : undefined}
             className={clsx(
-              "flex items-center gap-2 px-3 py-1.5 text-xs border-l-2 transition-colors",
+              "flex items-center gap-2 py-1.5 text-xs border-l-2 transition-colors",
+              recolhida ? "px-0 justify-center" : "px-3",
               pathname === href
                 ? "border-term-cyan bg-term-cyan/10 text-term-cyan"
                 : "border-transparent text-term-dim hover:text-term-text"
             )}
           >
             <Icon size={14} />
-            <span className="flex-1">{label}</span>
-            <kbd className="text-xxs bg-term-panel2 border border-term-line rounded px-1">{key}</kbd>
+            {!recolhida && <span className="flex-1">{label}</span>}
+            {!recolhida && <kbd className="text-xxs bg-term-panel2 border border-term-line rounded px-1">{key}</kbd>}
           </Link>
         ))}
       </div>
       {/* WO-38: atualização completa das fontes, alcançável de qualquer aba. */}
-      <BotaoSync />
+      {!recolhida && <BotaoSync />}
 
       {/* WO-39: ativo de referência da plataforma, logo abaixo do botão de atualização. */}
-      <SeletorAtivo />
+      {!recolhida && <SeletorAtivo />}
 
       {/* Espaçador: empurra o rodapé de atalhos para baixo, agora que a lista não se estica. */}
       <div className="flex-1" />
 
-      <div className="px-3 py-2 text-xxs text-term-dim border-t border-term-line">
-        Atalhos: <kbd>1</kbd>–<kbd>0</kbd> abas · <kbd>G</kbd> Gestor · <kbd>R</kbd> atualizar · <kbd>?</kbd> ajuda
-      </div>
+      {!recolhida && (
+        <div className="px-3 py-2 text-xxs text-term-dim border-t border-term-line">
+          Atalhos: <kbd>1</kbd>–<kbd>0</kbd> abas · <kbd>G</kbd> Gestor · <kbd>R</kbd> atualizar · <kbd>[</kbd> barra · <kbd>?</kbd> ajuda
+        </div>
+      )}
 
       {showHelp && (
         <div
