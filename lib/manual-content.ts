@@ -77,7 +77,7 @@ export const RESUMO_TELAS = [
   {
     modulo: "2. Cockpit",
     pergunta: "Qual o diagnóstico de pré-abertura e onde está o risco do dia?",
-    resposta: "Leitura de pré-abertura, alertas do dia (walls, flip, skew e flags do book, com aviso do navegador), checklist pré-market por pregão, perfil de GEX por strike (posições em aberto da B3, com override manual e a variação desde ontem), Foco do dia, Watchlist do universo, choque do portfólio e pozinhos.",
+    resposta: "Leitura de pré-abertura, alertas do dia (walls, flip, skew e flags do book, com aviso do navegador — e pelo vigia, com tudo fechado; o vigia usa os walls calculados da B3, não o override manual), checklist pré-market por pregão, perfil de GEX por strike (posições em aberto da B3, com override manual e a variação desde ontem), Foco do dia, Watchlist do universo, choque do portfólio e pozinhos.",
   },
   {
     modulo: "3. Carteira",
@@ -125,6 +125,15 @@ export const HOTKEYS_MANUAL = [
   { atalho: "G", descricao: "Abre o Gestor (chat com o agente da aba)" },
   { atalho: "R", descricao: "Força o refresh instantâneo do Chain de Opções (ignora cache de 60s)" },
   { atalho: "?", descricao: "Abre / fecha o modal overlay de ajuda com os atalhos de teclado" },
+];
+
+/** WO-57 — a plataforma como serviço: portas, comandos, tarefas e logs. */
+export const PLATAFORMA_COMO_SERVICO = [
+  { titulo: "Duas portas", texto: "Produção em http://localhost:3100 (build, sobe com o Windows); desenvolvimento em http://localhost:3000 (next dev). As duas convivem: mexer no código não derruba a operação. O .env.local é o mesmo." },
+  { titulo: "Comandos", texto: "npm run prod:build (recusa com o dev vivo), prod:start, prod:stop, prod:status, prod:logs. npm run vigia:uma-vez testa um ciclo do vigia. npm run backup:db faz o dump agora." },
+  { titulo: "Tarefas agendadas (prefixo OpcoesTerminal-)", texto: "Plataforma no logon; Sync dias úteis 18:30 (histórico de IV e GEX diário); Vigia no logon (residente); Backup dias úteis 19:00 (pg_dump no OneDrive, 30 últimos). npm run agendar instala; agendar:listar mostra a última execução de cada uma." },
+  { titulo: "O vigia", texto: "Pergunta a GET /api/alertas de 5 em 5 minutos no pregão (15 na pré-abertura, 60 fechado, 6 h no fim de semana) e dispara notificação nativa do Windows para alertas urgentes e de atenção novos no dia. O servidor avalia com as mesmas funções da tela; o vigia não tem regra. Limite: usa os walls calculados do OI da B3 — o override manual do Cockpit e os dividendos cadastrados ficam no navegador." },
+  { titulo: "Logs e estado", texto: "data/logs/ (producao-, vigia-, sync.log, backup.log) e data/run/ (PID, build, avisados do dia). Tudo fora do git." },
 ];
 
 export const DADOS_LIMITACOES = [

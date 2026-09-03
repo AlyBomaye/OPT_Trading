@@ -5699,6 +5699,65 @@ Líquido para 04/09/2026 5.134,69 D`;
     if (t5) console.log("✔ WO-56 Teste 5: /api/cotahist com cache e recuo de datas; o store junta bid/ask/mid à cadeia; Carteira marca MID e tem a reconciliação; a cadeia mostra a cobertura de ofertas");
     else { console.log("✘ WO-56 Teste 5 falhou: rota, store ou telas"); failures++; }
   }
+
+  // ================= WO-57 — a plataforma de pé e o vigia =================
+  {
+    const fs = await import("node:fs");
+    const path = await import("node:path");
+    const lerSrc = (rel: string) => fs.readFileSync(path.join(process.cwd(), rel), "utf8");
+    const { alertasNovos, janelaDeVigia, INTERVALO_MIN } = await import("../vigia");
+    const { enrich } = await import("../enrich-chain");
+
+    // ---- Teste 1: alertasNovos — severidade mínima, chave já avisada, ordem urgente primeiro, lista vazia
+    const lista: any[] = [
+      { chave: "A", severidade: "info", titulo: "a", detalhe: "", deepLink: "/" },
+      { chave: "B", severidade: "atencao", titulo: "b", detalhe: "", deepLink: "/" },
+      { chave: "C", severidade: "urgente", titulo: "c", detalhe: "", deepLink: "/" },
+      { chave: "D", severidade: "urgente", titulo: "d", detalhe: "", deepLink: "/" },
+    ];
+    const novos = alertasNovos(lista, ["D"]);
+    const t1 = novos.map((a) => a.chave).join() === "C,B" && alertasNovos(lista, [], "urgente").map((a) => a.chave).join() === "C,D" && alertasNovos(lista, [], "info").length === 4 && alertasNovos([], ["X"]).length === 0;
+    if (t1) console.log("✔ WO-57 Teste 1: alertasNovos — filtra por severidade mínima, ignora chave já avisada, urgente antes de atenção, vazio é vazio");
+    else { console.log(`✘ WO-57 Teste 1 falhou: ${novos.map((a) => a.chave).join()}`); failures++; }
+
+    // ---- Teste 2: janelaDeVigia — intervalos por estado, fim de semana o maior, pregão o menor
+    const sab = new Date("2026-09-05T15:00:00-03:00");
+    const seg10 = new Date("2026-09-07T11:00:00-03:00");
+    const seg9 = new Date("2026-09-07T09:00:00-03:00");
+    const seg20 = new Date("2026-09-07T20:00:00-03:00");
+    const j = [janelaDeVigia(sab), janelaDeVigia(seg10), janelaDeVigia(seg9), janelaDeVigia(seg20)];
+    const t2 = j[0].estado === "FIM_DE_SEMANA" && j[1].estado === "ABERTO" && j[2].estado === "PRE" && j[3].estado === "FECHADO"
+      && j[1].intervaloMs < j[2].intervaloMs && j[2].intervaloMs < j[3].intervaloMs && j[3].intervaloMs < j[0].intervaloMs && j[1].intervaloMs === INTERVALO_MIN.ABERTO * 60_000;
+    if (t2) console.log(`✔ WO-57 Teste 2: janelaDeVigia — pregão ${INTERVALO_MIN.ABERTO} min < pré ${INTERVALO_MIN.PRE} < fechado ${INTERVALO_MIN.FECHADO} < fim de semana ${INTERVALO_MIN.FIM_DE_SEMANA}`);
+    else { console.log(`✘ WO-57 Teste 2 falhou: ${JSON.stringify(j)}`); failures++; }
+
+    // ---- Teste 3: enrich saiu do store sem mudar — a lib enriquece e o store importa dela
+    const bodyCru: any = { ticker: "PETR4", spot: 40, updatedAt: new Date().toISOString(), dataEfetiva: "2026-04-01", expiries: synthChain.expiries,
+      options: [{ opTicker: "PETRD40", type: "CALL", model: "E", moneyness: "ATM", strike: 40, distStrikePct: 0, premioPctCot: null, last: 1.8, trades: 10, volumeFin: 1000, lastTradeAt: "2026-04-01", sourceIv: null, sourceDelta: null, expiry: "2026-04-17", du: 20, dte: 30 }], sourceGreeksAvailable: false };
+    const ch = enrich(bodyCru, 40, 0.1, [], "2026-04-01", "2026-04-01", { "2026-04-01": 40 });
+    const srcStore = lerSrc("store/market.ts");
+    const t3 = ch.options.length === 1 && ch.options[0].iv != null && ch.options[0].iv > 0.2 && ch.options[0].iv < 0.6 && ch.options[0].delta != null && ch.options[0].markQuality === "fresh" && ch.greeksComputedLocally
+      && /from "@\/lib\/enrich-chain"/.test(srcStore) && !/^function enrich\(/m.test(srcStore) && /export \{ MAX_SESSOES_OK \}/.test(srcStore);
+    if (t3) console.log(`✔ WO-57 Teste 3: enrich na lib (IV ${(ch.options[0].iv! * 100).toFixed(1)}%, marca fresh) e o store importa de lá — uma implementação`);
+    else { console.log(`✘ WO-57 Teste 3 falhou: ${JSON.stringify({ iv: ch.options[0]?.iv, q: ch.options[0]?.markQuality })}`); failures++; }
+
+    // ---- Teste 4: /api/alertas usa as funções da tela e declara o limite; o vigia é burro; scripts e agendador
+    const srcRota = lerSrc("app/api/alertas/route.ts");
+    const srcVigia = lerSrc("scripts/vigia.mjs");
+    const srcProd = lerSrc("scripts/producao.ps1");
+    const srcAg = lerSrc("scripts/agendar.ps1");
+    const srcBk = lerSrc("scripts/backup-db.ps1");
+    const pkg = lerSrc("package.json");
+    const rotaOk = /avaliarAlertas\(/.test(srcRota) && /evaluateFlags\(/.test(srcRota) && /estadoLivro\(\)/.test(srcRota) && /enrich\(body/.test(srcRota) && /fonteGex/.test(srcRota) && /override manual/.test(srcRota) && !/spot \/ .*Wall/.test(srcRota);
+    const vigiaOk = /\/api\/alertas/.test(srcVigia) && !/position-flags|lib\/alertas/.test(srcVigia) && /ToastNotificationManager/.test(srcVigia) && /FALHAS_ATE_AVISAR/.test(srcVigia) && /vigia-avisados-/.test(srcVigia) && /"urgente", "atencao"/.test(srcVigia);
+    const prodOk = /next dev/.test(srcProd) && /Recusado/.test(srcProd) && /3100/.test(srcProd) && /producao\.pid/.test(srcProd) && /"build", "start", "stop", "status", "logs"/.test(srcProd);
+    const agOk = ["Plataforma", "Sync", "Vigia", "Backup"].every((n) => new RegExp(`Registrar "${n}"`).test(srcAg)) && /OpcoesTerminal-/.test(srcAg) && /RunLevel Limited/.test(srcAg) && /18:30/.test(srcAg) && /19:00/.test(srcAg);
+    const semSegredo = !/sk-ant/.test(srcRota + srcVigia + srcProd + srcAg + srcBk) && /notmatch "postgres/.test(srcBk) && /--dbname=\$url/.test(srcBk) && !/Write-Host.*\$url/.test(srcBk);
+    const pkgOk = ["prod:build", "prod:start", "prod:stop", "prod:status", "vigia", "agendar", "backup:db"].every((k) => pkg.includes(`"${k}"`));
+    const t4 = rotaOk && vigiaOk && prodOk && agOk && semSegredo && pkgOk && /data\/run\//.test(lerSrc(".gitignore")) && /PLATAFORMA_COMO_SERVICO/.test(lerSrc("app/manual/page.tsx"));
+    if (t4) console.log("✔ WO-57 Teste 4: a rota avalia com as funções da tela e declara o limite do GEX; o vigia só consome e notifica; produção recusa build com dev vivo; 4 tarefas com prefixo; nenhum script imprime segredo; Manual com a seção de serviço");
+    else { console.log(`✘ WO-57 Teste 4 falhou: rota=${rotaOk} vigia=${vigiaOk} prod=${prodOk} agendador=${agOk} segredo=${semSegredo} pkg=${pkgOk}`); failures++; }
+  }
 }
 
 testesAssincronos()

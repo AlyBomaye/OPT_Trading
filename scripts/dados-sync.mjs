@@ -6,8 +6,8 @@
  * script antes do pregão, o cache de disco já está quente e a Macro abre instantânea.
  *
  * Uso:
- *   npm run dados:sync                    # servidor em http://localhost:3001
- *   BASE_URL=http://localhost:3000 npm run dados:sync
+ *   npm run dados:sync                    # producao em http://localhost:3100
+ *   BASE_URL=http://localhost:3000 npm run dados:sync   # contra o dev
  *
  * Requer o servidor no ar: as rotas é que sabem parsear, cachear e rotular a proveniência de cada
  * fonte. Duplicar essa lógica aqui criaria duas verdades sobre o mesmo dado.
@@ -18,7 +18,8 @@
  * e antes da abertura da B3.
  */
 
-const BASE = process.env.BASE_URL ?? "http://localhost:3001";
+// WO-57: a produção vive na 3100; o dev na 3000 (use BASE_URL para apontar).
+const BASE = process.env.BASE_URL ?? "http://localhost:3100";
 
 /** As três fontes que dependem de download pesado ou de contrato frágil. */
 const FONTES = [
