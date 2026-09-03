@@ -92,6 +92,10 @@ export async function middleware(req: NextRequest) {
   const ehProducao = process.env.NODE_ENV === "production";
   const caminho = req.nextUrl.pathname;
 
+  // WO-57: /api/saude é o único caminho sem senha — "estou vivo", sem dado e sem custo. É o que o
+  // script de produção e o vigia consultam para saber se a plataforma está de pé.
+  if (caminho === "/api/saude") return NextResponse.next();
+
   // Sem senha configurada: liberado em desenvolvimento, fechado em produção.
   if (!senha) {
     if (!ehProducao) return NextResponse.next();

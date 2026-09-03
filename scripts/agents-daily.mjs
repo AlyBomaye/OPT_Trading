@@ -13,6 +13,7 @@
  * sem a chave, os agentes determinísticos rodam normalmente e só a consolidação fica de fora.
  */
 
+import { fetchAutenticado } from "./_sessao.mjs";
 const BASE = process.env.BASE_URL ?? "http://localhost:3001";
 const TICKER = process.env.TICKER ?? "PETR4";
 
@@ -24,7 +25,7 @@ console.log("=========================================\n");
 const t0 = Date.now();
 
 try {
-  const res = await fetch(`${BASE}/api/agents/run-cycle`, {
+  const res = await fetchAutenticado(`${BASE}/api/agents/run-cycle`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ ticker: TICKER }),

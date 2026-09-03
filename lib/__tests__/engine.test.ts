@@ -5759,6 +5759,17 @@ Líquido para 04/09/2026 5.134,69 D`;
     const t4 = rotaOk && vigiaOk && prodOk && agOk && semSegredo && pkgOk && /data\/run\//.test(lerSrc(".gitignore")) && /PLATAFORMA_COMO_SERVICO/.test(lerSrc("app/manual/page.tsx"));
     if (t4) console.log("✔ WO-57 Teste 4: a rota avalia com as funções da tela e declara o limite do GEX; o vigia só consome e notifica; produção recusa build com dev vivo; 4 tarefas com prefixo; nenhum script imprime segredo; Manual com a seção de serviço");
     else { console.log(`✘ WO-57 Teste 4 falhou: rota=${rotaOk} vigia=${vigiaOk} prod=${prodOk} agendador=${agOk} segredo=${semSegredo} pkg=${pkgOk}`); failures++; }
+
+    // ---- Teste 5: produção com senha — scripts entram por /api/entrar, a rota repassa o cookie, /api/saude fora da senha
+    const srcSessao = lerSrc("scripts/_sessao.mjs");
+    const srcMw = lerSrc("middleware.ts");
+    const scriptsAut = ["scripts/vigia.mjs", "scripts/dados-sync.mjs", "scripts/agents-daily.mjs"].every((f) => { const s = lerSrc(f); return /fetchAutenticado\(/.test(s) && /_sessao\.mjs/.test(s) && !/await fetch\(/.test(s); });
+    const t5 = /APP_PASSWORD=/.test(srcSessao) && /\/api\/entrar/.test(srcSessao) && /opt_sessao=/.test(srcSessao) && !/console\.log\([^)]*senha/.test(srcSessao)
+      && scriptsAut && /cookieDaChamada = req\.headers\.get\("cookie"\)/.test(lerSrc("app/api/alertas/route.ts"))
+      && /caminho === "\/api\/saude"\) return NextResponse\.next\(\)/.test(srcMw) && /export async function GET/.test(lerSrc("app/api/saude/route.ts"))
+      && /api\/saude/.test(lerSrc("scripts/producao.ps1")) && /APP_PASSWORD=/.test(lerSrc("scripts/producao.ps1")) && /Senha em produção/.test(lerSrc("lib/manual-content.ts"));
+    if (t5) console.log("✔ WO-57 Teste 5: os scripts entram com a senha do .env.local (sem logá-la), a rota repassa o cookie, /api/saude é o único caminho aberto e o start exige APP_PASSWORD");
+    else { console.log(`✘ WO-57 Teste 5 falhou: scripts=${scriptsAut}`); failures++; }
   }
 }
 

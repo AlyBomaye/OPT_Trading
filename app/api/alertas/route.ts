@@ -29,9 +29,13 @@ export const dynamic = "force-dynamic";
 
 const SELIC_PADRAO = 0.1425;
 
+// Em produção o middleware exige sessão também nas chamadas internas: o cookie de quem chamou
+// esta rota é repassado (mesmo padrão do /api/iv-sync).
+let cookieDaChamada = "";
+
 async function json<T>(url: string, ms: number): Promise<T | null> {
   try {
-    const r = await fetch(url, { signal: AbortSignal.timeout(ms), cache: "no-store" });
+    const r = await fetch(url, { signal: AbortSignal.timeout(ms), cache: "no-store", headers: cookieDaChamada ? { cookie: cookieDaChamada } : {} });
     return r.ok ? ((await r.json()) as T) : null;
   } catch {
     return null;
@@ -48,6 +52,7 @@ export async function GET(req: Request) {
 }
 
 async function avaliar(req: Request) {
+  cookieDaChamada = req.headers.get("cookie") ?? "";
   const sess = sessionInfo();
   const avaliadoEm = new Date().toISOString();
   if (!bancoConfigurado()) {

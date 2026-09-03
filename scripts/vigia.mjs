@@ -12,6 +12,7 @@
  * Log:    data/logs/vigia-AAAA-MM-DD.log
  */
 
+import { fetchAutenticado } from "./_sessao.mjs";
 import fs from "node:fs";
 import path from "node:path";
 import { spawn } from "node:child_process";
@@ -95,7 +96,7 @@ async function ciclo() {
   const dia = hojeIso();
   let resp;
   try {
-    const r = await fetch(`${BASE}/api/alertas`, { signal: AbortSignal.timeout(120_000) });
+    const r = await fetchAutenticado(`${BASE}/api/alertas`, { signal: AbortSignal.timeout(120_000) });
     if (!r.ok) throw new Error(`HTTP ${r.status}`);
     resp = await r.json();
   } catch (e) {

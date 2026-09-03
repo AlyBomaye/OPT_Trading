@@ -17,7 +17,7 @@ $pidFile = Join-Path $dirRun "producao.pid"
 New-Item -ItemType Directory -Force $dirRun, $dirLog | Out-Null
 
 function Porta-Responde {
-  try { $r = Invoke-WebRequest -Uri "http://localhost:$porta/api/limites" -UseBasicParsing -TimeoutSec 5; return $r.StatusCode -eq 200 } catch { return $false }
+  try { $r = Invoke-WebRequest -Uri "http://localhost:$porta/api/saude" -UseBasicParsing -TimeoutSec 5; return $r.StatusCode -eq 200 } catch { return $false }
 }
 function Pid-Gravado {
   if (-not (Test-Path $pidFile)) { return $null }
@@ -49,6 +49,10 @@ switch ($acao) {
   "start" {
     if (Porta-Responde) { Write-Host "A producao ja responde na porta $porta (PID $(Pid-Gravado)). Nada a fazer." -ForegroundColor Green; exit 0 }
     if (-not (Test-Path (Join-Path $raiz ".next"))) { Write-Host "Sem build (.next ausente). Rode: npm run prod:build" -ForegroundColor Yellow; exit 2 }
+    # Producao exige APP_PASSWORD (middleware, WO-37): sem ela toda rota responde 503. So se confere a presenca; o valor nunca e lido nem impresso.
+    $envFile = Join-Path $raiz ".env.local"
+    $temSenha = (Test-Path $envFile) -and ((Get-Content $envFile | Where-Object { $_ -match '^APP_PASSWORD=\S+' } | Measure-Object).Count -gt 0)
+    if (-not $temSenha) { Write-Host "Producao exige APP_PASSWORD no .env.local (a plataforma responde 503 sem ela). Adicione a linha APP_PASSWORD=<sua senha> e rode prod:start de novo. Os scripts (vigia, sync) leem a mesma senha para entrar." -ForegroundColor Yellow; exit 2 }
     $log = Join-Path $dirLog ("producao-" + (Get-Date -Format "yyyy-MM-dd") + ".log")
     $cmd = "cd /d `"$raiz`" && npx next start -p $porta >> `"$log`" 2>&1"
     $p = Start-Process -FilePath "cmd.exe" -ArgumentList "/c", $cmd -WindowStyle Hidden -PassThru

@@ -19,6 +19,7 @@
  */
 
 // WO-57: a produção vive na 3100; o dev na 3000 (use BASE_URL para apontar).
+import { fetchAutenticado } from "./_sessao.mjs";
 const BASE = process.env.BASE_URL ?? "http://localhost:3100";
 
 /** As três fontes que dependem de download pesado ou de contrato frágil. */
@@ -69,7 +70,7 @@ for (const f of FONTES) {
   const t0 = Date.now();
   process.stdout.write(`→ ${f.nome}\n`);
   try {
-    const res = await fetch(`${BASE}${f.rota}`, { signal: AbortSignal.timeout(180_000) });
+    const res = await fetchAutenticado(`${BASE}${f.rota}`, { signal: AbortSignal.timeout(180_000) });
     const texto = await res.text();
     const ms = Date.now() - t0;
 
@@ -114,7 +115,7 @@ for (const f of FONTES) {
 console.log("→ Snapshot de volatilidade implicita (universo)");
 const tIv = Date.now();
 try {
-  const res = await fetch(`${BASE}/api/iv-sync`, {
+  const res = await fetchAutenticado(`${BASE}/api/iv-sync`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({}),
