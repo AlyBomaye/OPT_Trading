@@ -19,8 +19,8 @@
  */
 
 // WO-57: a produção vive na 3100; o dev na 3000 (use BASE_URL para apontar).
-import { fetchAutenticado } from "./_sessao.mjs";
-const BASE = process.env.BASE_URL ?? "http://localhost:3100";
+import { fetchAutenticado, baseDisponivel } from "./_sessao.mjs";
+const BASE = await baseDisponivel(process.env.BASE_URL ?? "http://localhost:3100");
 
 /** As três fontes que dependem de download pesado ou de contrato frágil. */
 const FONTES = [

@@ -13,8 +13,8 @@
  * sem a chave, os agentes determinísticos rodam normalmente e só a consolidação fica de fora.
  */
 
-import { fetchAutenticado } from "./_sessao.mjs";
-const BASE = process.env.BASE_URL ?? "http://localhost:3001";
+import { fetchAutenticado, baseDisponivel } from "./_sessao.mjs";
+const BASE = await baseDisponivel(process.env.BASE_URL ?? "http://localhost:3001");
 const TICKER = process.env.TICKER ?? "PETR4";
 
 console.log("=========================================");

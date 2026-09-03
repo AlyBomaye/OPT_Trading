@@ -12,12 +12,12 @@
  * Log:    data/logs/vigia-AAAA-MM-DD.log
  */
 
-import { fetchAutenticado } from "./_sessao.mjs";
+import { fetchAutenticado, baseDisponivel } from "./_sessao.mjs";
 import fs from "node:fs";
 import path from "node:path";
 import { spawn } from "node:child_process";
 
-const BASE = process.env.BASE_URL ?? "http://localhost:3100";
+let BASE = process.env.BASE_URL ?? "http://localhost:3100";
 const UMA_VEZ = process.argv.includes("--uma-vez");
 const RAIZ = path.resolve(path.dirname(new URL(import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, "$1")), "..");
 const DIR_RUN = path.join(RAIZ, "data", "run");
@@ -131,7 +131,9 @@ async function ciclo() {
 }
 
 async function principal() {
-  log(`vigia iniciado — base ${BASE}${UMA_VEZ ? " (um ciclo)" : ""}`);
+  const pedida = BASE;
+  BASE = await baseDisponivel(pedida);
+  log(`vigia iniciado — base ${BASE}${BASE !== pedida ? ` (${pedida} não respondeu; usando o dev)` : ""}${UMA_VEZ ? " (um ciclo)" : ""}`);
   for (;;) {
     const { estado } = await ciclo();
     if (UMA_VEZ) break;

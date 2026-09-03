@@ -59,3 +59,22 @@ export async function fetchAutenticado(url, init = {}) {
   }
   return r;
 }
+
+/**
+ * A base que está de pé: a preferida (produção, 3100) ou, se ela não responder em /api/saude, o
+ * dev na 3000. Produção sem APP_PASSWORD não sobe; enquanto isso, o sync e o vigia não podem
+ * ficar mudos por causa disso. Devolve a preferida quando nenhuma responde (o chamador loga a falha).
+ */
+export async function baseDisponivel(preferida, alternativa = "http://localhost:3000") {
+  const viva = async (b) => {
+    try {
+      const r = await fetch(`${b}/api/saude`, { signal: AbortSignal.timeout(5_000) });
+      return r.ok;
+    } catch {
+      return false;
+    }
+  };
+  if (await viva(preferida)) return preferida;
+  if (preferida !== alternativa && (await viva(alternativa))) return alternativa;
+  return preferida;
+}
