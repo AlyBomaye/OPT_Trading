@@ -5767,7 +5767,10 @@ Líquido para 04/09/2026 5.134,69 D`;
     const t5 = /APP_PASSWORD=/.test(srcSessao) && /\/api\/entrar/.test(srcSessao) && /opt_sessao=/.test(srcSessao) && !/console\.log\([^)]*senha/.test(srcSessao)
       && scriptsAut && /cookieDaChamada = req\.headers\.get\("cookie"\)/.test(lerSrc("app/api/alertas/route.ts"))
       && /caminho === "\/api\/saude"\) return NextResponse\.next\(\)/.test(srcMw) && /export async function GET/.test(lerSrc("app/api/saude/route.ts"))
-      && /api\/saude/.test(lerSrc("scripts/producao.ps1")) && /APP_PASSWORD=/.test(lerSrc("scripts/producao.ps1")) && /Senha em produção/.test(lerSrc("lib/manual-content.ts"));
+      && /api\/saude/.test(lerSrc("scripts/producao.ps1")) && /APP_PASSWORD=/.test(lerSrc("scripts/producao.ps1")) && /Senha em produção/.test(lerSrc("lib/manual-content.ts"))
+      // A senha é do trader: o script pergunta no terminal (sem eco), confirma, grava sem BOM e nunca imprime o valor.
+      && (() => { const d = lerSrc("scripts/definir-senha.ps1"); return /Read-Host .* -AsSecureString/.test(d) && /UTF8Encoding\(\$false\)/.test(d) && /notmatch '\^\\s\*APP_PASSWORD/.test(d) && !/Write-Host.*\$p1/.test(d); })()
+      && lerSrc("package.json").includes('"senha"');
     if (t5) console.log("✔ WO-57 Teste 5: os scripts entram com a senha do .env.local (sem logá-la), a rota repassa o cookie, /api/saude é o único caminho aberto e o start exige APP_PASSWORD");
     else { console.log(`✘ WO-57 Teste 5 falhou: scripts=${scriptsAut}`); failures++; }
   }

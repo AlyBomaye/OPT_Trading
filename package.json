@@ -18,6 +18,7 @@
     "vigia:uma-vez": "node scripts/vigia.mjs --uma-vez",
     "agendar": "powershell -NoProfile -ExecutionPolicy Bypass -File ./scripts/agendar.ps1 instalar",
     "agendar:listar": "powershell -NoProfile -ExecutionPolicy Bypass -File ./scripts/agendar.ps1 listar",
+    "senha": "powershell -NoProfile -ExecutionPolicy Bypass -File ./scripts/definir-senha.ps1",
     "backup:db": "powershell -NoProfile -ExecutionPolicy Bypass -File ./scripts/backup-db.ps1",
     "agents:daily": "node scripts/agents-daily.mjs",
     "setup:db": "powershell -ExecutionPolicy Bypass -File ./scripts/setup-db.ps1",
