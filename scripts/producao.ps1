@@ -27,6 +27,16 @@ function Pid-Gravado {
   if ($p -and (Get-Process -Id ([int]$p) -ErrorAction SilentlyContinue)) { return [int]$p }
   return $null
 }
+# Quem realmente escuta a porta. O PID gravado e o do cmd hospedeiro; quem abre o socket e um neto.
+# Sem isto, um `stop` deixava servidor orfao na 3100 (com build velho) e o `start` seguinte nao subia.
+function Pid-DaPorta {
+  try { return (Get-NetTCPConnection -LocalPort $porta -State Listen -ErrorAction Stop | Select-Object -First 1 -ExpandProperty OwningProcess) } catch { return $null }
+}
+function Parar-Arvore([int]$raizPid) {
+  if (-not $raizPid) { return }
+  Get-CimInstance Win32_Process -Filter "ParentProcessId = $raizPid" -ErrorAction SilentlyContinue | ForEach-Object { Parar-Arvore ([int]$_.ProcessId) }
+  Stop-Process -Id $raizPid -Force -ErrorAction SilentlyContinue
+}
 function Dev-Vivo {
   # next dev deixa um node com "next dev" na linha de comando
   $procs = Get-CimInstance Win32_Process -Filter "Name = 'node.exe'" | Where-Object { $_.CommandLine -match "\bnext\b.*\bdev\b" }
@@ -49,7 +59,9 @@ switch ($acao) {
     } finally { Pop-Location }
   }
   "start" {
-    if (Porta-Responde) { Write-Host "A producao ja responde na porta $porta (PID $(Pid-Gravado)). Nada a fazer." -ForegroundColor Green; exit 0 }
+    if (Porta-Responde) { Write-Host "A producao ja responde na porta $porta (PID $(Pid-DaPorta)). Nada a fazer." -ForegroundColor Green; exit 0 }
+    $ocupada = Pid-DaPorta
+    if ($ocupada) { Write-Host "A porta $porta esta ocupada pelo PID $ocupada, que nao responde em /api/saude (build antigo ou processo orfao). Rode: npm run prod:stop" -ForegroundColor Yellow; exit 2 }
     if (-not (Test-Path (Join-Path $raiz ".next-prod"))) { Write-Host "Sem build (.next-prod ausente). Rode: npm run prod:build" -ForegroundColor Yellow; exit 2 }
     # Producao exige APP_PASSWORD (middleware, WO-37): sem ela toda rota responde 503. So se confere a presenca; o valor nunca e lido nem impresso.
     $envFile = Join-Path $raiz ".env.local"
@@ -65,16 +77,18 @@ switch ($acao) {
     else { Write-Host "Subiu o processo (PID $($p.Id)) mas a porta $porta nao respondeu em 30s. Veja: npm run prod:logs" -ForegroundColor Yellow; exit 1 }
   }
   "stop" {
-    $vivo = Pid-Gravado
-    if (-not $vivo) { Write-Host "Producao nao esta rodando (sem PID vivo)."; Remove-Item $pidFile -ErrorAction SilentlyContinue; exit 0 }
-    # O cmd hospeda o node; encerra a arvore.
-    Get-CimInstance Win32_Process -Filter "ParentProcessId = $vivo" | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
-    Stop-Process -Id $vivo -Force -ErrorAction SilentlyContinue
+    $alvos = @((Pid-Gravado), (Pid-DaPorta)) | Where-Object { $_ } | Select-Object -Unique
+    if (-not $alvos) { Write-Host "Producao nao esta rodando (nada no PID gravado nem escutando a $porta)."; Remove-Item $pidFile -ErrorAction SilentlyContinue; exit 0 }
+    foreach ($a in $alvos) { Parar-Arvore ([int]$a); Write-Host "  encerrado PID $a e filhos" }
     Remove-Item $pidFile -ErrorAction SilentlyContinue
-    Write-Host "Producao parada (PID $vivo)."
+    Start-Sleep -Seconds 2
+    $sobrou = Pid-DaPorta
+    if ($sobrou) { Write-Host "Ainda ha algo na porta $porta (PID $sobrou)." -ForegroundColor Yellow; exit 1 }
+    Write-Host "Producao parada."
   }
   "status" {
-    $vivo = Pid-Gravado
+    $vivo = Pid-DaPorta
+    if (-not $vivo) { $vivo = Pid-Gravado }
     $resp = Porta-Responde
     $build = if (Test-Path (Join-Path $dirRun "producao.build")) { Get-Content (Join-Path $dirRun "producao.build") } else { "sem build registrado" }
     Write-Host ("porta {0}: {1} | PID: {2} | build: {3} | dev vivo: {4}" -f $porta, $(if ($resp) { "responde" } else { "sem resposta" }), $(if ($vivo) { $vivo } else { "-" }), $build, $(Dev-Vivo))
