@@ -1,9 +1,9 @@
-# WO-57 — a plataforma em produção, numa porta própria, de pé sem janela aberta.
+﻿# WO-57 - a plataforma em producao, numa porta própria, de pe sem janela aberta.
 #
 # Uso:  .\scripts\producao.ps1 build | start | stop | status | logs
 #
-# Produção na 3100; o dev continua na 3000 e os dois convivem. `build` recusa com `next dev` vivo
-# porque os dois escrevem em .next e isso já corrompeu o CSS. O .env.local (com DATABASE_URL) é o
+# Producao na 3100; o dev continua na 3000 e os dois convivem. `build` recusa com `next dev` vivo
+# porque os dois escrevem em .next e isso ja corrompeu o CSS. O .env.local (com DATABASE_URL) e o
 # mesmo para as duas portas. Nada aqui imprime segredo.
 
 param([Parameter(Position = 0)][ValidateSet("build", "start", "stop", "status", "logs")][string]$acao = "status")

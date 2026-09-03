@@ -2,7 +2,7 @@ import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import type { ChainData, Position } from "./types";
 import type { DividendEvent } from "./universe";
-import { markInfo } from "@/store/market";
+import { markInfo } from "./marcacao";
 import { allocatedCapital, unrealizedPnl } from "./portfolio";
 import { strategyMetrics } from "./payoff";
 import { divsBeforeExpiry, effectiveDividends } from "./dividends";

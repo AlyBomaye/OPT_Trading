@@ -6,7 +6,7 @@ import { enrich, type ApiBody } from "@/lib/enrich-chain";
 import { evaluateFlags, DEFAULT_THRESHOLDS } from "@/lib/position-flags";
 import { avaliarAlertas, type Alerta } from "@/lib/alertas";
 import { buildGexProfile } from "@/lib/gex";
-import { derivarSkewAtm } from "@/lib/hooks/useSkewAtm";
+import { skewInfo } from "@/lib/scanner";
 import { sessionInfo } from "@/lib/session";
 import type { ChainData, Position } from "@/lib/types";
 import type { Regime } from "@/lib/metodo";
@@ -39,6 +39,15 @@ async function json<T>(url: string, ms: number): Promise<T | null> {
 }
 
 export async function GET(req: Request) {
+  try {
+    return await avaliar(req);
+  } catch (e: any) {
+    // Um 500 sem corpo deixa o vigia cego; o erro vai no JSON (sem segredo: mensagens de erro não carregam credencial).
+    return NextResponse.json({ configurado: false, alertas: [], semCadeia: [], erro: String(e?.message ?? e).replace(/postgres(ql)?:\/\/\S+/g, "[url]") }, { status: 500 });
+  }
+}
+
+async function avaliar(req: Request) {
   const sess = sessionInfo();
   const avaliadoEm = new Date().toISOString();
   if (!bancoConfigurado()) {
@@ -98,7 +107,9 @@ export async function GET(req: Request) {
     const oi = await json<{ series?: Record<string, { type: "CALL" | "PUT"; totalPos: number }>; fileDate?: string }>(`${base}/api/oi?ticker=${encodeURIComponent(t)}`, 30_000);
     const perfil = oi?.series && oi.fileDate ? buildGexProfile(chain, oi.series, oi.fileDate, chain.expiries.find((e) => e.isMonthly)?.date) : null;
     fonteGex[t] = perfil ? `calculado do OI B3 de ${oi!.fileDate}` : "sem OI — walls e flip não avaliados";
-    const { skew } = derivarSkewAtm(chain, chain.expiries.find((e) => e.isMonthly)?.date ?? chain.expiries[0]?.date ?? null);
+    // Mesma conta de derivarSkewAtm (lib/hooks), sem importar o hook: ele puxa o store do navegador.
+    const expSkew = chain.expiries.find((e) => e.isMonthly)?.date ?? chain.expiries[0]?.date ?? null;
+    const skew = expSkew ? skewInfo(chain, expSkew) : null;
     alertas.push(
       ...avaliarAlertas({
         ticker: t,

@@ -1,4 +1,4 @@
-# WO-57 — as tarefas agendadas da plataforma, no Agendador do Windows, no contexto do usuario.
+﻿# WO-57 - as tarefas agendadas da plataforma, no Agendador do Windows, no contexto do usuario.
 #
 # Uso:  .\scripts\agendar.ps1 instalar | remover | listar
 #
@@ -27,7 +27,7 @@ function Registrar($nome, $acaoTask, $trigger, $semLimite) {
     Register-ScheduledTask -TaskName "$prefixo$nome" -Action $acaoTask -Trigger $trigger -Settings $settings -User $usuario -RunLevel Limited -Force | Out-Null
     Write-Host "  registrada: $prefixo$nome" -ForegroundColor Green
   } catch {
-    if ($_.Exception.Message -match "Acesso negado|Access is denied") { Write-Host "  $prefixo$nome: o Windows exigiu elevacao para registrar. Abra um PowerShell como administrador e rode este script de novo." -ForegroundColor Yellow; exit 3 }
+    if ($_.Exception.Message -match "Acesso negado|Access is denied") { Write-Host "  ${prefixo}${nome}: o Windows exigiu elevacao para registrar. Abra um PowerShell como administrador e rode este script de novo." -ForegroundColor Yellow; exit 3 }
     throw
   }
 }

@@ -1,4 +1,4 @@
-# WO-57 §E — backup diario do Postgres para o OneDrive, mantendo os 30 ultimos.
+﻿# WO-57 §E - backup diario do Postgres para o OneDrive, mantendo os 30 ultimos.
 #
 # O livro (boletas, base fiscal) e o historico de IV sao as duas coisas da plataforma que nao se
 # recuperam de fonte nenhuma. A senha NAO entra aqui: o pg_dump recebe a DATABASE_URL do
@@ -6,9 +6,9 @@
 
 $ErrorActionPreference = "Stop"
 $raiz = Split-Path -Parent $PSScriptRoot
-$env = Join-Path $raiz ".env.local"
-if (-not (Test-Path $env)) { Write-Host "Sem .env.local — nada a fazer."; exit 2 }
-$linha = Get-Content $env | Where-Object { $_ -like "DATABASE_URL=*" } | Select-Object -First 1
+$envFile = Join-Path $raiz ".env.local"
+if (-not (Test-Path $envFile)) { Write-Host "Sem .env.local - nada a fazer."; exit 2 }
+$linha = Get-Content $envFile | Where-Object { $_ -like "DATABASE_URL=*" } | Select-Object -First 1
 if (-not $linha) { Write-Host "DATABASE_URL ausente do .env.local."; exit 2 }
 $url = $linha.Substring("DATABASE_URL=".Length).Trim().Trim('"')
 

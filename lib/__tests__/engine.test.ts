@@ -1731,8 +1731,10 @@ async function testesWo30() {
 
   // ---- Teste 8: idade da marca da carteira não é medida pelo relógio do fetch (§2.5)
   const marketSrc = fs.readFileSync(path.join(raiz, "store", "market.ts"), "utf-8");
-  const usaAgeMinutes = /ageMin:\s*ageMinutes\(/.test(marketSrc);
-  const temAgePregoes = /agePregoes/.test(marketSrc) && /markDate/.test(marketSrc);
+  // WO-57: markInfo mudou para lib/marcacao.ts (o servidor precisa dela); o invariante é o mesmo.
+  const marcacaoSrc = fs.readFileSync(path.join(raiz, "lib", "marcacao.ts"), "utf-8");
+  const usaAgeMinutes = /ageMin:\s*ageMinutes\(/.test(marcacaoSrc);
+  const temAgePregoes = /agePregoes/.test(marcacaoSrc) && /markDate/.test(marcacaoSrc);
   const consumidores = [
     fs.readFileSync(path.join(raiz, "app", "carteira", "page.tsx"), "utf-8"),
     fs.readFileSync(path.join(raiz, "lib", "position-flags.ts"), "utf-8"),
@@ -5693,7 +5695,7 @@ Líquido para 04/09/2026 5.134,69 D`;
     const srcRota = lerSrc("app/api/cotahist/route.ts");
     const srcStore = lerSrc("store/market.ts");
     const t5 = /COTAHIST_D/.test(srcRota) && /lerZip\(buf\)/.test(srcRota) && /pregaoAnterior/.test(srcRota) && /gravarCache\(`cotahist-/.test(srcRota)
-      && /\/api\/cotahist\?data=/.test(srcStore) && /o\.mid = c\.mid/.test(srcStore) && srcStore.includes("o.opTicker.replace(/_" + String.fromCharCode(92) + "d{4}$/, " + '""' + ")") && /export function marcaDaSerie/.test(srcStore) && /fonte,\n/.test(srcStore)
+      && /\/api\/cotahist\?data=/.test(srcStore) && /o\.mid = c\.mid/.test(srcStore) && srcStore.includes("o.opTicker.replace(/_" + String.fromCharCode(92) + "d{4}$/, " + '""' + ")") && /export function marcaDaSerie/.test(lerSrc("lib/marcacao.ts")) && /fonte,\n/.test(lerSrc("lib/marcacao.ts"))
       && /mark\.fonte === "mid"/.test(lerSrc("app/carteira/page.tsx")) && /<ReconciliacaoNota \/>/.test(lerSrc("app/carteira/page.tsx"))
       && /ofertas de fechamento/.test(lerSrc("components/OptionChain.tsx")) && /bid\?: number \| null/.test(lerSrc("lib/types.ts"));
     if (t5) console.log("✔ WO-56 Teste 5: /api/cotahist com cache e recuo de datas; o store junta bid/ask/mid à cadeia; Carteira marca MID e tem a reconciliação; a cadeia mostra a cobertura de ofertas");
