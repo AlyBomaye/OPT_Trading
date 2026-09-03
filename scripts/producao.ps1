@@ -29,7 +29,7 @@ function Pid-Gravado {
 }
 function Dev-Vivo {
   # next dev deixa um node com "next dev" na linha de comando
-  $procs = Get-CimInstance Win32_Process -Filter "Name = 'node.exe'" | Where-Object { $_.CommandLine -match "next dev" }
+  $procs = Get-CimInstance Win32_Process -Filter "Name = 'node.exe'" | Where-Object { $_.CommandLine -match "\bnext\b.*\bdev\b" }
   return ($procs | Measure-Object).Count -gt 0
 }
 
