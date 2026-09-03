@@ -1,5 +1,8 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  // WO-57: dev (.next) e produção (.next-prod) em pastas separadas, para conviverem na mesma
+  // máquina sem um corromper o build do outro. producao.ps1 exporta NEXT_DIST_DIR=.next-prod.
+  distDir: process.env.NEXT_DIST_DIR || ".next",
   reactStrictMode: true,
 
   /**

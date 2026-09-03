@@ -5752,12 +5752,12 @@ Líquido para 04/09/2026 5.134,69 D`;
     const pkg = lerSrc("package.json");
     const rotaOk = /avaliarAlertas\(/.test(srcRota) && /evaluateFlags\(/.test(srcRota) && /estadoLivro\(\)/.test(srcRota) && /enrich\(body/.test(srcRota) && /fonteGex/.test(srcRota) && /override manual/.test(srcRota) && !/spot \/ .*Wall/.test(srcRota);
     const vigiaOk = /\/api\/alertas/.test(srcVigia) && !/position-flags|lib\/alertas/.test(srcVigia) && /ToastNotificationManager/.test(srcVigia) && /FALHAS_ATE_AVISAR/.test(srcVigia) && /vigia-avisados-/.test(srcVigia) && /"urgente", "atencao"/.test(srcVigia);
-    const prodOk = /next dev/.test(srcProd) && /Recusado/.test(srcProd) && /3100/.test(srcProd) && /producao\.pid/.test(srcProd) && /"build", "start", "stop", "status", "logs"/.test(srcProd);
+    const prodOk = /NEXT_DIST_DIR = "\.next-prod"/.test(srcProd) && /3100/.test(srcProd) && /producao\.pid/.test(srcProd) && /"build", "start", "stop", "status", "logs"/.test(srcProd) && /distDir: process\.env\.NEXT_DIST_DIR/.test(lerSrc("next.config.mjs")) && /\.next-prod\//.test(lerSrc(".gitignore"));
     const agOk = ["Plataforma", "Sync", "Vigia", "Backup"].every((n) => new RegExp(`Registrar "${n}"`).test(srcAg)) && /OpcoesTerminal-/.test(srcAg) && /RunLevel Limited/.test(srcAg) && /18:30/.test(srcAg) && /19:00/.test(srcAg);
     const semSegredo = !/sk-ant/.test(srcRota + srcVigia + srcProd + srcAg + srcBk) && /notmatch "postgres/.test(srcBk) && /--dbname=\$url/.test(srcBk) && !/Write-Host.*\$url/.test(srcBk);
     const pkgOk = ["prod:build", "prod:start", "prod:stop", "prod:status", "vigia", "agendar", "backup:db"].every((k) => pkg.includes(`"${k}"`));
     const t4 = rotaOk && vigiaOk && prodOk && agOk && semSegredo && pkgOk && /data\/run\//.test(lerSrc(".gitignore")) && /PLATAFORMA_COMO_SERVICO/.test(lerSrc("app/manual/page.tsx"));
-    if (t4) console.log("✔ WO-57 Teste 4: a rota avalia com as funções da tela e declara o limite do GEX; o vigia só consome e notifica; produção recusa build com dev vivo; 4 tarefas com prefixo; nenhum script imprime segredo; Manual com a seção de serviço");
+    if (t4) console.log("✔ WO-57 Teste 4: a rota avalia com as funções da tela e declara o limite do GEX; o vigia só consome e notifica; produção em .next-prod (convive com o dev); 4 tarefas com prefixo; nenhum script imprime segredo; Manual com a seção de serviço");
     else { console.log(`✘ WO-57 Teste 4 falhou: rota=${rotaOk} vigia=${vigiaOk} prod=${prodOk} agendador=${agOk} segredo=${semSegredo} pkg=${pkgOk}`); failures++; }
 
     // ---- Teste 5: produção com senha — scripts entram por /api/entrar, a rota repassa o cookie, /api/saude fora da senha
