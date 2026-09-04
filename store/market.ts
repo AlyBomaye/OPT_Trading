@@ -80,15 +80,6 @@ interface MarketState {
     custos: import("@/lib/boletas").ConfigCustos | null;
   };
   sincronizarLivro: () => Promise<void>;
-  /**
-   * Boletar (WO-48): grava as pernas como boletas `origem: workbench` e ressincroniza.
-   * Devolve `{ ok:false, mensagem }` sem banco ou se o servidor recusar — nunca grava só local.
-   */
-  boletar: (
-    ls: Leg[],
-    plano?: Pick<Position, "tese" | "alvo" | "regraSaida" | "regimeNaEntrada">,
-    executadoEm?: string
-  ) => Promise<{ ok: boolean; mensagem: string | null }>;
 
   setTicker: (t: string) => void;
   setCapitalTotal: (v: number) => void;
@@ -177,57 +168,7 @@ export const useMarket = create<MarketState>()(
         }
       },
 
-      boletar: async (ls, plano, executadoEm) => {
-        const st = get();
-        if (!st.livro.configurado) {
-          return { ok: false, mensagem: "Boletar exige o banco (WO-48): rode npm run setup:db. Nada foi gravado — a plataforma não guarda boleta só no navegador." };
-        }
-        if (ls.length === 0) return { ok: false, mensagem: "Sem pernas para boletar." };
-        const quando = executadoEm ?? new Date().toISOString();
-        const chain = st.chainCache[ls[0].underlying] ?? st.chain;
-        const boletas = ls.map((l, i) => {
-          const o = l.kind === "OPTION" && chain?.ticker === l.underlying ? chain.options.find((x) => x.opTicker === l.opTicker) : undefined;
-          return {
-            tipo: "abertura",
-            origem: "workbench",
-            executadoEm: quando,
-            ticker: l.underlying,
-            kind: l.kind,
-            opTicker: l.kind === "OPTION" ? l.opTicker ?? null : null,
-            tipoOpcao: l.type ?? null,
-            modelo: l.model ?? null,
-            strike: l.strike ?? null,
-            vencimento: l.expiry ?? null,
-            lado: l.side,
-            quantidade: Math.abs(l.qty),
-            preco: l.price,
-            ivEntrada: l.iv ?? null,
-            gregasEntrada: o ? { delta: o.delta, vega: o.vega, theta: o.theta } : l.kind === "STOCK" ? { delta: 1, vega: 0, theta: 0 } : null,
-            // A primeira perna cria a estrutura com o plano; as demais entram nela pelo id
-            // devolvido — o servidor processa em ordem e o cliente encadeia.
-            ...(i === 0 ? { novaEstrutura: { tese: plano?.tese ?? null, alvo: plano?.alvo ?? null, regraSaida: plano?.regraSaida ?? null, regimeEntrada: plano?.regimeNaEntrada ?? null } } : {}),
-          };
-        });
-        try {
-          // Encadeia: primeira boleta cria a estrutura; as seguintes recebem estruturaId.
-          let estruturaId: number | null = null;
-          for (const b of boletas) {
-            const corpo: Record<string, unknown> = estruturaId != null ? { ...b, estruturaId } : b;
-            const res: Response = await fetch("/api/boletas", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(corpo), signal: AbortSignal.timeout(20_000) });
-            const j: any = await res.json().catch(() => null);
-            if (!res.ok || !j?.gravado) {
-              await get().sincronizarLivro();
-              return { ok: false, mensagem: j?.error ?? j?.aviso ?? `Boleta recusada (${res.status}).` };
-            }
-            const devolvido = j?.resultados?.[0]?.estruturaId;
-            if (typeof devolvido === "number") estruturaId = devolvido;
-          }
-          await get().sincronizarLivro();
-          return { ok: true, mensagem: null };
-        } catch (e: any) {
-          return { ok: false, mensagem: `Falha ao boletar: ${e?.message ?? "erro"}` };
-        }
-      },
+      // WO-58: o store NÃO boleta. A Estratégia cria um rascunho (/api/rascunhos) e a boleta nasce na Boletagem.
 
       initHydrate: () => {
         const { chain, ticker } = get();
@@ -425,16 +366,10 @@ export const useMarket = create<MarketState>()(
           ],
         })),
       closePosition: (id, closePrice, motivoSaida) => {
-        // WO-48: perna do banco ('db-<id>') fecha por boleta, e o livro ressincroniza.
-        const m = /^db-(\d+)$/.exec(id);
-        if (m) {
-          const st = get();
-          const p = st.positions.find((x) => x.id === id);
-          if (!p) return;
-          void fetch("/api/boletas", {
-            method: "POST", headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ tipo: "fechamento", origem: "manual", executadoEm: new Date().toISOString(), ticker: p.underlying, kind: p.kind, posicaoId: Number(m[1]), quantidade: Math.abs(p.qty), preco: closePrice, motivoSaida: motivoSaida ?? null }),
-          }).then(() => get().sincronizarLivro()).catch(() => get().sincronizarLivro());
+        // WO-58: perna do banco ('db-<id>') NÃO fecha por aqui — o Portfolio manda um rascunho para a
+        // Boletagem, e a boleta nasce lá com o preço da execução. Este caminho é só do cache do navegador.
+        if (/^db-\d+$/.test(id)) {
+          console.warn("[store] closePosition ignorado para perna do livro — use o rascunho da Boletagem");
           return;
         }
         set((st) => {
@@ -447,17 +382,9 @@ export const useMarket = create<MarketState>()(
         });
       },
       closeStructure: (fechamentos, motivoSaida) => {
-        // WO-48: se as pernas são do banco, N boletas de fechamento numa chamada só.
-        const st = get();
-        const doBanco = fechamentos.filter((f) => /^db-\d+$/.test(f.id));
-        if (doBanco.length > 0) {
-          const agora = new Date().toISOString();
-          const boletas = doBanco.map((f) => {
-            const p = st.positions.find((x) => x.id === f.id)!;
-            return { tipo: "fechamento", origem: "manual", executadoEm: agora, ticker: p.underlying, kind: p.kind, posicaoId: Number(f.id.slice(3)), quantidade: Math.abs(p.qty), preco: f.closePrice, motivoSaida: motivoSaida ?? null };
-          });
-          void fetch("/api/boletas", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ boletas }) })
-            .then(() => get().sincronizarLivro()).catch(() => get().sincronizarLivro());
+        // WO-58: pernas do banco NÃO fecham por aqui — rascunho na Boletagem. Só o cache do navegador.
+        if (fechamentos.some((f) => /^db-\d+$/.test(f.id))) {
+          console.warn("[store] closeStructure ignorado para pernas do livro — use o rascunho da Boletagem");
           return;
         }
         set((st) => {

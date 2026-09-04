@@ -20,6 +20,9 @@
  */
 
 import { useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
+import { criarRascunhoRemoto } from "@/lib/hooks/useRascunhos";
+import { rascunhoDeFechamento } from "@/lib/rascunhos";
 import { ChevronDown, ChevronRight, Layers, Target, XCircle } from "lucide-react";
 import clsx from "clsx";
 import { markInfo, useMarket } from "@/store/market";
@@ -78,6 +81,8 @@ function motivoSugerido(flags: PositionFlag[]): Motivo {
 
 export function PainelEstruturas({ flags, regimes, tabelaCustos = null }: Props) {
   const { positions, chainCache, selic, closeStructure } = useMarket();
+  const router = useRouter();
+  const [erro, setErro] = useState<string | null>(null);
   const [aberta, setAberta] = useState<string | null>(null);
   const [fechando, setFechando] = useState<string | null>(null);
   const [rolando, setRolando] = useState<string | null>(null);
@@ -95,9 +100,10 @@ export function PainelEstruturas({ flags, regimes, tabelaCustos = null }: Props)
         <Layers size={14} className="text-term-cyan" />
         <span className="font-bold">Estruturas abertas ({estruturas.length})</span>
         <span className="text-xxs text-term-dim font-normal ml-2">
-          a régua dos {Math.round(REALIZAR_PCT_LUCRO_MAXIMO * 100)}% é sobre o lucro máximo da estrutura
+          a régua dos {Math.round(REALIZAR_PCT_LUCRO_MAXIMO * 100)}% é sobre o lucro máximo da estrutura · Fechar e Rolar mandam um rascunho para a Boletagem (4)
         </span>
       </div>
+      {erro && <div className="px-3 pb-1 text-xxs text-term-down">{erro}</div>}
       <div className="overflow-x-auto">
         <table className="w-full text-xs tabular-nums">
           <thead className="border-b border-term-line">
@@ -125,9 +131,33 @@ export function PainelEstruturas({ flags, regimes, tabelaCustos = null }: Props)
                 rolando={rolando === e.chave}
                 onRolar={() => { setRolando(rolando === e.chave ? null : e.chave); setFechando(null); }}
                 selic={selic}
-                onConfirmarFechamento={(fs, motivo) => {
-                  closeStructure(fs, motivo);
+                onConfirmarFechamento={async (fs, motivo) => {
+                  // WO-58: pernas do livro viram um RASCUNHO de fechamento na Boletagem (preço da
+                  // marcação como montagem; o da execução é digitado lá). Só o cache do navegador
+                  // fecha local.
+                  const doBanco = e.pernas.every((p) => /^db-\d+$/.test(p.id));
+                  if (!doBanco) {
+                    closeStructure(fs.filter((f): f is { id: string; closePrice: number } => f.closePrice != null), motivo);
+                    setFechando(null);
+                    return;
+                  }
+                  const precos = new Map(fs.map((f) => [f.id, f.closePrice]));
+                  const marcas = Object.fromEntries(
+                    e.pernas.map((p) => {
+                      const m = markInfo(p, chainCache);
+                      const digitado = precos.get(p.id) ?? null;
+                      const igualMarca = digitado != null && m.price != null && Math.abs(digitado - m.price) < 1e-9;
+                      return [p.id, { price: digitado, fonte: igualMarca ? m.fonte ?? null : null }];
+                    })
+                  );
+                  setErro(null);
+                  const r = await criarRascunhoRemoto(rascunhoDeFechamento(e.pernas, marcas, motivo));
+                  if (!r.ok || !r.rascunho) {
+                    setErro(r.mensagem);
+                    return;
+                  }
                   setFechando(null);
+                  router.push(`/boletagem#rascunho-${r.rascunho.id}`);
                 }}
               />
             ))}
@@ -165,7 +195,7 @@ function LinhaEstrutura({
   onToggle: () => void;
   fechando: boolean;
   onFechar: () => void;
-  onConfirmarFechamento: (fs: { id: string; closePrice: number }[], motivo: Motivo) => void;
+  onConfirmarFechamento: (fs: { id: string; closePrice: number | null }[], motivo: Motivo) => void | Promise<void>;
 }) {
   const lider = e.pernas[0];
   const nome = nomeDaEstrutura(e.pernas);
@@ -222,10 +252,10 @@ function LinhaEstrutura({
           ) : <span className="text-term-dim">—</span>}
         </td>
         <td className="td text-right whitespace-nowrap">
-          <button className="text-term-cyan hover:opacity-70 mr-2" title="Rolar: fechar as pernas de opção e abrir no próximo vencimento, numa boleta composta" onClick={onRolar}>
+          <button className="text-term-cyan hover:opacity-70 mr-2" title="Rolar: propor o próximo vencimento e mandar fechar + abrir para a Boletagem, como um rascunho só" onClick={onRolar}>
             <RefreshCw size={13} />
           </button>
-          <button className="text-term-gold hover:opacity-70" title="Fechar a estrutura inteira" onClick={onFechar}>
+          <button className="text-term-gold hover:opacity-70" title="Fechar a estrutura inteira — vira um rascunho na Boletagem" onClick={onFechar}>
             <XCircle size={13} />
           </button>
         </td>
@@ -331,7 +361,7 @@ function FormularioFechamento({
   chainCache: Record<string, import("@/lib/types").ChainData>;
   motivoInicial: Motivo;
   onCancelar: () => void;
-  onConfirmar: (fs: { id: string; closePrice: number }[], motivo: Motivo) => void;
+  onConfirmar: (fs: { id: string; closePrice: number | null }[], motivo: Motivo) => void | Promise<void>;
 }) {
   const [motivo, setMotivo] = useState<Motivo>(motivoInicial);
   // Pré-preenche com a marcação atual; sem marcação fica VAZIO, nunca zero (WO-30).
@@ -349,11 +379,15 @@ function FormularioFechamento({
     const n = Number(v.replace(",", "."));
     return Number.isFinite(n) && n >= 0 ? n : null;
   };
-  const faltando = pernas.filter((p) => parse(precos[p.id] ?? "") == null);
+  // WO-58: para pernas do livro o preço aqui é só a referência da montagem (a execução é digitada
+  // na Boletagem) — pode ficar vazio. Só o cache do navegador exige preço para fechar local.
+  const doBanco = pernas.every((p) => /^db-\d+$/.test(p.id));
+  const faltando = doBanco ? [] : pernas.filter((p) => parse(precos[p.id] ?? "") == null);
 
   return (
     <div className="space-y-2 text-xxs">
       <div className="font-semibold">Fechar a estrutura — {pernas.length} perna(s)</div>
+      {doBanco && <div className="text-term-dim">Preços abaixo = marcação de referência. O preço da execução (Profit) você digita na Boletagem, ao confirmar o rascunho.</div>}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-1">
         {pernas.map((p) => (
           <label key={p.id} className="flex items-center justify-between gap-2 font-mono">
@@ -397,9 +431,9 @@ function FormularioFechamento({
           className="btn btn-primary disabled:opacity-50"
           disabled={faltando.length > 0}
           title={faltando.length ? "Informe o preço das pernas sem marcação" : undefined}
-          onClick={() => onConfirmar(pernas.map((p) => ({ id: p.id, closePrice: parse(precos[p.id] ?? "")! })), motivo)}
+          onClick={() => void onConfirmar(pernas.map((p) => ({ id: p.id, closePrice: parse(precos[p.id] ?? "") })), motivo)}
         >
-          Confirmar fechamento
+          {doBanco ? "Mandar para a Boletagem" : "Confirmar fechamento"}
         </button>
         <button className="btn text-term-dim" onClick={onCancelar}>Cancelar</button>
         {faltando.length > 0 && <span className="text-term-gold">{faltando.length} perna(s) sem preço</span>}

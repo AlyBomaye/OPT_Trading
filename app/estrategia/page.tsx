@@ -1,7 +1,7 @@
 "use client";
 
 import { Suspense, useEffect, useMemo, useState } from "react";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Trash2, Plus, Save, Copy, Sparkles, X, Check, Table2, History, Wrench, ChevronDown, ChevronRight } from "lucide-react";
 import clsx from "clsx";
 import { useMarket } from "@/store/market";
@@ -27,6 +27,9 @@ import { PainelContexto } from "@/components/PainelContexto";
 import { PainelPnl } from "@/components/PainelPnl";
 import { SemaforoCriterios } from "@/components/SemaforoCriterios";
 import { FormularioAbertura, type DadosAbertura } from "@/components/FormularioAbertura";
+import { criarRascunhoRemoto } from "@/lib/hooks/useRascunhos";
+import { marcaDaSerie } from "@/lib/marcacao";
+import type { PernaRascunho } from "@/lib/rascunhos";
 import { analisarPnl } from "@/lib/pnl-operacao";
 import { custosDaOperacao } from "@/lib/custos-operacao";
 import { useLivro } from "@/lib/hooks/useLivro";
@@ -94,7 +97,6 @@ function Workbench() {
     removeLeg,
     setLegs,
     clearLegs,
-    boletar,
     selectedExpiry,
     positions,
     closed,
@@ -253,21 +255,55 @@ function Workbench() {
     [chain, dec, legs, selic, atmIvStruct, capitalTotal, custos]
   );
 
-  // WO-48: boletar grava no banco como boletas `origem: workbench`; sem banco, recusa com a
-  // razão — a plataforma não guarda boleta só no navegador.
+  // WO-58: Boletar NÃO grava boleta. Cria um rascunho na Boletagem com o preço da MONTAGEM (e a
+  // fonte: mid, último ou manual) e sem preço de execução — esse só existe depois do Profit. O plano
+  // (as três perguntas) viaja no rascunho. A boleta nasce na Boletagem, com o preço que saiu.
+  const router = useRouter();
   const [erroBoleta, setErroBoleta] = useState<string | null>(null);
   const [boletando, setBoletando] = useState(false);
   const confirmarAbertura = async (d: DadosAbertura) => {
+    if (!chain) return;
     setBoletando(true);
     setErroBoleta(null);
-    const r = await boletar(legs, d);
+    const pernas: PernaRascunho[] = legs.map((l) => {
+      const o = l.kind === "OPTION" ? chain.options.find((x) => x.opTicker === l.opTicker) : undefined;
+      const marca = o ? marcaDaSerie(o) : { preco: null, fonte: null };
+      return {
+        opTicker: l.kind === "OPTION" ? l.opTicker ?? null : null,
+        kind: l.kind,
+        tipoOpcao: l.type ?? null,
+        modelo: l.model ?? null,
+        strike: l.strike ?? null,
+        vencimento: l.expiry ?? null,
+        lado: l.side === 1 ? "compra" : "venda",
+        quantidade: Math.abs(l.qty),
+        precoMontagem: l.price,
+        fontePrecoMontagem: marca.preco != null && Math.abs(marca.preco - l.price) < 1e-9 ? marca.fonte : l.kind === "STOCK" ? "marcacao" : "manual",
+        precoExecucao: null,
+        executadoEm: null,
+        papel: "abre",
+        ivEntrada: l.iv ?? o?.iv ?? null,
+        gregasEntrada: o ? { delta: o.delta, vega: o.vega, theta: o.theta } : l.kind === "STOCK" ? { delta: 1, vega: 0, theta: 0 } : null,
+      };
+    });
+    const r = await criarRascunhoRemoto({
+      origem: "estrategia",
+      tipo: "abertura",
+      ticker: chain.ticker,
+      nomeDetectado: detected?.name ?? null,
+      plano: { tese: d.tese, alvo: d.alvo ?? null, regraSaida: d.regraSaida, regimeEntrada: d.regimeNaEntrada ?? null },
+      pernas,
+      spotMontagem: chain.spot,
+      ivMontagem: atmIvStruct,
+    });
     setBoletando(false);
-    if (!r.ok) {
+    if (!r.ok || !r.rascunho) {
       setErroBoleta(r.mensagem);
       return;
     }
     setAbrindo(false);
     clearLegs();
+    router.push(`/boletagem#rascunho-${r.rascunho.id}`);
   };
 
   const currentPresetDef = suggestPreset ? PRESETS.find((p) => p.key === suggestPreset) : null;
@@ -358,7 +394,7 @@ function Workbench() {
               <button
                 className="btn-primary flex items-center gap-1"
                 onClick={() => setAbrindo(true)}
-                title="Boletar: responder as 3 perguntas do método e registrar a operação na carteira (congela gregas de entrada)"
+                title="Boletar: responder as 3 perguntas do método e mandar a estrutura para a Boletagem como rascunho — o preço da execução (Profit) é digitado lá"
               >
                 <Save size={12} /> Boletar
               </button>
@@ -642,7 +678,7 @@ function Workbench() {
               Não boletado: {erroBoleta}
             </div>
           )}
-          {boletando && <div className="text-xxs text-term-dim px-1">Boletando…</div>}
+          {boletando && <div className="text-xxs text-term-dim px-1">Criando o rascunho na Boletagem…</div>}
           {abrindo && chain && (
             <FormularioAbertura
               ticker={chain.ticker}

@@ -1,18 +1,22 @@
 "use client";
 
 /**
- * WO-53 — a rolagem de uma estrutura, numa boleta composta.
+ * WO-53 — a rolagem de uma estrutura, como análise; WO-58 — a execução vai para a Boletagem.
  *
- * Mostra a proposta (`propostaRolagem`), deixa editar os preços de fechar e abrir, pede a prévia
- * ao servidor (`?simular=1`, nada gravado) e só então boleta — N fechamentos e N aberturas na mesma
- * transação. Sem banco, a rolagem não existe: a plataforma não guarda boleta só no navegador.
+ * Mostra a proposta (`propostaRolagem`) com os preços de referência (marcação para fechar, último
+ * ou mid para abrir), deixa ajustá-los, e "Mandar para a Boletagem" cria UM rascunho de rolagem com
+ * as pernas que fecham e as que abrem. Nada é gravado aqui: o preço da execução é digitado lá, e
+ * as N boletas nascem na mesma transação. Sem livro no banco, a rolagem não existe.
  */
 
 import { useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import { RefreshCw } from "lucide-react";
 import clsx from "clsx";
 import { markInfo, useMarket } from "@/store/market";
 import { propostaRolagem } from "@/lib/rolagem";
+import { criarRascunhoRemoto } from "@/lib/hooks/useRascunhos";
+import { rascunhoDeRolagem } from "@/lib/rascunhos";
 import { fmtBRL, fmtDateBR, fmtNum } from "@/lib/format";
 import type { Position } from "@/lib/types";
 import type { TabelaCustos } from "@/lib/boleta-calculos";
@@ -25,14 +29,15 @@ interface Props {
 }
 
 export function PainelRolagem({ pernas, tabelaCustos, onCancelar, onRolado }: Props) {
-  const { chainCache, livro, sincronizarLivro } = useMarket();
+  const { chainCache, livro } = useMarket();
+  const router = useRouter();
   const chain = chainCache[pernas[0]?.underlying] ?? null;
   const marcacoes = useMemo(() => Object.fromEntries(pernas.map((p) => [p.id, markInfo(p, chainCache).price])), [pernas, chainCache]);
   const proposta = useMemo(() => propostaRolagem({ pernas, chain, tabela: tabelaCustos, marcacoes }), [pernas, chain, tabelaCustos, marcacoes]);
 
   const [precosFechar, setPrecosFechar] = useState<Record<string, string>>(() => Object.fromEntries(proposta.fechar.map((f) => [f.posicao.id, f.preco != null ? f.preco.toFixed(2) : ""])));
   const [precosAbrir, setPrecosAbrir] = useState<Record<string, string>>(() => Object.fromEntries(proposta.abrir.map((a) => [a.opcao.opTicker, a.preco.toFixed(2)])));
-  const [estado, setEstado] = useState<"parado" | "simulando" | "boletando">("parado");
+  const [estado, setEstado] = useState<"parado" | "mandando">("parado");
   const [msg, setMsg] = useState<string | null>(null);
 
   const parse = (v: string) => {
@@ -42,48 +47,24 @@ export function PainelRolagem({ pernas, tabelaCustos, onCancelar, onRolado }: Pr
   const doBanco = pernas.every((p) => /^db-\d+$/.test(p.id));
   const faltando = proposta.fechar.filter((f) => parse(precosFechar[f.posicao.id] ?? "") == null).length + proposta.abrir.filter((a) => parse(precosAbrir[a.opcao.opTicker] ?? "") == null).length;
 
-  const montarCorpo = () => {
-    const agora = new Date().toISOString();
-    const lider = pernas[0];
-    const fechamentos = proposta.fechar.map((f) => ({
-      tipo: "fechamento", origem: "manual", executadoEm: agora, ticker: f.posicao.underlying, kind: "OPTION",
-      posicaoId: Number(f.posicao.id.slice(3)), quantidade: Math.abs(f.posicao.qty), preco: parse(precosFechar[f.posicao.id] ?? "")!,
-      motivoSaida: "vencimento", nota: `rolagem para ${proposta.vencimentoNovo}`,
-    }));
-    const aberturas = proposta.abrir.map((a, i) => ({
-      tipo: "abertura", origem: "manual", executadoEm: agora, ticker: a.opcao.underlying, kind: "OPTION",
-      opTicker: a.opcao.opTicker, tipoOpcao: a.opcao.type, modelo: a.opcao.model, strike: a.opcao.strike, vencimento: a.opcao.expiry,
-      lado: a.side, quantidade: a.qty, preco: parse(precosAbrir[a.opcao.opTicker] ?? "")!, ivEntrada: a.opcao.iv ?? null,
-      gregasEntrada: { delta: a.opcao.delta, vega: a.opcao.vega, theta: a.opcao.theta },
-      nota: `rolagem da estrutura ${lider.estruturaId ?? ""}`.trim(),
-      ...(i === 0 ? { novaEstrutura: { nomeDetectado: null, tese: lider.tese ? `Rolagem — ${lider.tese}` : "Rolagem", alvo: lider.alvo ?? null, regraSaida: lider.regraSaida ?? null, regimeEntrada: lider.regimeNaEntrada ?? null } } : {}),
-    }));
-    return { fechamentos, aberturas };
-  };
-
-  const enviar = async (simular: boolean) => {
-    setEstado(simular ? "simulando" : "boletando");
+  // WO-58: os preços editados aqui viram o preço de MONTAGEM do rascunho (referência). A execução
+  // é digitada na Boletagem.
+  const mandar = async () => {
+    setEstado("mandando");
     setMsg(null);
-    try {
-      const r = await fetch(`/api/boletas/rolar${simular ? "?simular=1" : ""}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(montarCorpo()), signal: AbortSignal.timeout(30_000) });
-      const j = await r.json().catch(() => null);
-      if (!r.ok || (!simular && !j?.gravado)) {
-        setMsg(j?.error ?? `Recusado (${r.status}). Nada foi gravado.`);
-        return;
-      }
-      if (simular) {
-        const custos = (j.resultados as any[]).reduce((a, x) => a + (x?.custos ? x.custos.corretagem + x.custos.emolumentos + x.custos.liquidacao + x.custos.registro + x.custos.taxaOperacional : 0), 0);
-        setMsg(`Prévia (nada gravado): ${j.resultados.length} boleta(s) na mesma transação, custos reais ${fmtBRL(custos)}.`);
-      } else {
-        setMsg(`Rolagem gravada: ${j.resultados.length} boleta(s).`);
-        await sincronizarLivro();
-        onRolado();
-      }
-    } catch (e: any) {
-      setMsg(`Falha: ${e?.message ?? "erro"}`);
-    } finally {
-      setEstado("parado");
+    const editada = {
+      ...proposta,
+      fechar: proposta.fechar.map((f) => ({ ...f, preco: parse(precosFechar[f.posicao.id] ?? "") })),
+      abrir: proposta.abrir.map((a) => ({ ...a, preco: parse(precosAbrir[a.opcao.opTicker] ?? "") ?? a.preco })),
+    };
+    const r = await criarRascunhoRemoto(rascunhoDeRolagem(editada, pernas[0]));
+    setEstado("parado");
+    if (!r.ok || !r.rascunho) {
+      setMsg(r.mensagem);
+      return;
     }
+    onRolado();
+    router.push(`/boletagem#rascunho-${r.rascunho.id}`);
   };
 
   return (
@@ -110,7 +91,7 @@ export function PainelRolagem({ pernas, tabelaCustos, onCancelar, onRolado }: Pr
           ))}
         </div>
         <div>
-          <div className="text-term-dim uppercase tracking-wider mb-1">Abrir (último negócio)</div>
+          <div className="text-term-dim uppercase tracking-wider mb-1">Abrir (referência: último/mid)</div>
           {proposta.abrir.map((a) => (
             <label key={a.opcao.opTicker} className="flex items-center justify-between gap-2 font-mono">
               <span><span className={a.side === 1 ? "text-term-up" : "text-term-down"}>{a.side === 1 ? "C" : "V"}</span> {a.opcao.opTicker} {a.opcao.type} {fmtNum(a.opcao.strike)} × {a.qty}</span>
@@ -128,15 +109,13 @@ export function PainelRolagem({ pernas, tabelaCustos, onCancelar, onRolado }: Pr
         <span>líquido <b className={proposta.liquido >= 0 ? "text-term-up" : "text-term-down"}>{proposta.liquido >= 0 ? "+" : ""}{fmtBRL(proposta.liquido)}</b></span>
       </div>
       <div className="flex items-center gap-2 pt-1">
-        <button className="btn" disabled={!doBanco || !livro.configurado || faltando > 0 || proposta.abrir.length === 0 || estado !== "parado"} onClick={() => void enviar(true)}>
-          {estado === "simulando" ? "Simulando…" : "Prévia (nada gravado)"}
-        </button>
-        <button className="btn btn-primary disabled:opacity-50" disabled={!doBanco || !livro.configurado || faltando > 0 || proposta.abrir.length === 0 || estado !== "parado"} onClick={() => void enviar(false)}>
-          {estado === "boletando" ? "Boletando…" : "Boletar rolagem"}
+        <button className="btn btn-primary disabled:opacity-50" disabled={!doBanco || !livro.configurado || proposta.abrir.length === 0 || estado !== "parado"} onClick={() => void mandar()} title="Cria um rascunho de rolagem (fechar + abrir) na Boletagem; o preço da execução é digitado lá">
+          {estado === "mandando" ? "Mandando…" : "Mandar para a Boletagem"}
         </button>
         <button className="btn text-term-dim" onClick={onCancelar}>Cancelar</button>
         {!doBanco && <span className="text-term-gold">rolagem só com o livro no banco</span>}
-        {msg && <span className="text-term-cyan">{msg}</span>}
+        {faltando > 0 && <span className="text-term-dim">{faltando} preço(s) de referência em branco — a Boletagem pede o da execução</span>}
+        {msg && <span className="text-term-down">{msg}</span>}
       </div>
     </div>
   );

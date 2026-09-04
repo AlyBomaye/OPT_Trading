@@ -2589,11 +2589,12 @@ async function testesWo48() {
   const srcRota = ler("app/api/boletas/route.ts");
   const srcStore = semComentarios(ler("store/market.ts"));
   const rotaRecusa = /if \(!bancoConfigurado\(\)\) return NextResponse\.json\(SEM_BANCO, \{ status: 409 \}\)/.test(srcRota);
-  const storeRecusa = /if \(!st\.livro\.configurado\) \{\s*return \{ ok: false/.test(srcStore);
+  // WO-58: o store nao boleta; a rota de rascunhos recusa sem banco (409) e o store nao tem POST /api/boletas.
+  const storeRecusa = /if \(!bancoConfigurado\(\)\) return NextResponse\.json\(SEM_BANCO, \{ status: 409 \}\)/.test(ler("app/api/rascunhos/route.ts")) && !/fetch\("\/api\/boletas", \{\s*method: "POST"/.test(srcStore) && !/fetch\("\/api\/boletas", \{ method: "POST"/.test(srcStore);
   const srcForm = ler("components/FormularioBoleta.tsx");
   const formDesabilita = /semBanco \?/.test(srcForm) && /não guarda boleta só no navegador/.test(srcForm);
   if (rotaRecusa && storeRecusa && formDesabilita) {
-    console.log("✔ WO-48 Teste 10: sem banco a rota responde 409, boletar() recusa e a boleta fica desabilitada — nunca grava so local");
+    console.log("✔ WO-48 Teste 10: sem banco as rotas respondem 409, o store nao grava boleta (WO-58) e a boleta fica desabilitada — nunca grava so local");
   } else {
     console.log(`✘ WO-48 Teste 10 falhou: rota=${rotaRecusa}, store=${storeRecusa}, form=${formDesabilita}`);
     failures++;
@@ -2611,10 +2612,11 @@ async function testesWo48() {
 
   // ---- Teste 12: o Workbench gera boletas (origem workbench), nao grava posicao direto
   const srcEstr = semComentarios(ler("app/estrategia/page.tsx"));
-  const usaBoletar = /await boletar\(legs, d\)/.test(srcEstr) && !/openPositions\(legs/.test(srcEstr);
-  const origemWorkbench = /origem: "workbench"/.test(srcStore);
+  // WO-58: Boletar cria um rascunho (origem estrategia); a boleta nasce na Boletagem com origem workbench.
+  const usaBoletar = /await criarRascunhoRemoto\(\{/.test(srcEstr) && /origem: "estrategia"/.test(srcEstr) && !/openPositions\(legs/.test(srcEstr) && !/await boletar\(/.test(srcEstr);
+  const origemWorkbench = /r\.origem === "manual" \? "manual" : "workbench"/.test(ler("lib/rascunhos.ts"));
   if (usaBoletar && origemWorkbench) {
-    console.log("✔ WO-48 Teste 12: o botao Boletar do Workbench gera boletas origem workbench");
+    console.log("✔ WO-48 Teste 12: o botao Boletar do Workbench cria um rascunho, e o rascunho vira boletas origem workbench (WO-58)");
   } else {
     console.log(`✘ WO-48 Teste 12 falhou: boletar=${usaBoletar}, origem=${origemWorkbench}`);
     failures++;
@@ -3113,7 +3115,7 @@ async function testesWo46() {
   const srcForm = ler("components/FormularioAbertura.tsx");
   const abreForm = /onClick=\{\(\) => setAbrindo\(true\)\}/.test(srcEstr);
   const gravaDireto = /openPositions\(legs\)\s*\}/.test(srcEstr);
-  const grava = /(openPositions|boletar)\(legs, d\)/.test(srcEstr); // WO-48: o Workbench boleta
+  const grava = /criarRascunhoRemoto\(/.test(srcEstr); // WO-48: o Workbench boleta; WO-58: cria o rascunho
   const teseObrigatoria = /if \(teseVazia\) return;/.test(srcForm);
   if (abreForm && !gravaDireto && grava && teseObrigatoria) {
     console.log("✔ WO-46 Teste 13: abrir posicao passa pelo formulario, e a tese e obrigatoria");
@@ -5419,10 +5421,10 @@ async function testesWo28Restaurados() {
     const sql = lerSrc("db/004_limites.sql");
     const t4 = /async function prepararExecucao\(e: EntradaBoleta\)/.test(srcBol) && /export async function registrarBoletasJuntas/.test(srcBol)
       && /encadearEstrutura/.test(srcBol) && /throw new Simulacao\(r\[r\.length - 1\]\)/.test(srcBol)
-      && /registrarBoletasJuntas\(lista, \{ simular \}\)/.test(srcRol) && /encadearEstrutura: true/.test(srcRol)
+      && /status: 410/.test(srcRol) && !/registrarBoletasJuntas/.test(srcRol) && /tipo === "rolagem" \? "vencimento"/.test(lerSrc("lib/rascunhos.ts"))
       && /CREATE TABLE IF NOT EXISTS config_limites/.test(sql) && /teto_operacao_pct/.test(sql)
       && /export async function GET/.test(lerSrc("app/api/limites/route.ts")) && /export async function POST/.test(lerSrc("app/api/limites/route.ts"));
-    if (t4) console.log("✔ WO-53 Teste 4: registrarBoletasJuntas (uma transação, estrutura encadeada, simulação), POST /api/boletas/rolar e config_limites com vigência");
+    if (t4) console.log("✔ WO-53 Teste 4: registrarBoletasJuntas (uma transação, estrutura encadeada, simulação); a rota de rolagem aposentada em 410 (WO-58: rascunho); config_limites com vigência");
     else { console.log("✘ WO-53 Teste 4 falhou: transação composta, rota de rolagem ou schema de limites"); failures++; }
 
     // ---- Teste 5: a Carteira na ordem do método, com rolagem, zeragem por estrutura e limites
@@ -5848,6 +5850,19 @@ Líquido para 04/09/2026 5.134,69 D`;
     const rotasOk = /export async function (GET|PATCH|POST)/.test(ler2("app/api/rascunhos/[id]/route.ts")) && /acao === "confirmar"/.test(ler2("app/api/rascunhos/[id]/route.ts")) && /executarBoletasJuntas\(c, paraEntradasBoleta\(r\)\)/.test(ler2("lib/rascunhos.ts")) && /FOR UPDATE/.test(ler2("lib/rascunhos.ts"));
     if (semAnalise && navOk && fichaOk && rotasOk) console.log("✔ WO-58 Teste 2: a Boletagem só registra (sem análise); Nav com nove abas — Portfolio 3, Boletagem 4 — e B abre a Boletagem; a ficha valida com a lib e a confirmação grava boletas e rascunho no mesmo COMMIT");
     else { console.log(`✘ WO-58 Teste 2 falhou: semAnalise=${semAnalise} nav=${navOk} (${ordem}) ficha=${fichaOk} rotas=${rotasOk}`); failures++; }
+
+    // ---- Teste 3: nenhuma tela grava boleta fora da Boletagem — Estratégia, Portfolio, estruturas e rolagem só criam rascunho
+    const gravaBoleta = (src: string) => /registrarBoleta\(|registrarBoletasJuntas\(|fetch\(["'`]\/api\/boletas["'`]?[^)]*method:\s*"POST"|\/api\/boletas\/rolar/.test(src);
+    const telas = ["app/estrategia/page.tsx", "app/portfolio/page.tsx", "components/PainelEstruturas.tsx", "components/PainelRolagem.tsx", "store/market.ts"];
+    const semGravacao = telas.every((f) => !gravaBoleta(ler2(f)));
+    const criam = /criarRascunhoRemoto\(/.test(ler2("app/estrategia/page.tsx")) && /rascunhoDeFechamento\(/.test(ler2("components/PainelEstruturas.tsx")) && /rascunhoDeRolagem\(/.test(ler2("components/PainelRolagem.tsx")) && /rascunhoDeFechamento\(\[p\]/.test(ler2("app/portfolio/page.tsx"));
+    const navegam = [ "app/estrategia/page.tsx", "components/PainelEstruturas.tsx", "components/PainelRolagem.tsx", "app/portfolio/page.tsx" ].every((f) => /router\.push\(`\/boletagem#rascunho-\$\{r\.rascunho\.id\}`\)/.test(ler2(f)));
+    const storeSemBoletar = !/boletar: \(/.test(ler2("store/market.ts")) && /closePosition ignorado para perna do livro/.test(ler2("store/market.ts"));
+    const rolar410 = /status: 410/.test(ler2("app/api/boletas/rolar/route.ts"));
+    // As portas legítimas continuam: a boleta manual, os vencimentos e a migração vivem na Boletagem.
+    const portasLegitimas = gravaBoleta(ler2("components/FormularioBoleta.tsx")) && gravaBoleta(ler2("components/PainelVencimentos.tsx"));
+    if (semGravacao && criam && navegam && storeSemBoletar && rolar410 && portasLegitimas) console.log("✔ WO-58 Teste 3: Estratégia, Portfolio, estruturas e rolagem não gravam boleta — criam rascunho e vão para a Boletagem; o store não boleta; a rota de rolagem responde 410; as portas legítimas (boleta manual, vencimentos) vivem na Boletagem");
+    else { console.log(`✘ WO-58 Teste 3 falhou: semGravacao=${semGravacao} criam=${criam} navegam=${navegam} store=${storeSemBoletar} rolar410=${rolar410} portas=${portasLegitimas}`); failures++; }
   }
 
 }

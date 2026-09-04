@@ -1,6 +1,9 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
+import { criarRascunhoRemoto } from "@/lib/hooks/useRascunhos";
+import { rascunhoDeFechamento } from "@/lib/rascunhos";
 import { FileJson, FileSpreadsheet, RefreshCw, Trash2, XCircle } from "lucide-react";
 import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { markInfo, useMarket } from "@/store/market";
@@ -63,6 +66,22 @@ export default function PortfolioPage() {
   useEffect(() => {
     void sincronizarLivro();
   }, [sincronizarLivro]);
+  const router = useRouter();
+  // WO-58: encerrar UMA perna do livro também é transação — vira rascunho na Boletagem.
+  const [erroRascunho, setErroRascunho] = useState<string | null>(null);
+  const encerrarPerna = async (p: import("@/lib/types").Position, marca: { price: number | null; fonte?: "mid" | "ultimo" | null }) => {
+    if (!/^db-\d+$/.test(p.id)) {
+      if (marca.price != null) closePosition(p.id, marca.price);
+      return;
+    }
+    setErroRascunho(null);
+    const r = await criarRascunhoRemoto(rascunhoDeFechamento([p], { [p.id]: { price: marca.price, fonte: marca.fonte ?? null } }, "manual"));
+    if (!r.ok || !r.rascunho) {
+      setErroRascunho(r.mensagem);
+      return;
+    }
+    router.push(`/boletagem#rascunho-${r.rascunho.id}`);
+  };
 
   // A boleta: recolhível (chave por seção) e aberta pelo atalho B ou por /boletagem#boleta.
   // WO-53: a boleta nasce recolhida — B (ou Aporte/Retirada, ou #boleta) abre.
@@ -445,6 +464,7 @@ export default function PortfolioPage() {
       ))}
 
       {/* Posições abertas (por perna) */}
+      {erroRascunho && <div className="panel px-3 py-2 text-xs text-term-down border border-term-down/40">{erroRascunho}</div>}
       <div className="panel">
         <div className="flex items-center px-3 pt-2">
           <span className="panel-title !p-0">Pernas abertas</span>
@@ -575,14 +595,16 @@ export default function PortfolioPage() {
                   <td className="td text-right whitespace-nowrap">
                     <button
                       className="text-term-gold hover:opacity-70 mr-2"
-                      title="Encerrar ao preço atual"
-                      onClick={() => cp != null && closePosition(p.id, cp)}
+                      title={/^db-\d+$/.test(p.id) ? "Encerrar esta perna — vira um rascunho na Boletagem (marcação como referência)" : "Encerrar ao preço atual (cache do navegador)"}
+                      onClick={() => void encerrarPerna(p, mark)}
                     >
                       <XCircle size={13} />
                     </button>
-                    <button className="text-term-down hover:opacity-70" title="Excluir" onClick={() => removePosition(p.id)}>
-                      <Trash2 size={13} />
-                    </button>
+                    {!/^db-\d+$/.test(p.id) && (
+                      <button className="text-term-down hover:opacity-70" title="Excluir (só do cache do navegador)" onClick={() => removePosition(p.id)}>
+                        <Trash2 size={13} />
+                      </button>
+                    )}
                   </td>
                 </tr>
               ))}
