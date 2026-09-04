@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useMarket } from "@/store/market";
-import type { EntradaRascunho, PernaRascunho, PlanoRascunho, Rascunho } from "@/lib/rascunhos";
+import type { EntradaRascunho, PernaRascunho, PlanoRascunho, Rascunho } from "@/lib/rascunho-calculos";
 import type { MotivoSaida } from "@/lib/boletas";
 
 /**

@@ -2614,7 +2614,7 @@ async function testesWo48() {
   const srcEstr = semComentarios(ler("app/estrategia/page.tsx"));
   // WO-58: Boletar cria um rascunho (origem estrategia); a boleta nasce na Boletagem com origem workbench.
   const usaBoletar = /await criarRascunhoRemoto\(\{/.test(srcEstr) && /origem: "estrategia"/.test(srcEstr) && !/openPositions\(legs/.test(srcEstr) && !/await boletar\(/.test(srcEstr);
-  const origemWorkbench = /r\.origem === "manual" \? "manual" : "workbench"/.test(ler("lib/rascunhos.ts"));
+  const origemWorkbench = /r\.origem === "manual" \? "manual" : "workbench"/.test(ler("lib/rascunho-calculos.ts"));
   if (usaBoletar && origemWorkbench) {
     console.log("✔ WO-48 Teste 12: o botao Boletar do Workbench cria um rascunho, e o rascunho vira boletas origem workbench (WO-58)");
   } else {
@@ -5422,7 +5422,7 @@ async function testesWo28Restaurados() {
     const sql = lerSrc("db/004_limites.sql");
     const t4 = /async function prepararExecucao\(e: EntradaBoleta\)/.test(srcBol) && /export async function registrarBoletasJuntas/.test(srcBol)
       && /encadearEstrutura/.test(srcBol) && /throw new Simulacao\(r\[r\.length - 1\]\)/.test(srcBol)
-      && /status: 410/.test(srcRol) && !/registrarBoletasJuntas/.test(srcRol) && /tipo === "rolagem" \? "vencimento"/.test(lerSrc("lib/rascunhos.ts"))
+      && /status: 410/.test(srcRol) && !/registrarBoletasJuntas/.test(srcRol) && /tipo === "rolagem" \? "vencimento"/.test(lerSrc("lib/rascunho-calculos.ts"))
       && /CREATE TABLE IF NOT EXISTS config_limites/.test(sql) && /teto_operacao_pct/.test(sql)
       && /export async function GET/.test(lerSrc("app/api/limites/route.ts")) && /export async function POST/.test(lerSrc("app/api/limites/route.ts"));
     if (t4) console.log("✔ WO-53 Teste 4: registrarBoletasJuntas (uma transação, estrutura encadeada, simulação); a rota de rolagem aposentada em 410 (WO-58: rascunho); config_limites com vigência");

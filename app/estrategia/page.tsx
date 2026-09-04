@@ -29,7 +29,7 @@ import { SemaforoCriterios } from "@/components/SemaforoCriterios";
 import { FormularioAbertura, type DadosAbertura } from "@/components/FormularioAbertura";
 import { criarRascunhoRemoto } from "@/lib/hooks/useRascunhos";
 import { marcaDaSerie } from "@/lib/marcacao";
-import type { PernaRascunho } from "@/lib/rascunhos";
+import type { PernaRascunho } from "@/lib/rascunho-calculos";
 import { analisarPnl } from "@/lib/pnl-operacao";
 import { custosDaOperacao } from "@/lib/custos-operacao";
 import { useLivro } from "@/lib/hooks/useLivro";

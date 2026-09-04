@@ -14,7 +14,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { criarRascunhoRemoto } from "@/lib/hooks/useRascunhos";
-import { rascunhoDeFechamento } from "@/lib/rascunhos";
+import { rascunhoDeFechamento } from "@/lib/rascunho-calculos";
 import { FileJson, FileSpreadsheet, RefreshCw, Trash2, XCircle } from "lucide-react";
 import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { markInfo, useMarket } from "@/store/market";

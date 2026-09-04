@@ -17,7 +17,7 @@ import { useMarket } from "@/store/market";
 import { useRascunhos } from "@/lib/hooks/useRascunhos";
 import { useLivro } from "@/lib/hooks/useLivro";
 import { calcularCustos } from "@/lib/boleta-calculos";
-import { debitoCredito, pernasComPreco, slippage, slippageDoRascunho, validarParaConfirmar, type PernaRascunho, type Rascunho } from "@/lib/rascunhos";
+import { debitoCredito, pernasComPreco, slippage, slippageDoRascunho, validarParaConfirmar, type PernaRascunho, type Rascunho } from "@/lib/rascunho-calculos";
 import { FormularioAbertura, type DadosAbertura } from "@/components/FormularioAbertura";
 import { fmtBRL, fmtDateBR, fmtNum, fmtPct, pnlColor } from "@/lib/format";
 import type { MotivoSaida } from "@/lib/boletas";

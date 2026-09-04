@@ -22,7 +22,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { criarRascunhoRemoto } from "@/lib/hooks/useRascunhos";
-import { rascunhoDeFechamento } from "@/lib/rascunhos";
+import { rascunhoDeFechamento } from "@/lib/rascunho-calculos";
 import { ChevronDown, ChevronRight, Layers, Target, XCircle } from "lucide-react";
 import clsx from "clsx";
 import { markInfo, useMarket } from "@/store/market";

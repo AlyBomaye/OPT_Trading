@@ -16,7 +16,7 @@ import clsx from "clsx";
 import { markInfo, useMarket } from "@/store/market";
 import { propostaRolagem } from "@/lib/rolagem";
 import { criarRascunhoRemoto } from "@/lib/hooks/useRascunhos";
-import { rascunhoDeRolagem } from "@/lib/rascunhos";
+import { rascunhoDeRolagem } from "@/lib/rascunho-calculos";
 import { fmtBRL, fmtDateBR, fmtNum } from "@/lib/format";
 import type { Position } from "@/lib/types";
 import type { TabelaCustos } from "@/lib/boleta-calculos";
