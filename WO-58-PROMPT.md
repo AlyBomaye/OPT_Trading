@@ -299,3 +299,90 @@ execução neste arquivo, seção "Executado", como nas WOs anteriores.
 - Renomear o `id` do agente `carteira`.
 - Confirmar rascunho de teste no livro real.
 - Electron, Tauri, instalador, automação do Profit.
+
+---
+
+## Executado — 04/09/2026
+
+Sete commits, `94313ed` a `304d97b` (+ o de encerramento). Suíte verde com os Testes WO-58 · 1 a 5.
+Verificado ao vivo contra o dev (3000, `npm run dev:aberto`) e depois publicado na produção (3100).
+
+### O que ficou de pé
+
+- **Parte A — rascunho.** `db/006_rascunhos.sql` (`rascunho_boleta`), `lib/rascunho-calculos.ts`
+  (puro: tipos, `validarParaConfirmar`, `paraEntradasBoleta`, `slippage`, `slippageDoRascunho`,
+  `debitoCredito`, `rascunhoDeFechamento`, `rascunhoDeRolagem`) e `lib/rascunhos.ts` (banco:
+  criar, listar, obter, atualizar, descartar, `confirmarRascunho`). A confirmação roda
+  `executarBoletasJuntas` (extraído de `registrarBoletasJuntas`) e o `UPDATE` do rascunho no mesmo
+  `emTransacao`, com `SELECT ... FOR UPDATE`. Rotas `/api/rascunhos` e `/api/rascunhos/[id]`
+  (`GET`, `PATCH`, `POST ?acao=confirmar|descartar`). Hook `useRascunhos` + `criarRascunhoRemoto`.
+- **Parte B — Boletagem.** `app/boletagem/page.tsx` na ordem do fluxo: `PainelRascunhos` (ficha de
+  execução por perna: preço de montagem com fonte, preço de execução, quantidade, hora, custos
+  editáveis; slippage por perna e total; impedimentos escritos; Confirmar só sem impedimento;
+  Descartar com confirmação; plano editável via `FormularioAbertura` com `inicial`), boleta manual
+  aberta por padrão, vencimentos, reconciliação, custos, migração e `UltimasBoletas` (20 da fita).
+  Nav com nove abas (Portfolio 3, Boletagem 4), `B` → `/boletagem#boleta`. `app/carteira` →
+  `app/portfolio`; redirect permanente `/carteira` → `/portfolio`; todos os links do código
+  reapontados (deeplinks, registry, alertas, GestorDock, Cockpit, Consultor, Gestor global, chat).
+- **Parte C — porta única.** Estratégia: "Boletar" cria rascunho `origem: estrategia` com
+  `precoMontagem` = preço da perna e `fontePrecoMontagem` (mid/último/manual), spot e IV da
+  montagem, plano das três perguntas, e navega para `/boletagem#rascunho-{id}`. `store.boletar`
+  removido; `closePosition`/`closeStructure` ignoram pernas do livro. Portfolio: Fechar (com motivo)
+  → rascunho `portfolio-fechar`; Rolar → proposta como análise e "Mandar para a Boletagem" →
+  rascunho `portfolio-rolar` com `fecha` + `abre`; encerrar perna avulsa → rascunho. Excluir só
+  para o cache do navegador. `POST /api/boletas/rolar` responde 410.
+- **Parte D — Portfolio.** Ordem: Ação do dia → Fichas (vindas do Consultor) → Estruturas
+  (`#estruturas`) → Capital (Aporte/Retirada é link para a Boletagem) → Limites →
+  `PainelAlocacao` (prêmio em risco: perda máxima ou VaR da grade, quatro cortes, maior posição,
+  vega líquido, `CONCENTRACAO_ALERTA = 0.5` declarada na tela) → `PainelCorrelacao` (séries 6mo
+  alinhadas, `MIN_OBS_CORRELACAO = 40`, matriz, σ diária, Δ R$, VaR direcional somado ×
+  diversificado, pares |ρ| ≥ 0,7 como concentração/hedge) → gregas → pernas → stress → VaR
+  histórico → journal, apuração, curva, gráficos → arquivo de IV → encerradas. Saíram: boleta,
+  vencimentos, custos, nota, migração. Consultor ganhou o link "Portfolio (3) →".
+- **Parte E — memória.** Manual: `RESUMO_TELAS` e `HOTKEYS_MANUAL` com nove abas; seção 7
+  "Portfolio e Boletagem: decidir, executar, registrar" (`PORTFOLIO_E_BOLETAGEM`); textos das telas
+  com as teclas novas (Estratégia 8). Skills `boletagem-e-custos` (seção 0: a porta única e o
+  rascunho) e `engenharia-da-plataforma` (rotas, 006, atalhos 1..9, `dev:aberto`); README das
+  skills; ANTIGRAVITY com a nota do estado atual.
+- **Parte F — verificação.** `npm run dev:aberto` (sobe o dev com `APP_PASSWORD` vazia — o
+  `.env.local` tem senha desde a WO-57 e o dev passou a pedir login). Contra o livro real (4
+  estruturas, 5 pernas), criando e **descartando**: rascunho 1 (Estratégia, Straddle Comprado
+  PETR4, 2 pernas, débito 268; sem preço → 4 impedimentos e Confirmar desabilitado; com 1,25 e
+  1,45 → slippage −8 e +6, total −2 (−0,7%), Confirmar habilitado; descartado), rascunho 2
+  (Portfolio · fechar, 2 pernas V, montagem 2,37 mid e 0,60 marcação, posicaoId 11/12;
+  descartado), rascunho 3 (Portfolio · rolar para 16/10, 2 `fecha` V + 2 `abre` C; descartado).
+  Rascunho sobreviveu a recarregar (banco). Alocação: R$ 303 medidos, 3 sem medida (papéis sem
+  cadeia carregada), 100% em cada corte, concentração marcada. Correlação: 4×4, 128 observações,
+  VaR direcional 107 → 65 (−39%), nenhum par ≥ 0,7. `/carteira` → 308 → `/portfolio`. Rolagem
+  410. Teclas 4/3/B navegam (evento na `window`). Consultor com o link; Manual com a seção 7.
+  `grep /carteira` só encontra o módulo interno `lib/agents/tab/carteira` e a rota `/api/carteira/excel`
+  (nomes internos, mantidos).
+
+### O que a máquina ensinou desta vez
+
+- **De novo o cliente importando `pg`.** `lib/rascunhos.ts` nasceu com puro e banco juntos; o
+  `PainelRascunhos` ("use client") o importava e a Boletagem caiu com "Can't resolve 'fs'". A mesma
+  lição da WO-57: o puro vive num módulo sem banco (`rascunho-calculos.ts`) e o de banco o
+  re-exporta. Está escrito nas duas skills.
+- **A senha da produção fecha o dev.** O Next carrega o `.env.local` no `next dev`; com
+  `APP_PASSWORD` presente, o middleware pede login na 3000. Como o agente não digita a senha do
+  operador, nasceu o `dev:aberto` (senha vazia só naquele processo; a produção não muda).
+- **O diretório da sessão é um clone antigo.** O `preview_start` pelo nome do projeto rodava num
+  clone parado em `7a7e583`, sem `node_modules`. O dev sobe de `C:\dev\opcoes-terminal` e o
+  navegador anexa por uma configuração `url`.
+- **Marcação arredondada vira "manual".** O formulário de fechamento pré-preenche com duas casas;
+  0,605 vira 0,60 e a fonte deixa de ser "mid" — a tela diz "marcação". Correto, e vale a pena saber.
+
+### Testes antigos que mudaram de invariante (intencional, dito nos commits)
+
+WO-36 6, WO-46 1, WO-46 3, AJ 1, AJ 2, WO-49 6 (nove abas); WO-48 10, 12, 15, WO-46 13, WO-53 4, 5,
+WO-55 4, WO-56 5, WO-26 33, WO-47 12 (o rascunho no lugar da boleta direta; a Boletagem no lugar da
+Carteira). Nenhum teste foi apagado.
+
+### Limites declarados
+
+- Alocação só mede estrutura com cadeia carregada (perda máxima) ou com VaR da grade; sem os dois,
+  fica em "sem medida" e fora do total. Reavaliar tudo resolve para os papéis do livro.
+- Correlação é só delta; gamma e vega continuam na grade e no histórico. Abaixo de 40 observações
+  em comum, ρ é `null`, e o VaR diversificado assume ρ = 1 para esses pares (conservador, listado).
+- O `dev:aberto` é só para a 3000. A produção continua exigindo `APP_PASSWORD`.

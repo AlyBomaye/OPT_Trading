@@ -34,6 +34,12 @@ e diga no commit. Se a quebra não for intencional, o teste venceu.
   o dev vivo corrompe o CSS (500 em `/_next/static/css/...`). Sequência segura para verificar o
   build: parar o dev → `rm -rf .next` → `npm run build` → `rm -rf .next` → subir o dev de novo.
 - Sintoma "tela sem estilo": `.next` corrompido; parar, apagar, subir.
+- Desde a WO-57 o `.env.local` tem `APP_PASSWORD`, e o Next a carrega também no dev — o middleware
+  passa a pedir login em `localhost:3000`. Para verificar uma WO ao vivo sem digitar a senha do
+  operador: `npm run dev:aberto` (sobe o `next dev` com `APP_PASSWORD` vazia; só para a 3000, nunca
+  para a produção). O diretório de trabalho da sessão do agente pode ser um clone antigo sem
+  `node_modules`; o projeto real é `C:\dev\opcoes-terminal` — suba o dev de lá e anexe o navegador
+  por uma configuração `url` no `launch.json` da sessão.
 - Rotas com `useSearchParams` precisam de `<Suspense>` ou o build falha.
 - Redirects de rotas antigas ficam em `next.config.mjs`.
 
