@@ -2642,9 +2642,10 @@ async function testesWo48() {
   }
 
   // ---- Teste 15: chaves de localStorage novas sao por secao
-  const srcCart = ler("app/portfolio/page.tsx");
-  if (/"carteira-boleta-open"/.test(srcCart) && !/carteira-boleta-\d/.test(srcCart)) {
-    console.log("✔ WO-48 Teste 15: carteira-boleta-open existe e e nomeada por secao");
+  // WO-58: a boleta mudou para a Boletagem; a chave continua nomeada por secao.
+  const srcCart = ler("app/boletagem/page.tsx");
+  if (/"boletagem-boleta-open"/.test(srcCart) && !/boleta-open-\d|boletagem-boleta-\d/.test(srcCart)) {
+    console.log("✔ WO-48 Teste 15: boletagem-boleta-open existe e e nomeada por secao (WO-58)");
   } else {
     console.log("✘ WO-48 Teste 15 falhou: chave da boleta ausente ou numerada");
     failures++;
@@ -5431,10 +5432,11 @@ async function testesWo28Restaurados() {
     const srcCart = lerSrc("app/portfolio/page.tsx");
     const srcPE = lerSrc("components/PainelEstruturas.tsx");
     const idx = (re: RegExp) => srcCart.search(re);
-    const ordem = idx(/id="acao-do-dia"/) < idx(/<PainelEstruturas /) && idx(/<PainelEstruturas /) < idx(/id="capital"/) && idx(/id="capital"/) < idx(/<PainelLimites /) && idx(/<PainelLimites /) < idx(/id="boleta"/) && idx(/id="boleta"/) < idx(/<PainelVencimentos \/>/);
-    const t5 = ordem && /"carteira-boleta-open", false/.test(srcCart) && (srcCart.match(/<PainelEstruturas /g) ?? []).length === 1
+    // WO-58: Acao do dia -> fichas -> estruturas -> capital -> limites -> alocacao -> correlacao -> gregas -> ... -> journal (registro por ultimo). Sem boleta aqui.
+    const ordem = idx(/id="acao-do-dia"/) < idx(/<FichasEstruturas \/>/) && idx(/<FichasEstruturas \/>/) < idx(/<PainelEstruturas /) && idx(/<PainelEstruturas /) < idx(/id="capital"/) && idx(/id="capital"/) < idx(/<PainelLimites /) && idx(/<PainelLimites /) < idx(/<PainelAlocacao /) && idx(/<PainelAlocacao /) < idx(/<PainelCorrelacao /) && idx(/<PainelCorrelacao /) < idx(/Gregas líquidas do book/) && idx(/<PainelVarHistorico /) < idx(/id="journal"/);
+    const t5 = ordem && !/id="boleta"/.test(srcCart) && !/FormularioBoleta|PainelVencimentos|PainelCustos|ReconciliacaoNota|MigracaoLivro/.test(srcCart) && (srcCart.match(/<PainelEstruturas /g) ?? []).length === 1
       && /<PainelRolagem /.test(srcPE) && /spotDeZeragem\(/.test(srcPE) && /zera líquida/.test(srcPE);
-    if (t5) console.log("✔ WO-53 Teste 5: Carteira na ordem Ação do dia → Estruturas → Capital → Limites → boleta (recolhida) → vencimentos; estruturas com Rolar e zeragem do ativo");
+    if (t5) console.log("✔ WO-53 Teste 5: Portfolio na ordem Ação do dia → Fichas → Estruturas → Capital → Limites → Alocação → Correlação → gregas … → journal; sem boleta (WO-58); estruturas com Rolar e zeragem do ativo");
     else { console.log(`✘ WO-53 Teste 5 falhou: ordem=${ordem}`); failures++; }
 
     // ---- Teste 6: put comprada tem perda máxima finita; VaR e stress só do papel da cadeia; VaR do book soma por papel
@@ -5605,7 +5607,7 @@ async function testesWo28Restaurados() {
     const srcCons = lerSrc("app/consultor/page.tsx");
     const t4 = /function persistirRun\(state: RunState\)/.test(srcOrq) && (srcOrq.match(/persistirRun\(state\)/g) ?? []).length >= 4 && /export async function obterRunStateAsync/.test(srcOrq)
       && /obterRunStateAsync\(runId\)/.test(srcRc) && !/obterRunState\(runId\)/.test(srcRc)
-      && /<FichasEstruturas \/>/.test(srcCons) && /fetch\("\/api\/relatorios", \{\s*method: "POST"/.test(srcCons) && /relatorioAntigo/.test(srcCons) && /desde \{fmtDateBR\(anterior\.data\)\}/.test(srcCons);
+      && !/<FichasEstruturas \/>/.test(srcCons) && /\/portfolio#fichas/.test(srcCons) && /<FichasEstruturas \/>/.test(lerSrc("app/portfolio/page.tsx")) && /fetch\("\/api\/relatorios", \{\s*method: "POST"/.test(srcCons) && /relatorioAntigo/.test(srcCons) && /desde \{fmtDateBR\(anterior\.data\)\}/.test(srcCons);
     if (t4) console.log("✔ WO-55 Teste 4: o ciclo é gravado no banco a cada agente e lido de lá após reinício; o Consultor tem fichas, grava a carta e relê as anteriores com 'o que mudou'");
     else { console.log("✘ WO-55 Teste 4 falhou: orquestrador ou Consultor"); failures++; }
   }
@@ -5699,7 +5701,7 @@ Líquido para 04/09/2026 5.134,69 D`;
     const srcStore = lerSrc("store/market.ts");
     const t5 = /COTAHIST_D/.test(srcRota) && /lerZip\(buf\)/.test(srcRota) && /pregaoAnterior/.test(srcRota) && /gravarCache\(`cotahist-/.test(srcRota)
       && /\/api\/cotahist\?data=/.test(srcStore) && /o\.mid = c\.mid/.test(srcStore) && srcStore.includes("o.opTicker.replace(/_" + String.fromCharCode(92) + "d{4}$/, " + '""' + ")") && /export function marcaDaSerie/.test(lerSrc("lib/marcacao.ts")) && /fonte,\n/.test(lerSrc("lib/marcacao.ts"))
-      && /mark\.fonte === "mid"/.test(lerSrc("app/portfolio/page.tsx")) && /<ReconciliacaoNota \/>/.test(lerSrc("app/portfolio/page.tsx"))
+      && /mark\.fonte === "mid"/.test(lerSrc("app/portfolio/page.tsx")) && /<ReconciliacaoNota \/>/.test(lerSrc("app/boletagem/page.tsx"))
       && /ofertas de fechamento/.test(lerSrc("components/OptionChain.tsx")) && /bid\?: number \| null/.test(lerSrc("lib/types.ts"));
     if (t5) console.log("✔ WO-56 Teste 5: /api/cotahist com cache e recuo de datas; o store junta bid/ask/mid à cadeia; Carteira marca MID e tem a reconciliação; a cadeia mostra a cobertura de ofertas");
     else { console.log("✘ WO-56 Teste 5 falhou: rota, store ou telas"); failures++; }
@@ -5863,6 +5865,57 @@ Líquido para 04/09/2026 5.134,69 D`;
     const portasLegitimas = gravaBoleta(ler2("components/FormularioBoleta.tsx")) && gravaBoleta(ler2("components/PainelVencimentos.tsx"));
     if (semGravacao && criam && navegam && storeSemBoletar && rolar410 && portasLegitimas) console.log("✔ WO-58 Teste 3: Estratégia, Portfolio, estruturas e rolagem não gravam boleta — criam rascunho e vão para a Boletagem; o store não boleta; a rota de rolagem responde 410; as portas legítimas (boleta manual, vencimentos) vivem na Boletagem");
     else { console.log(`✘ WO-58 Teste 3 falhou: semGravacao=${semGravacao} criam=${criam} navegam=${navegam} store=${storeSemBoletar} rolar410=${rolar410} portas=${portasLegitimas}`); failures++; }
+
+    // ---- Teste 4: alocação fecha 100% e marca a fonte; correlação alinhada, mínimo de observações, VaR diversificado ≤ somado
+    const { alocacao } = await import("../alocacao");
+    const { alinharRetornos, matrizCorrelacao, pearson, varDirecional, volDiaria, paresRelevantes, MIN_OBS_CORRELACAO } = await import("../correlacao");
+    const { CONCENTRACAO_ALERTA } = await import("../metodo");
+    const pA: Position = { id: "db-1", kind: "OPTION", opTicker: "PETRI482", underlying: "PETR4", type: "CALL", strike: 48, expiry: "2026-09-18", du: 10, side: 1, qty: 100, price: 2, openedAt: "2026-08-20T13:00:00.000Z" };
+    const pB: Position = { ...pA, id: "db-2", opTicker: "VALEJ60", underlying: "VALE3", strike: 60, expiry: "2026-10-16", side: -1 };
+    const pC: Position = { ...pA, id: "db-3", opTicker: "BHIAI80", underlying: "BHIA3", strike: 8, expiry: "2026-09-18" };
+    const al = alocacao({
+      estruturas: [
+        { chave: "a", underlying: "PETR4", pernas: [pA], nome: "Compra de Call", maxLoss: -200, netDebit: 200 },
+        { chave: "b", underlying: "VALE3", pernas: [pB], nome: "Venda seca", maxLoss: null, netDebit: -150 },
+        { chave: "c", underlying: "BHIA3", pernas: [pC], nome: "Compra de Call", maxLoss: -100, netDebit: 100 },
+        { chave: "d", underlying: "WEGE3", pernas: [{ ...pA, id: "db-4", underlying: "WEGE3" }], nome: "Venda seca", maxLoss: null, netDebit: -50 },
+      ],
+      varDoTicker: (t) => (t === "VALE3" ? -300 : null),
+      setorDe: (t) => (t === "PETR4" ? "Oil&Gas" : t === "VALE3" ? "Mining/Steel" : t === "BHIA3" ? "Retail" : null),
+      capitalTotal: 600,
+    });
+    const soma = (c: { fracao: number }[]) => c.reduce((a, x) => a + x.fracao, 0);
+    const fecha = Math.abs(soma(al.porSetor) - 1) < 1e-9 && Math.abs(soma(al.porVencimento) - 1) < 1e-9 && Math.abs(soma(al.porTipo) - 1) < 1e-9 && Math.abs(soma(al.porLado) - 1) < 1e-9;
+    const fonteOk = al.estruturas.find((e) => e.chave === "b")?.fonte === "var-grade" && al.estruturas.find((e) => e.chave === "b")?.risco === 300 && al.estruturas.find((e) => e.chave === "a")?.fonte === "perda-maxima" && al.semMedida.length === 1 && /WEGE3/.test(al.semMedida[0]) && al.total === 600;
+    // VALE3 = 300/600 = 50% -> NAO passa de metade; vencimento 18/09 = 300/600 -> idem; tipo "Venda seca" = 300 -> idem; comprado 300 x vendido 300.
+    const concOk = al.porSetor.every((c) => !c.concentracao) && al.limiar === CONCENTRACAO_ALERTA && al.maior?.underlying === "VALE3" && Math.abs((al.maior?.fracaoDoCapital ?? 0) - 0.5) < 1e-9;
+    const al2 = alocacao({ estruturas: [{ chave: "a", underlying: "PETR4", pernas: [pA], nome: "x", maxLoss: -510, netDebit: 1 }, { chave: "c", underlying: "BHIA3", pernas: [pC], nome: "y", maxLoss: -90, netDebit: 1 }], varDoTicker: () => null, setorDe: () => "Oil&Gas", capitalTotal: 600 });
+    const conc2 = al2.porSetor[0].concentracao === true && al2.porTipo[0].concentracao === true && al2.porTipo[1].concentracao === false;
+
+    const datas = Array.from({ length: 70 }, (_, i) => `2026-0${1 + Math.floor(i / 28)}-${String((i % 28) + 1).padStart(2, "0")}`);
+    const serieA = datas.map((d, i) => ({ date: d, close: 10 * Math.exp(Math.sin(i / 3) * 0.05 + i * 0.001) }));
+    const serieB = serieA.map((c) => ({ date: c.date, close: c.close * 2 }));
+    const serieInv = datas.map((d, i) => ({ date: d, close: 10 * Math.exp(-(Math.sin(i / 3) * 0.05 + i * 0.001)) }));
+    const serieCurta = serieA.slice(40); // so 30 datas em comum -> abaixo do minimo
+    const { retornos: rAB, datas: dAB } = alinharRetornos({ A: serieA, B: serieB });
+    const mAB = matrizCorrelacao(rAB);
+    const mInv = matrizCorrelacao(alinharRetornos({ A: serieA, I: serieInv }).retornos);
+    const alinhado = alinharRetornos({ A: serieA, C: serieCurta });
+    const mCurta = matrizCorrelacao(alinhado.retornos);
+    const corrOk = dAB.length === 69 && mAB.rho[0][1] != null && Math.abs((mAB.rho[0][1] ?? 0) - 1) < 1e-9 && mInv.rho[0][1] != null && Math.abs((mInv.rho[0][1] ?? 0) + 1) < 1e-9
+      && alinhado.datas.length === 29 && mCurta.n === 29 && mCurta.n < MIN_OBS_CORRELACAO && mCurta.rho[0][1] === null && pearson([1, 1, 1], [1, 2, 3]) === null;
+    const sA = volDiaria(rAB.A)!;
+    const sB = volDiaria(rAB.B)!;
+    const vdMesmo = varDirecional({ A: 1000, B: 500 }, { A: sA, B: sB }, mAB)!;
+    const vdOposto = varDirecional({ A: 1000, B: -500 }, { A: sA, B: sB }, mAB)!;
+    const mInvW = varDirecional({ A: 1000, I: 500 }, { A: sA, I: volDiaria(alinharRetornos({ A: serieA, I: serieInv }).retornos.I)! }, mInv)!;
+    const varOk = Math.abs(vdMesmo.diversificado - vdMesmo.somado) < 1e-6 && vdOposto.diversificado <= vdOposto.somado + 1e-9
+      && Math.abs(vdOposto.diversificado - vdOposto.z * Math.abs(1000 * sA - 500 * sB)) < 1e-6 && mInvW.diversificado < mInvW.somado;
+    const pares = paresRelevantes(mAB, { A: 1000, B: 500 });
+    const paresOp = paresRelevantes(mAB, { A: 1000, B: -500 });
+    const paresOk = pares.length === 1 && pares[0].relacao === "concentracao" && paresOp[0].relacao === "hedge" && paresRelevantes(mInv, { A: 1000, I: -500 })[0].relacao === "concentracao";
+    if (fecha && fonteOk && concOk && conc2 && corrOk && varOk && paresOk) console.log("✔ WO-58 Teste 4: alocação fecha 100% em cada corte, venda seca usa o VaR da grade e diz a fonte, sem medida fica fora, concentração só acima da metade; correlação alinhada por data (ρ=1 idênticas, −1 opostas, null abaixo do mínimo), VaR diversificado ≤ somado (igual com ρ=1 e mesmo lado; |w_aσ_a − w_bσ_b| com lados opostos); pares marcados como concentração ou hedge pelo sinal");
+    else { console.log(`✘ WO-58 Teste 4 falhou: fecha=${fecha} fonte=${fonteOk} conc=${concOk} conc2=${conc2} corr=${corrOk} var=${varOk} pares=${paresOk}`); failures++; }
   }
 
 }

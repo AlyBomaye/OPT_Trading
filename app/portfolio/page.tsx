@@ -1,6 +1,17 @@
 "use client";
 
+/**
+ * WO-58 — o Portfolio: só gestão e análise. Nada é gravado aqui.
+ *
+ * A Carteira misturava registrar (boleta, vencimentos, nota, custos, migração) com avaliar (risco,
+ * limites, gregas, VaR, performance). Registrar foi para a Boletagem (4). O que fica é a decisão:
+ * o que exige ação hoje, o veredito de cada estrutura, as estruturas (Fechar e Rolar mandam um
+ * rascunho para a Boletagem), capital e limites, onde o risco está concentrado e quanto dele é a
+ * mesma aposta com nomes diferentes — e, por último, o registro do que já aconteceu.
+ */
+
 import { useEffect, useMemo, useRef, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { criarRascunhoRemoto } from "@/lib/hooks/useRascunhos";
 import { rascunhoDeFechamento } from "@/lib/rascunhos";
@@ -26,13 +37,11 @@ import { evaluateFlags, useFlagSettings } from "@/lib/position-flags";
 import { groupTrades, performanceStats } from "@/lib/performance";
 import { PainelApuracao } from "@/components/PainelApuracao";
 import { PainelEstruturas } from "@/components/PainelEstruturas";
-import { FormularioBoleta } from "@/components/FormularioBoleta";
-import { MigracaoLivro } from "@/components/MigracaoLivro";
-import { PainelVencimentos } from "@/components/PainelVencimentos";
-import { PainelCustos } from "@/components/PainelCustos";
 import { PainelLimites } from "@/components/PainelLimites";
 import { PainelVarHistorico } from "@/components/PainelVarHistorico";
-import { ReconciliacaoNota } from "@/components/ReconciliacaoNota";
+import { FichasEstruturas } from "@/components/FichasEstruturas";
+import { PainelAlocacao } from "@/components/PainelAlocacao";
+import { PainelCorrelacao } from "@/components/PainelCorrelacao";
 import { estruturasAbertas } from "@/lib/position-flags";
 import { strategyMetrics } from "@/lib/payoff";
 import { CUSTOS_SUGERIDOS_XP_B3 } from "@/lib/custos-sugeridos";
@@ -83,26 +92,10 @@ export default function PortfolioPage() {
     router.push(`/boletagem#rascunho-${r.rascunho.id}`);
   };
 
-  // A boleta: recolhível (chave por seção) e aberta pelo atalho B ou por /boletagem#boleta.
-  // WO-53: a boleta nasce recolhida — B (ou Aporte/Retirada, ou #boleta) abre.
-  const [boletaAberta, setBoletaAberta] = usePersistedState<boolean>("carteira-boleta-open", false);
-  const [focarBoleta, setFocarBoleta] = useState(false);
+  // WO-58: a boleta mudou de aba. Quem chegar em #boleta (atalho antigo, link antigo) vai para lá.
   useEffect(() => {
-    if (typeof window !== "undefined" && window.location.hash === "#boleta") {
-      setBoletaAberta(true);
-      setFocarBoleta(true);
-    }
-    const onKey = (e: KeyboardEvent) => {
-      const tag = (e.target as HTMLElement)?.tagName;
-      if (tag === "INPUT" || tag === "SELECT" || tag === "TEXTAREA") return;
-      if (e.key === "b" || e.key === "B") {
-        setBoletaAberta(true);
-        setFocarBoleta(true);
-      }
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [setBoletaAberta]);
+    if (typeof window !== "undefined" && window.location.hash === "#boleta") router.replace("/boletagem#boleta");
+  }, [router]);
   const livroNoBanco = livro.configurado && livro.totalBoletas > 0;
   // WO-4: progresso do "Reavaliar tudo"
   const [reval, setReval] = useState<{ done: number; total: number; failed: string[] } | null>(null);
@@ -223,7 +216,6 @@ export default function PortfolioPage() {
   // WO-49 §B: o caixa livre vem de `caixaLivre` em lib/portfolio — a mesma conta que a
   // Estratégia e o Scanner usam. Com o livro: saldo da razão menos a margem das vendidas.
   const caixaLivre = useMemo(() => caixaLivreLib({ capitalTotal, positions, livro }).valor, [capitalTotal, positions, livro]);
-  const [boletaTipoInicial, setBoletaTipoInicial] = useState<"abertura" | "fechamento" | "caixa" | undefined>(undefined);
   const journal = useMemo(() => journalStats(closed), [closed]);
   const curve = useMemo(() => equityCurve(closed, capitalTotal), [closed, capitalTotal]);
   const noEdge = journal != null && journal.n >= 20 && (journal.realizedKelly ?? 0) <= 0;
@@ -303,11 +295,8 @@ export default function PortfolioPage() {
           <b>Somente leitura</b> — {livro.aviso ?? "banco indisponível"}. O que você vê é o cache deste navegador; nada é gravado até o banco voltar.
         </div>
       )}
-      <MigracaoLivro />
-
-      {/* WO-53 §D — a ordem do método: o que fazer hoje, as estruturas, o capital e os limites;
-          a boleta vem depois, recolhida (B abre). Antes, boleta, vencimentos e custos empurravam
-          a Ação do dia para o meio da página. */}
+      {/* WO-53 §D / WO-58 — a ordem da decisão: o que fazer hoje, o veredito de cada estrutura, as
+          estruturas, o capital e os limites, onde o risco está concentrado, e só depois o registro. */}
       {/* WO-17 Bloco A: Painel de Ação do Dia (Flags de Risco) */}
       <div id="acao-do-dia">
         <ActionFlags
@@ -318,8 +307,13 @@ export default function PortfolioPage() {
         />
       </div>
 
-      {/* WO-47 §5.2 — a Carteira pensa por estrutura (WO-53: com rolagem e zeragem por estrutura). */}
-      <PainelEstruturas flags={allFlags} regimes={regimes} tabelaCustos={tabelaCustos} />
+      {/* WO-55 / WO-58 — as fichas por estrutura vieram do Consultor: é aqui que se age. */}
+      <FichasEstruturas />
+
+      {/* WO-47 §5.2 — o Portfolio pensa por estrutura (WO-53: rolagem e zeragem; WO-58: Fechar e Rolar viram rascunho). */}
+      <div id="estruturas">
+        <PainelEstruturas flags={allFlags} regimes={regimes} tabelaCustos={tabelaCustos} />
+      </div>
 
       {/* WO-11: capital & desempenho (Dashboard da planilha) */}
       <div id="capital" className="grid grid-cols-2 md:grid-cols-6 gap-2">
@@ -328,13 +322,9 @@ export default function PortfolioPage() {
           {livroNoBanco ? (
             <div className="flex items-center justify-between gap-2">
               <span className="font-mono font-semibold text-sm" title="Aportes menos retiradas registrados na razão">{fmtBRL(capitalTotal, 0)}</span>
-              <button
-                className="btn text-xxs py-0.5 px-2 text-term-cyan whitespace-nowrap"
-                title="Registrar aporte ou retirada pela boleta"
-                onClick={() => { setBoletaTipoInicial("caixa"); setBoletaAberta(true); setFocarBoleta(true); document.getElementById("boleta")?.scrollIntoView({ behavior: "smooth", block: "start" }); }}
-              >
-                Aporte/Retirada
-              </button>
+              <Link href="/boletagem#boleta" className="btn text-xxs py-0.5 px-2 text-term-cyan whitespace-nowrap" title="Registrar aporte ou retirada na Boletagem (4)">
+                Aporte/Retirada →
+              </Link>
             </div>
           ) : (
             <input
@@ -367,82 +357,9 @@ export default function PortfolioPage() {
       {/* WO-53 §C — limites fixados antes, medidos agora */}
       <PainelLimites capitalTotal={capitalTotal} vegaPer1pct={greeks.vegaPer1pct} var95={risk?.var95 ?? null} alocado={alocado} piorPerdaEstrutura={piorPerdaEstrutura} />
 
-      {boletaAberta ? (
-        <div id="boleta">
-          <FormularioBoleta aberto onFechar={() => { setBoletaAberta(false); setBoletaTipoInicial(undefined); }} focar={focarBoleta} tipoInicial={boletaTipoInicial} />
-        </div>
-      ) : (
-        <button className="btn flex items-center gap-1 text-term-cyan" onClick={() => setBoletaAberta(true)}>
-          Abrir a boleta <kbd className="text-xxs bg-term-panel2 border border-term-line rounded px-1">B</kbd>
-        </button>
-      )}
-      <PainelVencimentos />
-      <PainelCustos />
-      {/* WO-56 — a nota da corretora contra o livro */}
-      <ReconciliacaoNota />
-
-      {/* WO-17 Bloco B: Analytics de Desempenho do Journal */}
-      <div id="journal" className="grid grid-cols-2 md:grid-cols-6 gap-2">
-        <Kpi
-          label="Profit Factor"
-          value={perf.profitFactor != null ? (isFinite(perf.profitFactor) ? fmtNum(perf.profitFactor, 2) : "∞") : "—"}
-          cls={perf.profitFactor != null && perf.profitFactor >= 1.5 ? "text-term-up" : perf.profitFactor != null && perf.profitFactor < 1.0 ? "text-term-down" : ""}
-        />
-        <Kpi
-          label="Expectancy (R$)"
-          value={perf.expectancyCash != null ? fmtBRL(perf.expectancyCash) : "—"}
-          cls={pnlColor(perf.expectancyCash ?? 0)}
-        />
-        <Kpi
-          label="Expectancy (R)"
-          value={perf.expectancyR != null ? `${perf.expectancyR > 0 ? "+" : ""}${perf.expectancyR.toFixed(2)}R` : "—"}
-          cls={perf.expectancyR != null && perf.expectancyR > 0 ? "text-term-up" : "text-term-down"}
-        />
-        <Kpi
-          label="Holding médio (V/P)"
-          value={perf.avgHoldingWins != null ? `${perf.avgHoldingWins.toFixed(0)}d / ${perf.avgHoldingLosses?.toFixed(0) ?? 0}d` : "—"}
-        />
-        <Kpi
-          label="Maior seq. (Gan/Perd)"
-          value={perf.totalClosedGroups > 0 ? `${perf.maxWinStreak} / ${perf.maxLossStreak}` : "—"}
-        />
-        <Kpi
-          label="Melhor / Pior Trade"
-          value={perf.bestTrade != null ? `${fmtBRL(perf.bestTrade, 0)} / ${fmtBRL(perf.worstTrade, 0)}` : "—"}
-        />
-      </div>
-
-      {/* WO-46 §E.3: apuração fiscal e leitura da amostra — os dois módulos que o WO-44
-          construiu e testou sem que nenhuma tela os consumisse.
-
-          A nota antiga aqui recomendava 20 operações para a estatística ser conclusiva. O método
-          pede centenas, e o painel abaixo diz isso com o número e a margem de erro. Manter as duas
-          seria a plataforma se contradizendo na mesma tela. */}
-      <PainelApuracao
-        fechadas={closed}
-        taxaAcerto={journal?.winRate ?? null}
-        payoff={journal?.payoffRatio ?? null}
-      />
-
-      {closed.length > 0 && (
-        <div className="panel">
-          <div className="panel-title">Curva de patrimônio — P&L realizado acumulado (semente: capital total)</div>
-          <div className="h-48 px-2 pb-2">
-            <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={curve} margin={{ top: 5, right: 10, bottom: 5, left: 5 }}>
-                <CartesianGrid stroke="#232a38" strokeDasharray="2 4" />
-                <XAxis dataKey="date" tick={{ fontSize: 9, fill: "#6b7689" }} minTickGap={40} />
-                <YAxis tick={{ fontSize: 9, fill: "#6b7689" }} width={64} domain={["auto", "auto"]} tickFormatter={(v: number) => fmtBRL(v, 0)} />
-                <Tooltip
-                  contentStyle={{ background: "#151922", border: "1px solid #232a38", fontSize: 11 }}
-                  formatter={(v: number) => fmtBRL(v)}
-                />
-                <Line type="stepAfter" dataKey="equity" name="Patrimônio" stroke="#22d3ee" dot={false} strokeWidth={1.5} />
-              </LineChart>
-            </ResponsiveContainer>
-          </div>
-        </div>
-      )}
+      {/* WO-58 — onde o risco está concentrado, e quanto dele é a mesma aposta */}
+      <PainelAlocacao positions={positions} chainCache={chainCache} selic={selic} capitalTotal={capitalTotal} varPorTicker={risk?.porTicker ?? null} />
+      <PainelCorrelacao positions={positions} chainCache={chainCache} selic={selic} />
 
       {/* Gregas líquidas do book */}
       <div className="grid grid-cols-2 md:grid-cols-6 gap-2">
@@ -647,7 +564,71 @@ export default function PortfolioPage() {
       {/* WO-54 — VaR histórico com expected shortfall, ao lado da grade */}
       <PainelVarHistorico positions={positions} chainCache={chainCache} selic={selic} capitalTotal={capitalTotal} varGrade={risk?.var95 ?? null} />
 
-      {/* WO-17 Bloco C: Suíte de Gráficos e Riscos da Carteira */}
+      {/* WO-58 — o registro do que já aconteceu vem depois do risco de hoje */}
+      {/* WO-17 Bloco B: Analytics de Desempenho do Journal */}
+      <div id="journal" className="grid grid-cols-2 md:grid-cols-6 gap-2">
+        <Kpi
+          label="Profit Factor"
+          value={perf.profitFactor != null ? (isFinite(perf.profitFactor) ? fmtNum(perf.profitFactor, 2) : "∞") : "—"}
+          cls={perf.profitFactor != null && perf.profitFactor >= 1.5 ? "text-term-up" : perf.profitFactor != null && perf.profitFactor < 1.0 ? "text-term-down" : ""}
+        />
+        <Kpi
+          label="Expectancy (R$)"
+          value={perf.expectancyCash != null ? fmtBRL(perf.expectancyCash) : "—"}
+          cls={pnlColor(perf.expectancyCash ?? 0)}
+        />
+        <Kpi
+          label="Expectancy (R)"
+          value={perf.expectancyR != null ? `${perf.expectancyR > 0 ? "+" : ""}${perf.expectancyR.toFixed(2)}R` : "—"}
+          cls={perf.expectancyR != null && perf.expectancyR > 0 ? "text-term-up" : "text-term-down"}
+        />
+        <Kpi
+          label="Holding médio (V/P)"
+          value={perf.avgHoldingWins != null ? `${perf.avgHoldingWins.toFixed(0)}d / ${perf.avgHoldingLosses?.toFixed(0) ?? 0}d` : "—"}
+        />
+        <Kpi
+          label="Maior seq. (Gan/Perd)"
+          value={perf.totalClosedGroups > 0 ? `${perf.maxWinStreak} / ${perf.maxLossStreak}` : "—"}
+        />
+        <Kpi
+          label="Melhor / Pior Trade"
+          value={perf.bestTrade != null ? `${fmtBRL(perf.bestTrade, 0)} / ${fmtBRL(perf.worstTrade, 0)}` : "—"}
+        />
+      </div>
+
+      {/* WO-46 §E.3: apuração fiscal e leitura da amostra — os dois módulos que o WO-44
+          construiu e testou sem que nenhuma tela os consumisse.
+
+          A nota antiga aqui recomendava 20 operações para a estatística ser conclusiva. O método
+          pede centenas, e o painel abaixo diz isso com o número e a margem de erro. Manter as duas
+          seria a plataforma se contradizendo na mesma tela. */}
+      <PainelApuracao
+        fechadas={closed}
+        taxaAcerto={journal?.winRate ?? null}
+        payoff={journal?.payoffRatio ?? null}
+      />
+
+      {closed.length > 0 && (
+        <div className="panel">
+          <div className="panel-title">Curva de patrimônio — P&L realizado acumulado (semente: capital total)</div>
+          <div className="h-48 px-2 pb-2">
+            <ResponsiveContainer width="100%" height="100%">
+              <LineChart data={curve} margin={{ top: 5, right: 10, bottom: 5, left: 5 }}>
+                <CartesianGrid stroke="#232a38" strokeDasharray="2 4" />
+                <XAxis dataKey="date" tick={{ fontSize: 9, fill: "#6b7689" }} minTickGap={40} />
+                <YAxis tick={{ fontSize: 9, fill: "#6b7689" }} width={64} domain={["auto", "auto"]} tickFormatter={(v: number) => fmtBRL(v, 0)} />
+                <Tooltip
+                  contentStyle={{ background: "#151922", border: "1px solid #232a38", fontSize: 11 }}
+                  formatter={(v: number) => fmtBRL(v)}
+                />
+                <Line type="stepAfter" dataKey="equity" name="Patrimônio" stroke="#22d3ee" dot={false} strokeWidth={1.5} />
+              </LineChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+      )}
+
+      {/* WO-17 Bloco C: Suíte de Gráficos e Riscos do Portfolio */}
       <PerformanceCharts
         positions={positions}
         closed={closed}

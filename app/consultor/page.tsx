@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useState, useRef } from "react";
 import { Bot, RefreshCw, ShieldAlert, Zap, Search, AlertTriangle, AlertCircle, FileText, Trello, XCircle } from "lucide-react";
 import clsx from "clsx";
@@ -17,7 +18,6 @@ import { useWatchlist } from "@/lib/sector-dashboard";
 import { sessionInfo } from "@/lib/session";
 import { netGreeks } from "@/lib/portfolio";
 import { fmtDateBR } from "@/lib/format";
-import { FichasEstruturas } from "@/components/FichasEstruturas";
 
 // Gráficos do WO-26 (D.1)
 import { RiskTargetChart } from "@/components/agents/RiskTargetChart";
@@ -474,8 +474,11 @@ export default function ConsultorPage() {
 
       {activeTab === "relatorio" && (
         <div className="flex flex-col space-y-4">
-          {/* WO-55 — a tela da manhã: cada estrutura com as três perguntas respondidas, sem agente */}
-          <FichasEstruturas />
+          {/* WO-55 / WO-58 — as fichas por estrutura mudaram para o Portfolio, onde se age. */}
+          <div className="border border-neutral-800 bg-neutral-900/50 rounded px-4 py-2 text-xs text-neutral-400">
+            Os vereditos por estrutura (realizar, rolar, zerar, regime virou, manter) estão no{" "}
+            <Link href="/portfolio#fichas" className="text-term-cyan">Portfolio (3) →</Link>
+          </div>
 
           {/* WO-55 — relatórios anteriores e o que mudou */}
           {(historico.length > 0 || salvoId != null) && (

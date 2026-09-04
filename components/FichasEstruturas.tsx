@@ -1,11 +1,11 @@
 "use client";
 
 /**
- * WO-55 — as fichas por estrutura no Consultor: a tela da manhã do método, sem agente e sem LLM.
+ * WO-55 — as fichas por estrutura: a tela da manhã do método, sem agente e sem LLM.
+ * WO-58 — mudaram do Consultor para o Portfolio: é onde se age (Fechar/Rolar mandam rascunho).
  */
 
 import { useEffect, useMemo, useState } from "react";
-import Link from "next/link";
 import { Layers, CheckCircle2, AlertTriangle, RefreshCw, XCircle, Eye, HelpCircle } from "lucide-react";
 import clsx from "clsx";
 import { markInfo, useMarket } from "@/store/market";
@@ -81,7 +81,6 @@ export function FichasEstruturas() {
         <span className={clsx("tag", acao > 0 ? "bg-term-gold/15 text-term-gold" : "bg-term-panel2 text-term-dim")}>
           {fichas.length} estrutura(s) · {acao} pede(m) ação
         </span>
-        <Link href="/portfolio#acao-do-dia" className="text-xxs text-term-cyan ml-auto">agir na Carteira →</Link>
       </div>
       <div className="px-3 pb-3 grid grid-cols-1 lg:grid-cols-2 gap-2">
         {fichas.map((f) => {

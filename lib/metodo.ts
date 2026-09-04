@@ -199,6 +199,14 @@ export const DU_ROLAR = 10;
 /** Faltando 5 du: fecha a estrutura inteira. */
 export const DU_FECHAR = 5;
 
+/**
+ * WO-58 — concentração do risco (Portfolio, alocação). Um corte (setor, vencimento, tipo de
+ * estrutura, comprado × vendido) que concentre MAIS DA METADE do prêmio em risco recebe o rótulo
+ * "concentração". É proposta, não dogma do método: os limites que valem são os de config_limites.
+ * A tela declara a regra ao lado do número.
+ */
+export const CONCENTRACAO_ALERTA = 0.5;
+
 /* ==========================================================================
  * Universo
  * ========================================================================== */
