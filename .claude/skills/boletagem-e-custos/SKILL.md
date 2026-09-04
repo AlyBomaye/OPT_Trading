@@ -1,6 +1,6 @@
 ---
 name: boletagem-e-custos
-description: Boletagem (ledger append-only de boletas no Postgres), custos oficiais XP/B3 (corretagem, emolumentos, liquidação, registro, taxa operacional, ISS/PIS/COFINS), zeragem a custo zero, regras fiscais de opções e ações (15%, isenção de R$ 20 mil só para ações à vista, IRRF 0,005%), exercício/vencimento e exportação Excel para esta plataforma (lib/boletas.ts, lib/boleta-calculos.ts, lib/custos-sugeridos.ts, lib/zeragem.ts, lib/fiscal.ts, db/002_boletagem.sql). Use sempre que o pedido tocar em Carteira, "Boletar", boleta, estorno/ajuste, preço médio, caixa, aporte/retirada, custos, corretagem, emolumentos, IR/DARF, apuração mensal, exercício, vencimento, migração do navegador para o banco ou exportação de operações.
+description: Boletagem (ledger append-only de boletas no Postgres), custos oficiais XP/B3 (corretagem, emolumentos, liquidação, registro, taxa operacional, ISS/PIS/COFINS), zeragem a custo zero, regras fiscais de opções e ações (15%, isenção de R$ 20 mil só para ações à vista, IRRF 0,005%), exercício/vencimento, o RASCUNHO de boleta (WO-58: a estrutura esperando a execução no Profit; lib/rascunhos.ts, db/006_rascunhos.sql, /api/rascunhos) e exportação Excel para esta plataforma (lib/boletas.ts, lib/boleta-calculos.ts, lib/custos-sugeridos.ts, lib/zeragem.ts, lib/fiscal.ts, db/002_boletagem.sql). Use sempre que o pedido tocar em Portfolio, Boletagem, rascunho, slippage, "Boletar", boleta, estorno/ajuste, preço médio, caixa, aporte/retirada, custos, corretagem, emolumentos, IR/DARF, apuração mensal, exercício, vencimento, migração do navegador para o banco ou exportação de operações.
 ---
 
 # Boletagem e custos — o livro é a verdade, e a verdade é líquida de tudo
@@ -11,6 +11,30 @@ porque o trader precisa reconstruir qualquer número a partir do que realmente a
 corretora, com os custos reais, para a apuração fiscal e para saber se o método está dando
 resultado. Esta skill protege esses invariantes e traz a tabela de custos e as regras fiscais
 que o trader validou contra o material oficial da XP.
+
+## 0. A porta única e o rascunho (WO-58)
+
+A execução acontece **no Profit**, não aqui. A plataforma decide (Estratégia, Portfolio) e
+registra (Boletagem, aba 4). Entre montar e registrar existe o **rascunho** (`rascunho_boleta`,
+`lib/rascunhos.ts`): as pernas com o preço da MONTAGEM e a fonte (`mid`, `ultimo`, `marcacao`,
+`manual`) e `precoExecucao: null` — o preço real só existe depois do Profit e o rascunho não finge
+que sabe. Regras que valem para qualquer código novo:
+
+- **Nenhuma boleta nasce fora da Boletagem.** Estratégia ("Boletar"), Portfolio (Fechar, Rolar,
+  encerrar perna) só criam rascunho (`criarRascunhoRemoto` → `POST /api/rascunhos`) e navegam para
+  `/boletagem#rascunho-{id}`. O store do navegador não grava boleta. `POST /api/boletas/rolar` está
+  aposentada (410). As portas legítimas continuam na Boletagem: boleta manual, vencimentos
+  (evento da B3), migração.
+- **Confirmar é atômico.** `confirmarRascunho` roda `validarParaConfirmar` (perna sem preço, sem
+  hora, quantidade ≤ 0, vencimento passado, perna aberta inexistente ou quantidade a fechar acima
+  da aberta) e, se passa, `executarBoletasJuntas` + `UPDATE ... estado='confirmado'` no mesmo
+  `emTransacao`. Se o livro recusa uma perna, o rascunho continua pendente.
+- **Conversão em `paraEntradasBoleta`.** Abertura: a primeira perna cria a estrutura com o plano,
+  as demais `encadearEstrutura`. Rolagem: `papel: "fecha"` vira fechamento (motivo `vencimento`),
+  `papel: "abre"` vira abertura encadeada. Origem `estrategia`/`portfolio-*` vira `workbench`;
+  `manual` fica `manual`. Custos sobrescritos por perna viajam; ausentes, a tabela vigente calcula.
+- **Slippage com o sinal do operador** (`slippage`): pagar mais numa compra é negativo; receber
+  mais numa venda é positivo. Total em R$ e % do prêmio de montagem.
 
 ## 1. Invariantes do livro (não quebre nenhum)
 
@@ -120,9 +144,12 @@ brasileiro lê; não converta para serial.
 
 ## 7. Como boletar uma posição real (roteiro)
 
+0. O caminho normal (WO-58): monta na Estratégia → Boletar (três perguntas) → rascunho na
+   Boletagem → executa no Profit → digita preço, quantidade e hora por perna → Confirmar. Fechar e
+   rolar saem do Portfolio pelo mesmo caminho. Só sem estrutura montada é que a boleta manual entra.
 1. Peça ao trader a nota: instrumento (código B3), lado, quantidade, preço, data/hora de
    execução, custos reais se já souber (senão a tabela vigente estima e ele confirma).
-2. Use `FormularioBoleta` (hotkey `B`) ou `POST /api/boletas` com `?simular=1` primeiro; mostre
+2. Use `FormularioBoleta` (hotkey `B`, na Boletagem) ou `POST /api/boletas` com `?simular=1` primeiro; mostre
    a prévia: caixa antes/depois, preço médio, custos decompostos, estrutura resultante.
 3. Confirme; grave; `sincronizarLivro`.
 4. Se a boleta estava errada, `ajuste` com `estorna_id` — nunca DELETE no banco.

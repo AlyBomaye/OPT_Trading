@@ -10,6 +10,7 @@ import {
   HOTKEYS_MANUAL,
   DADOS_LIMITACOES,
   PLATAFORMA_COMO_SERVICO,
+  PORTFOLIO_E_BOLETAGEM,
   MAPA_INFORMACOES,
   GLOSSARIO,
   type Termo,
@@ -236,6 +237,27 @@ export default function ManualPage() {
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs">
                 {PLATAFORMA_COMO_SERVICO.map((item, idx) => (
+                  <div key={idx} className="p-3 rounded bg-term-panel2/40 border border-term-line/40 space-y-1">
+                    <div className="font-mono font-bold text-term-cyan">{item.titulo}</div>
+                    <p className="text-term-dim text-xxs leading-relaxed">{item.texto}</p>
+                  </div>
+                ))}
+              </div>
+            </section>
+          )}
+
+          {!isFiltering && (
+            <section id="guia-portfolio-boletagem" className="panel p-4">
+              <div className="panel-title flex items-center gap-2 mb-3 text-term-cyan border-b border-term-line pb-2">
+                <ArrowRight size={16} />
+                <span>7. Portfolio e Boletagem: decidir, executar, registrar (WO-58)</span>
+              </div>
+              <p className="text-xxs text-term-dim mb-3 leading-relaxed">
+                A execução das ordens acontece no Profit. A plataforma decide (Estratégia, Portfolio) e registra (Boletagem). Entre uma coisa e outra há minutos ou horas, e o preço da
+                montagem raramente é o da execução — por isso existe o rascunho.
+              </p>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs">
+                {PORTFOLIO_E_BOLETAGEM.map((item, idx) => (
                   <div key={idx} className="p-3 rounded bg-term-panel2/40 border border-term-line/40 space-y-1">
                     <div className="font-mono font-bold text-term-cyan">{item.titulo}</div>
                     <p className="text-term-dim text-xxs leading-relaxed">{item.texto}</p>

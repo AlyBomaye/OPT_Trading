@@ -27,6 +27,8 @@ export const SECTIONS: Secao[] = [
   { id: "guia-telas", title: "3. O que cada tela responde" },
   { id: "guia-hotkeys", title: "4. Atalhos de Teclado" },
   { id: "guia-dados", title: "5. Proveniência, Dados e Limitações" },
+  { id: "guia-servico", title: "6. A Plataforma como Serviço" },
+  { id: "guia-portfolio-boletagem", title: "7. Portfolio e Boletagem: decidir, executar, registrar" },
   { id: "mapa-info", title: "Mapa de Informações (Onde Encontro X)" },
   { id: "glossario", title: "Glossário do Trader de Opções" },
 ];
@@ -141,6 +143,22 @@ export const PLATAFORMA_COMO_SERVICO = [
   { titulo: "Tarefas agendadas (prefixo OpcoesTerminal-)", texto: "Plataforma no logon; Sync dias úteis 18:30 (histórico de IV e GEX diário); Vigia no logon (residente); Backup dias úteis 19:00 (pg_dump no OneDrive, 30 últimos). npm run agendar instala; agendar:listar mostra a última execução de cada uma." },
   { titulo: "O vigia", texto: "Pergunta a GET /api/alertas de 5 em 5 minutos no pregão (15 na pré-abertura, 60 fechado, 6 h no fim de semana) e dispara notificação nativa do Windows para alertas urgentes e de atenção novos no dia. O servidor avalia com as mesmas funções da tela; o vigia não tem regra. Limite: usa os walls calculados do OI da B3 — o override manual do Cockpit e os dividendos cadastrados ficam no navegador." },
   { titulo: "Logs e estado", texto: "data/logs/ (producao-, vigia-, sync.log, backup.log) e data/run/ (PID, build, avisados do dia). Tudo fora do git." },
+];
+
+/**
+ * WO-58 — a separação entre decidir e registrar. A execução acontece no Profit; a plataforma
+ * decide (Estratégia, Portfolio) e registra (Boletagem). Entre uma coisa e outra, o rascunho.
+ */
+export const PORTFOLIO_E_BOLETAGEM = [
+  { titulo: "Uma porta só", texto: "Toda transação entra no livro pela Boletagem (4). A Estratégia e o Portfolio decidem e mandam a estrutura para lá como rascunho; o Profit executa; na Boletagem você digita o preço que saiu de verdade e confirma. Nenhuma boleta nasce em outra aba — nem o store do navegador grava." },
+  { titulo: "O rascunho", texto: "A estrutura esperando a execução. Nasce com o preço da MONTAGEM (e a fonte: mid, último, marcação ou manual) e SEM preço de execução — esse só existe depois do Profit. Vive no banco (tabela rascunho_boleta): sobrevive a recarregar, reiniciar e esperar dias. Origens: Estratégia (abertura), Portfolio · fechar, Portfolio · rolar, manual." },
+  { titulo: "Confirmar", texto: "Só habilita quando nada impede: toda perna com preço de execução e data/hora, quantidade positiva, vencimento não passado, e — no fechamento — a perna aberta ainda existe e a quantidade não excede a aberta. Os impedimentos ficam escritos ao lado do botão. Confirmar grava as N boletas e marca o rascunho confirmado no MESMO commit: ou tudo, ou nada." },
+  { titulo: "Slippage", texto: "Execução contra montagem, perna a perna e no total, do seu ponto de vista: pagar mais numa compra é negativo; receber mais numa venda é positivo. Em R$ e em % do prêmio de montagem. É o custo invisível que a tabela de custos não mostra." },
+  { titulo: "Boletar na Estratégia", texto: "Continua abrindo as três perguntas do método (a tese nasce onde a estrutura nasce). Ao confirmar, cria o rascunho e leva você à Boletagem. O plano viaja no rascunho e pode ser editado lá antes de confirmar." },
+  { titulo: "Fechar, rolar e encerrar no Portfolio", texto: "Fechar a estrutura pede o motivo (alvo, stop, tendência virou, rolagem/vencimento, manual) e cria um rascunho de fechamento com a marcação como referência. Rolar mostra a proposta (custo de fechar + abrir) e manda um rascunho único com as pernas que fecham e as que abrem. Encerrar uma perna avulsa também vira rascunho. A zeragem a custo zero continua no Portfolio: é análise, não transação." },
+  { titulo: "O que fica na Boletagem", texto: "Rascunhos pendentes, a boleta manual (B), os vencimentos que a B3 resolveu sozinha (exercício/pó — evento, não execução), a reconciliação com a nota de corretagem, a tabela de custos, a migração do navegador e as últimas boletas da fita (registrei? está lá)." },
+  { titulo: "O que fica no Portfolio", texto: "Ação do dia, as fichas por estrutura com o veredito, as estruturas, capital e baldes, limites, alocação e concentração (prêmio em risco por setor, vencimento, tipo de estrutura e comprado × vendido; regra declarada: mais da metade num só corte = concentração), correlação entre os papéis (séries de 6 meses alinhadas, mínimo 40 observações, VaR direcional somado × diversificado — só o delta), gregas, pernas, stress, VaR da grade e histórico, e por último o registro: journal, apuração fiscal, curva de patrimônio, gráficos, arquivo de IV, encerradas." },
+  { titulo: "Fora de escopo (por decisão)", texto: "Importar arquivo ou colar relatório do Profit; lançar execuções parciais uma a uma (o preço médio é digitado por perna); automação da tela da corretora." },
 ];
 
 export const DADOS_LIMITACOES = [

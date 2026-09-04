@@ -5916,6 +5916,20 @@ Líquido para 04/09/2026 5.134,69 D`;
     const paresOk = pares.length === 1 && pares[0].relacao === "concentracao" && paresOp[0].relacao === "hedge" && paresRelevantes(mInv, { A: 1000, I: -500 })[0].relacao === "concentracao";
     if (fecha && fonteOk && concOk && conc2 && corrOk && varOk && paresOk) console.log("✔ WO-58 Teste 4: alocação fecha 100% em cada corte, venda seca usa o VaR da grade e diz a fonte, sem medida fica fora, concentração só acima da metade; correlação alinhada por data (ρ=1 idênticas, −1 opostas, null abaixo do mínimo), VaR diversificado ≤ somado (igual com ρ=1 e mesmo lado; |w_aσ_a − w_bσ_b| com lados opostos); pares marcados como concentração ou hedge pelo sinal");
     else { console.log(`✘ WO-58 Teste 4 falhou: fecha=${fecha} fonte=${fonteOk} conc=${concOk} conc2=${conc2} corr=${corrOk} var=${varOk} pares=${paresOk}`); failures++; }
+
+    // ---- Teste 5: Manual, skills e a memória da plataforma acompanham a mudança
+    const { RESUMO_TELAS: RT58, HOTKEYS_MANUAL: HK58, PORTFOLIO_E_BOLETAGEM } = await import("../manual-content");
+    const nove = RT58.length === 9 && RT58.map((r) => r.modulo).join("|") === "1. Consultor|2. Cockpit|3. Portfolio|4. Boletagem|5. Notícias|6. Macro|7. Scanner|8. Estratégia|9. Manual";
+    const textoManual = JSON.stringify(PORTFOLIO_E_BOLETAGEM) + JSON.stringify(RT58);
+    const manualFala = /rascunho/i.test(textoManual) && /Profit/.test(textoManual) && /slippage/i.test(textoManual) && HK58.find((h) => h.atalho === "B")?.descricao.includes("Boletagem") === true
+      && /PORTFOLIO_E_BOLETAGEM/.test(ler2("app/manual/page.tsx")) && /guia-portfolio-boletagem/.test(ler2("lib/manual-content.ts"));
+    const skillsOk = /rascunho/i.test(ler2(".claude/skills/boletagem-e-custos/SKILL.md")) && /porta única|porta unica/i.test(ler2(".claude/skills/boletagem-e-custos/SKILL.md"))
+      && /006_rascunhos/.test(ler2(".claude/skills/engenharia-da-plataforma/SKILL.md")) && /1\.\.9/.test(ler2(".claude/skills/engenharia-da-plataforma/SKILL.md"))
+      && /rascunho/.test(ler2(".claude/skills/README.md")) && /WO-58/.test(ler2("ANTIGRAVITY.md")) && /\/boletagem/.test(ler2("ANTIGRAVITY.md"));
+    const redirectOk = /source: "\/carteira", destination: "\/portfolio"/.test(ler2("next.config.mjs"));
+    const semCarteiraLink = !/["'`(]\/carteira(?:[#?"'`)]|$)/m.test(["lib/agents/deeplinks.ts", "lib/agents/registry.ts", "lib/alertas.ts", "components/agents/GestorDock.tsx", "app/page.tsx", "app/consultor/page.tsx", "components/Nav.tsx"].map(ler2).join("\n"));
+    if (nove && manualFala && skillsOk && redirectOk && semCarteiraLink) console.log("✔ WO-58 Teste 5: Manual com nove abas e a seção 7 (rascunho, Profit, slippage); skills e README atualizados; ANTIGRAVITY com o estado atual; /carteira redireciona e nenhum link do código aponta para ela");
+    else { console.log(`✘ WO-58 Teste 5 falhou: nove=${nove} manual=${manualFala} skills=${skillsOk} redirect=${redirectOk} semCarteira=${semCarteiraLink}`); failures++; }
   }
 
 }

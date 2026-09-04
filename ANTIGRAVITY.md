@@ -37,6 +37,18 @@ Scanner (4) ─────────── descoberta de convexidade barata (
 Carteira (5) ─────────── book of record: posições multi-ticker, capital, journal, equity curve
 ```
 
+> **Estado atual da barra (WO-58, 04/09/2026) — a tecla é a posição:**
+> 1 Consultor `/consultor` · 2 Cockpit `/` · 3 **Portfolio** `/portfolio` (só gestão e análise:
+> fichas, estruturas, limites, alocação, correlação, VaR; nada é gravado) · 4 **Boletagem**
+> `/boletagem` (a única porta por onde uma transação entra no livro: rascunhos pendentes, boleta
+> manual, vencimentos, nota, custos, fita) · 5 Notícias · 6 Macro · 7 Scanner · 8 Estratégia ·
+> 9 Manual. `B` abre a Boletagem. `/carteira`, `/chain`, `/historico`, `/watchlist` redirecionam.
+> A execução acontece no Profit (Nelogica): "Boletar" na Estratégia e Fechar/Rolar no Portfolio
+> criam um **rascunho** (`rascunho_boleta`, `lib/rascunhos.ts`, `/api/rascunhos`) com o preço da
+> montagem; a boleta nasce na Boletagem com o preço da execução, N pernas numa transação.
+> O diagrama acima e a seção 9 descrevem a plataforma como nasceu; o que mudou desde então está
+> nos `WO-NN-PROMPT.md` e no Manual (7. Portfolio e Boletagem).
+
 **Princípios de produto (herdados do dossiê de auditoria — não violar):**
 
 1. **Rigor numérico é o produto.** Convenções de contagem de dias e anualização são fixas
@@ -610,7 +622,7 @@ Comportamentos-chave:
 - Kelly amarrado ao bankroll: `alocação sugerida = min(¼-Kelly × capital livre, custo da
   estrutura)`; custo = débito, ou |máx perda| em crédito. Banner vermelho quando excede;
   gate "NO EDGE — DO NOT TRADE" quando journal ≥ 20 trades tem Kelly realizado ≤ 0.
-- "Boletar" grava as pernas na Carteira congelando `entryGreeks` (antes chamava-se "Abrir posição").
+- "Boletar" abre as três perguntas do método e cria um RASCUNHO na Boletagem (WO-58) com o preço da montagem e `gregasEntrada`; a boleta nasce lá, com o preço da execução (antes gravava direto; antes disso chamava-se "Abrir posição").
 - **WO-16 Painel de Histórico (`PriceHistoryPanel`)**: colapsável com `ComposedChart` Recharts
   (linha de fechamento ciana + barras de volume), botões de range (3M | 6M | 1A), estado
   persistido em `localStorage` (`wb-history-open`), HV21, IV ATM live e spread IV−HV21, e **linhas
@@ -627,7 +639,7 @@ Filtros editáveis dos pozinhos + tabela ranqueada por Δ/R$ (com setor por tick
 painel de **alocação por setor** vs. orçamento ¼-Kelly (fração do journal quando n≥20,
 senão 10% conservador — rotulado) para evitar concentração correlacionada.
 
-### 9.5 Carteira (`/carteira`, hotkey 5)
+### 9.5 Carteira (`/carteira`, hotkey 5) — hoje **Portfolio** (`/portfolio`, tecla 3) + **Boletagem** (`/boletagem`, tecla 4), ver nota no §1
 
 Book of record: KPIs de capital (total editável, alocado com haircut, caixa livre, win
 rate, payoff ratio, Kelly realizado) + gate NO EDGE + **curva de patrimônio** (stepAfter,

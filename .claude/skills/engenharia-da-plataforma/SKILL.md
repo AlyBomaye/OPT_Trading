@@ -45,7 +45,11 @@ e diga no commit. Se a quebra não for intencional, o teste venceu.
   nunca aparece em log. Ao inspecionar `.env.local`, confira estrutura (nomes de chaves,
   bytes), nunca imprima valores.
 - Migrações em `db/00N_*.sql`, idempotentes (`IF NOT EXISTS`, blocos `DO $` guardados).
-  `garantirSchema` aplica sob demanda com promessa compartilhada.
+  `garantirSchema` aplica sob demanda com promessa compartilhada. A última é `006_rascunhos.sql`
+  (`rascunho_boleta`, WO-58), aplicada por `garantirSchemaRascunhos` depois da 002.
+- Rotas do livro: `GET/POST /api/boletas` (a fita e a boleta manual), `GET/POST /api/rascunhos` e
+  `GET/PATCH/POST?acao=confirmar|descartar /api/rascunhos/[id]` (o rascunho). `/api/boletas/rolar`
+  responde 410. Nenhuma tela grava boleta fora da Boletagem (Teste WO-58 3 faz o grep).
 - `pg` devolve `DATE` como `Date` JS → `dataIso()` antes de serializar.
 - Scripts PowerShell: sem BOM (`WriteAllLines` UTF8 sem BOM), `@()` para listas, `\gexec` em vez
   de interpolação `:'v'` dentro de `$`.
@@ -65,7 +69,11 @@ e diga no commit. Se a quebra não for intencional, o teste venceu.
 - Estado de UI por seção em `localStorage` via `usePersistedState` (chaves nomeadas pela seção,
   ex.: `wb-chain-open`, `nav-recolhida` — nunca por número de aba, porque abas mudam de
   posição). Leitura só depois de `useHidratado()` para não divergir do SSR.
-- Hotkeys seguem a **posição** na barra lateral (1..8), `B` Boletar, `[` recolher, `?` ajuda.
+- Hotkeys seguem a **posição** na barra lateral (1..9: Consultor, Cockpit, Portfolio, Boletagem,
+  Notícias, Macro, Scanner, Estratégia, Manual), `B` abre a Boletagem, `[` recolher, `?` ajuda.
+  `/carteira` redireciona para `/portfolio` (WO-58); as âncoras `#acao-do-dia`, `#capital`,
+  `#journal`, `#greeks`, `#risk-profile` continuam, e `#fichas`, `#estruturas`, `#alocacao`,
+  `#correlacao` são novas. Na Boletagem: `#rascunhos`, `#rascunho-{id}`, `#boleta`, `#ultimas-boletas`.
 
 ## 6. Convenções numéricas (resumo; detalhe nas skills de domínio)
 
