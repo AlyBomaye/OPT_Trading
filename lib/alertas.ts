@@ -84,7 +84,7 @@ export function avaliarAlertas(e: EntradaAlertas): Alerta[] {
       severidade: f.severity === "urgente" ? "urgente" : "atencao",
       titulo: `${f.ticker}: ${rotuloFlag(f.kind)}`,
       detalhe: `${f.detalhe} → ${f.acao}`,
-      deepLink: "/carteira#acao-do-dia",
+      deepLink: "/portfolio#acao-do-dia",
     });
   }
 

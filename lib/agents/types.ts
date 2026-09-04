@@ -21,7 +21,7 @@ export interface Achado {
   exemplo?: string;                    // 1–3 frases, pt-BR
   severidade: Severidade;
   evidencias: Evidencia[];            // NUNCA vazio
-  deepLink?: string;                  // "/carteira#flags"
+  deepLink?: string;                  // "/portfolio#flags"
 }
 
 export interface Recomendacao {

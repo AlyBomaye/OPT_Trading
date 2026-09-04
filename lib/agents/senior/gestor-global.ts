@@ -220,15 +220,15 @@ ${destaquesText}
 
 ## 5. Sua carteira contra esse pano de fundo
 - **Alocação por Baldes de Risco (20/50/30):**
-  - **Balde ALTO (Pernas secas / Risco Ilimitado):** [${baldes.mix.alto}%](/carteira#risk-profile) (Alvo 20,0% · Desvio ${(baldes.desvio?.alto ?? 0) > 0 ? "+" : ""}${baldes.desvio?.alto ?? 0} pp)
-  - **Balde MÉDIO (Travas / Risco Definido):** [${baldes.mix.medio}%](/carteira#risk-profile) (Alvo 50,0% · Desvio ${(baldes.desvio?.medio ?? 0) > 0 ? "+" : ""}${baldes.desvio?.medio ?? 0} pp)
-  - **Balde BAIXO (Lançamento Coberto / Renda):** [${baldes.mix.baixo}%](/carteira#risk-profile) (Alvo 30,0% · Desvio ${(baldes.desvio?.baixo ?? 0) > 0 ? "+" : ""}${baldes.desvio?.baixo ?? 0} pp)
+  - **Balde ALTO (Pernas secas / Risco Ilimitado):** [${baldes.mix.alto}%](/portfolio#risk-profile) (Alvo 20,0% · Desvio ${(baldes.desvio?.alto ?? 0) > 0 ? "+" : ""}${baldes.desvio?.alto ?? 0} pp)
+  - **Balde MÉDIO (Travas / Risco Definido):** [${baldes.mix.medio}%](/portfolio#risk-profile) (Alvo 50,0% · Desvio ${(baldes.desvio?.medio ?? 0) > 0 ? "+" : ""}${baldes.desvio?.medio ?? 0} pp)
+  - **Balde BAIXO (Lançamento Coberto / Renda):** [${baldes.mix.baixo}%](/portfolio#risk-profile) (Alvo 30,0% · Desvio ${(baldes.desvio?.baixo ?? 0) > 0 ? "+" : ""}${baldes.desvio?.baixo ?? 0} pp)
 - **Status do Capital:** Capital total monitorado R$ ${cap.toLocaleString("pt-BR")}. Utilização de margem sob parâmetros operacionais normais.
 
 ## 6. O que eu faria
 ${
   recomendacoesConsolidadas.length > 0
-    ? recomendacoesConsolidadas.map((rec, i) => `${i + 1}. **[${rec.risco}]** ${rec.acao} — *${rec.justificativa}* [Ir para a tela](${rec.deepLink ?? "/carteira"})`).join("\n")
+    ? recomendacoesConsolidadas.map((rec, i) => `${i + 1}. **[${rec.risco}]** ${rec.acao} — *${rec.justificativa}* [Ir para a tela](${rec.deepLink ?? "/portfolio"})`).join("\n")
     : "nenhuma ação recomendada hoje — book mantido dentro dos parâmetros de risco e alocação."
 }
 
@@ -271,7 +271,7 @@ export async function executarGestorGlobal(ctx: GestorGlobalInputContext): Promi
    7. O que observar
    8. Metodologia e limitações
    9. Termos que usei
-2. Links DEVEM ser estritamente relativos (ex: /chain#skew, /carteira#risk-profile). NUNCA use URLs absolutas como http://localhost.
+2. Links DEVEM ser estritamente relativos (ex: /chain#skew, /portfolio#risk-profile). NUNCA use URLs absolutas como http://localhost.
 3. Analise o universo de 20 nomes organizados por setor (Oil&Gas, Mineração, Bancos, Varejo, Utilidades, Siderurgia, Frigoríficos). Cite apenas tickers do UNIVERSE.
 4. Todo número deve vir acompanhado de janela e fonte em parênteses (ex: IV ATM 29,1% (fechamento 29/07, engine local)).
 5. Em 'O que eu faria', se não houver recomendações, escreva 'nenhuma ação recomendada hoje'. Proibido emitir recomendações com jargão de engenharia.

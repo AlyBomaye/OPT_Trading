@@ -81,7 +81,7 @@ export function FichasEstruturas() {
         <span className={clsx("tag", acao > 0 ? "bg-term-gold/15 text-term-gold" : "bg-term-panel2 text-term-dim")}>
           {fichas.length} estrutura(s) · {acao} pede(m) ação
         </span>
-        <Link href="/carteira#acao-do-dia" className="text-xxs text-term-cyan ml-auto">agir na Carteira →</Link>
+        <Link href="/portfolio#acao-do-dia" className="text-xxs text-term-cyan ml-auto">agir na Carteira →</Link>
       </div>
       <div className="px-3 pb-3 grid grid-cols-1 lg:grid-cols-2 gap-2">
         {fichas.map((f) => {

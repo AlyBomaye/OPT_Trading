@@ -29,9 +29,9 @@ function respostaDeterministica(
     const cap = carteiraCtx?.capitalTotal ?? 100000;
     const baldes = alocacaoPorBalde(positions, cap);
     parts.push(`**Alocação por baldes de risco:**`);
-    parts.push(`- ALTO: [${baldes.mix.alto.toFixed(1)}%](/carteira#risk-profile) (alvo 20%, desvio ${baldes.desvio ? (baldes.desvio.alto > 0 ? "+" : "") + baldes.desvio.alto + " pp" : "N/A"})`);
-    parts.push(`- MÉDIO: [${baldes.mix.medio.toFixed(1)}%](/carteira#risk-profile) (alvo 50%)`);
-    parts.push(`- BAIXO: [${baldes.mix.baixo.toFixed(1)}%](/carteira#risk-profile) (alvo 30%)`);
+    parts.push(`- ALTO: [${baldes.mix.alto.toFixed(1)}%](/portfolio#risk-profile) (alvo 20%, desvio ${baldes.desvio ? (baldes.desvio.alto > 0 ? "+" : "") + baldes.desvio.alto + " pp" : "N/A"})`);
+    parts.push(`- MÉDIO: [${baldes.mix.medio.toFixed(1)}%](/portfolio#risk-profile) (alvo 50%)`);
+    parts.push(`- BAIXO: [${baldes.mix.baixo.toFixed(1)}%](/portfolio#risk-profile) (alvo 30%)`);
     parts.push(`- Utilização do capital: ${baldes.utilizacaoCapitalPct.toFixed(1)}% · Caixa livre: R$ ${baldes.capitalLivre.toFixed(0)}`);
   }
 
@@ -40,8 +40,8 @@ function respostaDeterministica(
     const greeksReport = contextReports?.["carteira"];
     if (greeksReport?.metricas) {
       parts.push(`**Gregas do book:**`);
-      parts.push(`- [Delta](/carteira#greeks): ${greeksReport.metricas.deltaBook ?? "—"}`);
-      parts.push(`- [Theta](/carteira#greeks): ${greeksReport.metricas.thetaBook ?? "—"} R$/dia`);
+      parts.push(`- [Delta](/portfolio#greeks): ${greeksReport.metricas.deltaBook ?? "—"}`);
+      parts.push(`- [Theta](/portfolio#greeks): ${greeksReport.metricas.thetaBook ?? "—"} R$/dia`);
     } else {
       parts.push(`Gregas não disponíveis — execute o ciclo de agentes primeiro.`);
     }
@@ -51,7 +51,7 @@ function respostaDeterministica(
   if (/var|valor.?em.?risco/.test(msg)) {
     const carteiraRep = contextReports?.["carteira"];
     if (carteiraRep?.metricas?.var95) {
-      parts.push(`**[VaR 95% (1d)](/carteira#risk-profile):** R$ ${carteiraRep.metricas.var95}`);
+      parts.push(`**[VaR 95% (1d)](/portfolio#risk-profile):** R$ ${carteiraRep.metricas.var95}`);
     } else {
       parts.push(`VaR não calculado — carregue o chain e execute o ciclo.`);
     }

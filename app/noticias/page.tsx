@@ -547,7 +547,7 @@ export default function NoticiasPage() {
 
             {!chain ? (
               <div className="p-4 text-center text-xs text-term-dim border border-dashed border-term-line rounded">
-                Nenhum chain de opções carregado no terminal. Abra a <b>Estratégia (tecla 7), modo Cadeia</b>, e selecione um ativo para visualizar o radar de volatilidade por vencimento.
+                Nenhum chain de opções carregado no terminal. Abra a <b>Estratégia (tecla 8), modo Cadeia</b>, e selecione um ativo para visualizar o radar de volatilidade por vencimento.
               </div>
             ) : (
               <>

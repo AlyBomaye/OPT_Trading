@@ -4,11 +4,11 @@
  * conteúdo não renderizado, e o link falha sem avisar.
  */
 export const DEEP_LINKS = {
-  "carteira.flags": "/carteira#acao-do-dia",
-  "carteira.baldes": "/carteira#capital",
-  "carteira.journal": "/carteira#journal",
-  "carteira.greeks": "/carteira#greeks",
-  "carteira.risk": "/carteira#risk-profile",
+  "carteira.flags": "/portfolio#acao-do-dia",
+  "carteira.baldes": "/portfolio#capital",
+  "carteira.journal": "/portfolio#journal",
+  "carteira.greeks": "/portfolio#greeks",
+  "carteira.risk": "/portfolio#risk-profile",
   "chain.skew": "/estrategia?modo=cadeia#skew",
   "chain.termo": "/estrategia?modo=cadeia#estrutura-a-termo",
   "chain.smile": "/estrategia?modo=cadeia#smile",

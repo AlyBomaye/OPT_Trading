@@ -41,7 +41,7 @@ import { AgentPanel } from "@/components/AgentPanel";
 import { TruthBar } from "@/components/TruthBar";
 import { useSkewAtm } from "@/lib/hooks/useSkewAtm";
 
-export default function CarteiraPage() {
+export default function PortfolioPage() {
   const {
     chain,
     chainCache,
@@ -64,7 +64,7 @@ export default function CarteiraPage() {
     void sincronizarLivro();
   }, [sincronizarLivro]);
 
-  // A boleta: recolhível (chave por seção) e aberta pelo atalho B ou por /carteira#boleta.
+  // A boleta: recolhível (chave por seção) e aberta pelo atalho B ou por /boletagem#boleta.
   // WO-53: a boleta nasce recolhida — B (ou Aporte/Retirada, ou #boleta) abre.
   const [boletaAberta, setBoletaAberta] = usePersistedState<boolean>("carteira-boleta-open", false);
   const [focarBoleta, setFocarBoleta] = useState(false);
@@ -260,7 +260,7 @@ export default function CarteiraPage() {
       <TruthBar />
       <AgentPanel
         agentId="carteira"
-        title="Agente Especialista de Carteira"
+        title="Agente Especialista de Portfolio"
         agentContext={{
           ticker: chain?.ticker ?? null,
           selic,
@@ -589,7 +589,7 @@ export default function CarteiraPage() {
               {!rows.length && (
                 <tr>
                   <td colSpan={14} className="td text-term-dim py-3">
-                    Sem posições — monte uma estrutura na Estratégia (7) e clique em “Boletar”.
+                    Sem posições — monte uma estrutura na Estratégia (8), clique em “Boletar” e confirme na Boletagem (4).
                   </td>
                 </tr>
               )}

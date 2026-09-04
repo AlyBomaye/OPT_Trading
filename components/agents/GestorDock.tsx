@@ -14,7 +14,7 @@ interface ChatMessage {
 }
 
 const SUGGESTED_BY_ROUTE: Record<string, string[]> = {
-  "/carteira": ["Qual posição está fora do meu perfil de risco?", "Preciso rebalancear os baldes?", "Como está meu theta carry?"],
+  "/portfolio": ["Qual posição está fora do meu perfil de risco?", "Preciso rebalancear os baldes?", "Como está meu theta carry?"],
   "/scanner": ["Esse pozinho cabe no meu ¼-Kelly?", "Qual setor está mais barato em vol?", "Tem convexidade boa pra comprar?"],
   // WO-46: a Estratégia absorveu Chain e Histórico, então as perguntas das três se juntam aqui.
   "/estrategia": ["Essa estrutura tem EV positivo?", "Qual o risco máximo dessa operação?", "Esse skew justifica um backspread?", "Em que quantil está a vol atual?"],
@@ -28,7 +28,7 @@ const SUGGESTED_BY_ROUTE: Record<string, string[]> = {
 
 const ROUTE_LABELS: Record<string, string> = {
   "/": "Cockpit",
-  "/carteira": "Carteira",
+  "/portfolio": "Portfolio",
   "/noticias": "Notícias",
   "/macro": "Macro",
   "/scanner": "Scanner",
@@ -40,7 +40,7 @@ const ROUTE_LABELS: Record<string, string> = {
 function getAgentIdForRoute(path: string): string | null {
   const map: Record<string, string> = {
     "/": "cockpit",
-    "/carteira": "carteira",
+    "/portfolio": "carteira",
     "/noticias": "noticias",
     "/macro": "macro",
     "/scanner": "scanner",

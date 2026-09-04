@@ -24,6 +24,8 @@ const nextConfig = {
       { source: "/chain", destination: "/estrategia?modo=cadeia", permanent: true },
       { source: "/historico", destination: "/estrategia?modo=contexto", permanent: true },
       { source: "/watchlist", destination: "/", permanent: true },
+      // WO-58: a Carteira virou Portfolio (gestao e analise); a boletagem ganhou aba propria.
+      { source: "/carteira", destination: "/portfolio", permanent: true },
     ];
   },
 };

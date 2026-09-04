@@ -1183,7 +1183,7 @@ async function testesAssincronos(): Promise<void> {
   });
   const chatRes = await chatPOST(dummyReq);
   const chatJson = await chatRes.json();
-  if (chatJson.reply && chatJson.reply.includes("Alocação por baldes") && chatJson.reply.includes("/carteira#risk-profile")) {
+  if (chatJson.reply && chatJson.reply.includes("Alocação por baldes") && chatJson.reply.includes("/portfolio#risk-profile")) {
     console.log("✔ WO-26 Teste 33: Rota de chat determinístico respondeu pergunta de risco com dados e deep link");
   } else {
     console.log(`✘ WO-26 Teste 33 falhou: reply=${chatJson.reply}`);
@@ -1736,7 +1736,7 @@ async function testesWo30() {
   const usaAgeMinutes = /ageMin:\s*ageMinutes\(/.test(marcacaoSrc);
   const temAgePregoes = /agePregoes/.test(marcacaoSrc) && /markDate/.test(marcacaoSrc);
   const consumidores = [
-    fs.readFileSync(path.join(raiz, "app", "carteira", "page.tsx"), "utf-8"),
+    fs.readFileSync(path.join(raiz, "app", "portfolio", "page.tsx"), "utf-8"),
     fs.readFileSync(path.join(raiz, "lib", "position-flags.ts"), "utf-8"),
   ];
   const aindaUsaAgeMin = consumidores.some((s) => /mark\.ageMin\s*!=\s*null/.test(s));
@@ -2255,10 +2255,10 @@ async function testesAjustes0209() {
   // ---- Teste 1: as teclas seguem a posicao da barra, 1..8
   const srcNav = ler("components/Nav.tsx");
   const itens = Array.from(srcNav.matchAll(/\{ href: "([^"]+)", label: "([^"]+)", key: "([^"]+)"/g)).map((m) => ({ href: m[1], label: m[2], key: m[3] }));
-  const porPosicao = itens.length === 8 && itens.every((i, idx) => i.key === String(idx + 1));
-  const rodape = /<kbd>1<\/kbd>–<kbd>8<\/kbd> abas/.test(srcNav);
+  const porPosicao = itens.length === 9 && itens.every((i, idx) => i.key === String(idx + 1));
+  const rodape = /<kbd>1<\/kbd>–<kbd>9<\/kbd> abas/.test(srcNav);
   if (porPosicao && rodape) {
-    console.log("✔ AJ Teste 1: teclas 1..8 seguem a ordem da barra (Consultor 1 … Manual 8)");
+    console.log("✔ AJ Teste 1: teclas 1..9 seguem a ordem da barra (Consultor 1 … Manual 9)");
   } else {
     console.log(`✘ AJ Teste 1 falhou: ${itens.map((i) => `${i.label}=${i.key}`).join(" ")}, rodape=${rodape}`);
     failures++;
@@ -2269,11 +2269,11 @@ async function testesAjustes0209() {
   const hotkeys = Array.from(srcManual.matchAll(/\{ atalho: "([^"]+)", descricao: "([^"]+)"/g)).map((m) => [m[1], m[2]] as const);
   const mapa = new Map(hotkeys);
   const manualOk =
-    /Consultor/.test(mapa.get("1") ?? "") && /Cockpit/.test(mapa.get("2") ?? "") && /Carteira/.test(mapa.get("3") ?? "") &&
-    /Notícias/.test(mapa.get("4") ?? "") && /Macro/.test(mapa.get("5") ?? "") && /Scanner/.test(mapa.get("6") ?? "") &&
-    /Estratégia/.test(mapa.get("7") ?? "") && /Manual/.test(mapa.get("8") ?? "") && mapa.has("B") && mapa.has("[");
-  const semTeclaVelha = !/Hotkey [0-9]\)/.test(srcManual.replace(/tecla 7\)/g, "")) && !/Watchlist & Skew \(Hotkey/.test(srcManual);
-  const cockpitOk = /montar na Estratégia \(7\)/.test(ler("app/page.tsx"));
+    /Consultor/.test(mapa.get("1") ?? "") && /Cockpit/.test(mapa.get("2") ?? "") && /Portfolio/.test(mapa.get("3") ?? "") && /Boletagem/.test(mapa.get("4") ?? "") &&
+    /Notícias/.test(mapa.get("5") ?? "") && /Macro/.test(mapa.get("6") ?? "") && /Scanner/.test(mapa.get("7") ?? "") &&
+    /Estratégia/.test(mapa.get("8") ?? "") && /Manual/.test(mapa.get("9") ?? "") && mapa.has("B") && mapa.has("[");
+  const semTeclaVelha = !/Hotkey [0-9]\)/.test(srcManual.replace(/tecla 8\)/g, "")) && !/Watchlist & Skew \(Hotkey/.test(srcManual);
+  const cockpitOk = /montar na Estratégia \(8\)/.test(ler("app/page.tsx"));
   if (manualOk && semTeclaVelha && cockpitOk) {
     console.log("✔ AJ Teste 2: o Manual e o Cockpit citam as teclas novas; nenhuma referencia a 'Hotkey N' antiga sobrou");
   } else {
@@ -2376,7 +2376,7 @@ async function testesAjustes0209() {
   const temFallback = /export async function POST/.test(srcRota) && /planilhasDePosicoes\(corpo\.positions, corpo\.closed/.test(srcRota);
   const planilhas = ["Boletas", "Estruturas", "Pernas abertas", "Saídas (fiscal)", "Apuração DARF", "Caixa", "Tabela de custos", "Resumo"].every((n) => srcRota.includes(`nome: "${n}"`));
   const contentType = /spreadsheetml\.sheet/.test(srcRota);
-  const botao = /exportExcel/.test(ler("app/carteira/page.tsx")) && /\/api\/carteira\/excel/.test(ler("app/carteira/page.tsx"));
+  const botao = /exportExcel/.test(ler("app/portfolio/page.tsx")) && /\/api\/carteira\/excel/.test(ler("app/portfolio/page.tsx"));
   if (usaLivro && temFallback && planilhas && contentType && botao) {
     console.log("✔ AJ Teste 8: Excel com 8 planilhas (boletas, estruturas, pernas, saidas, DARF, caixa, custos, resumo), GET do livro e POST sem banco, botao na Carteira");
   } else {
@@ -2432,7 +2432,7 @@ async function testesAjustes0209() {
   }
 
   // ---- Teste 13: a Carteira reavalia sozinha as cadeias que faltam
-  const srcCartAJ = ler("app/carteira/page.tsx");
+  const srcCartAJ = ler("app/portfolio/page.tsx");
   if (/const tentados = useRef<Set<string>>\(new Set\(\)\);/.test(srcCartAJ) && /filter\(\(t\) => !chainCache\[t\] && !tentados\.current\.has\(t\)\)/.test(srcCartAJ)) {
     console.log("✔ AJ Teste 13: a Carteira busca a cadeia de cada ativo do book que ainda nao tem marcacao, uma vez por visita");
   } else {
@@ -2640,7 +2640,7 @@ async function testesWo48() {
   }
 
   // ---- Teste 15: chaves de localStorage novas sao por secao
-  const srcCart = ler("app/carteira/page.tsx");
+  const srcCart = ler("app/portfolio/page.tsx");
   if (/"carteira-boleta-open"/.test(srcCart) && !/carteira-boleta-\d/.test(srcCart)) {
     console.log("✔ WO-48 Teste 15: carteira-boleta-open existe e e nomeada por secao");
   } else {
@@ -2921,9 +2921,10 @@ async function testesWo46() {
 
   // ---- Teste 1: oito abas, na ordem acordada
   const abas = Array.from(srcNav.matchAll(/href: "([^"]*)", label: "([^"]*)"/g)).map((m) => m[2]);
-  const esperada = ["Consultor", "Cockpit", "Carteira", "Notícias", "Macro", "Scanner", "Estratégia", "Manual"];
-  if (abas.length === 8 && abas.every((a, i) => a === esperada[i])) {
-    console.log("✔ WO-46 Teste 1: 8 abas na ordem Consultor > Cockpit > Carteira > Noticias > Macro > Scanner > Estrategia > Manual");
+  // WO-58: Carteira -> Portfolio, e a Boletagem ao lado dela.
+  const esperada = ["Consultor", "Cockpit", "Portfolio", "Boletagem", "Notícias", "Macro", "Scanner", "Estratégia", "Manual"];
+  if (abas.length === 9 && abas.every((a, i) => a === esperada[i])) {
+    console.log("✔ WO-46 Teste 1: 9 abas na ordem Consultor > Cockpit > Portfolio > Boletagem > Noticias > Macro > Scanner > Estrategia > Manual");
   } else {
     console.log(`✘ WO-46 Teste 1 falhou: ${abas.join(" > ")}`);
     failures++;
@@ -3241,7 +3242,7 @@ async function testesWo46() {
   }
 
   // ---- Teste 23: fiscal e amostra chegaram a Carteira
-  const srcCart = ler("app/carteira/page.tsx");
+  const srcCart = ler("app/portfolio/page.tsx");
   const srcApur = ler("components/PainelApuracao.tsx");
   const montado = /<PainelApuracao/.test(srcCart);
   const usaOsDois = /apurarMeses\(/.test(srcApur) && /avaliarAmostra\(/.test(srcApur);
@@ -4576,11 +4577,11 @@ async function testesWo36() {
   const primeiro = itens[0];
   // 02/09/2026: as teclas passaram a seguir a posicao (1..8). O invariante agora e "tecla = posicao".
   const consultorKeepsC = itens.every((i, idx) => i.key === String(idx + 1));
-  const carteiraKeeps1 = itens.find((i) => i.href === "/carteira")?.key === "3";
-  const manualKeeps0 = itens.find((i) => i.href === "/manual")?.key === "8";
-  // WO-46: 11 abas viraram 8 (Watchlist, Chain e Historico foram absorvidas). As teclas das que
-  // sobraram nao mudaram — que e o invariante deste teste.
-  if (primeiro?.href === "/consultor" && consultorKeepsC && carteiraKeeps1 && manualKeeps0 && itens.length === 8) {
+  // WO-58: a Carteira virou Portfolio (3) e a Boletagem entrou em 4; o Manual foi para 9.
+  const carteiraKeeps1 = itens.find((i) => i.href === "/portfolio")?.key === "3" && itens.find((i) => i.href === "/boletagem")?.key === "4";
+  const manualKeeps0 = itens.find((i) => i.href === "/manual")?.key === "9";
+  // WO-46: 11 abas viraram 8; WO-58: 8 viraram 9. Tecla = posicao continua sendo o invariante.
+  if (primeiro?.href === "/consultor" && consultorKeepsC && carteiraKeeps1 && manualKeeps0 && itens.length === 9) {
     console.log("✔ WO-36 Teste 6: Consultor abre a barra; atalhos preservados (C, 1–0)");
   } else {
     console.log(`✘ WO-36 Teste 6 falhou: primeiro=${primeiro?.href}, C=${consultorKeepsC}, 1=${carteiraKeeps1}, 0=${manualKeeps0}, n=${itens.length}`);
@@ -4952,7 +4953,7 @@ async function testesWo34() {
 
   // ---- Teste 9: derivação de skew centralizada no hook
   // WO-46: app/chain/page.tsx virou components/PainelCadeia.tsx.
-  const paginas = ["app/carteira/page.tsx", "components/PainelCadeia.tsx", "app/estrategia/page.tsx", "app/page.tsx", "components/TickerBar.tsx"];
+  const paginas = ["app/portfolio/page.tsx", "components/PainelCadeia.tsx", "app/estrategia/page.tsx", "app/page.tsx", "components/TickerBar.tsx"];
   const aindaDuplica = paginas.filter((f) => /skewInfo\(chain/.test(ler(f)));
   if (aindaDuplica.length === 0) {
     console.log("✔ WO-34 Teste 9: skewInfo não é mais chamado direto nas páginas — tudo via useSkewAtm");
@@ -5159,7 +5160,7 @@ async function testesWo28Restaurados() {
     // ---- Teste 5: as três abas leem o mesmo caixa livre; a Estratégia decide líquido
     const srcEst = lerSrc("app/estrategia/page.tsx");
     const srcSc = lerSrc("app/scanner/page.tsx");
-    const srcCa = lerSrc("app/carteira/page.tsx");
+    const srcCa = lerSrc("app/portfolio/page.tsx");
     const t5 = /useLivro\(\)/.test(srcEst) && /useLivro\(\)/.test(srcSc) && /caixaLivreLib\(/.test(srcCa)
       && !/capitalTotal - allocatedCapital\(positions\)/.test(srcEst) && !/capitalTotal - allocatedCapital\(positions\)/.test(srcSc)
       && /strategyMetrics\(legs, chain\.spot, selic, atmIvStruct, custos\)/.test(srcEst)
@@ -5171,12 +5172,12 @@ async function testesWo28Restaurados() {
     // ---- Teste 6: Manual e Nav concordam; textos com atalhos antigos sumiram; Consultor usa netGreeks
     const srcNav = lerSrc("components/Nav.tsx");
     const itens = Array.from(srcNav.matchAll(/label: "([^"]+)", key: "(\d)"/g)).map((m) => ({ label: m[1], key: m[2] }));
-    const manualOk = itens.length === 8 && itens.every((it, i) => {
+    const manualOk = itens.length === 9 && itens.every((it, i) => {
       const hk = HOTKEYS_MANUAL.find((h) => h.atalho === it.key);
       return hk != null && hk.descricao.startsWith(it.label) && RESUMO_TELAS[i]?.modulo === `${it.key}. ${it.label}`;
     });
     const arquivos = ["app/consultor/page.tsx", "app/noticias/page.tsx", "app/manual/page.tsx", "components/PayoffChart.tsx", "components/PainelWatchlist.tsx", "lib/manual-content.ts"];
-    const velhos = /tecla 8|HOTKEY 9|Hotkey 3|atalho 8|tecla <kbd>2|Hotkey 8\./;
+    const velhos = /HOTKEY 9|Hotkey 3|atalho 8|tecla <kbd>2|Hotkey 8\./;
     const semVelhos = arquivos.every((a) => !velhos.test(lerSrc(a)));
     const srcCons = lerSrc("app/consultor/page.tsx");
     const consOk = /netGreeks\(positions, chain, selic\)/.test(srcCons) && !/pAny\.delta/.test(srcCons) && /chain\?\.dataEfetiva/.test(srcCons);
@@ -5234,7 +5235,7 @@ async function testesWo28Restaurados() {
     // ---- Teste 5: Contexto mostra a IV histórica no cone; Carteira tem o arquivo com migração
     const srcCtx = lerSrc("components/PainelContexto.tsx");
     const srcArq = lerSrc("components/ArquivoIv.tsx");
-    const srcCart = lerSrc("app/carteira/page.tsx");
+    const srcCart = lerSrc("app/portfolio/page.tsx");
     const t5 = /IV ATM · banco/.test(srcCtx) && /useSerieIv\(ticker\)/.test(srcCtx) && /resumoDistribuicao\(serieIv/.test(srcCtx)
       && /Levar para o banco/.test(srcArq) && /\/api\/iv-historico\/migrar/.test(srcArq) && /<ArquivoIv \/>/.test(srcCart) && !/exportIvHistory/.test(srcCart);
     if (t5) console.log("✔ WO-50 Teste 5: o cone do Contexto ganha a linha 'IV ATM · banco'; a Carteira usa ArquivoIv com 'Levar para o banco'");
@@ -5425,7 +5426,7 @@ async function testesWo28Restaurados() {
     else { console.log("✘ WO-53 Teste 4 falhou: transação composta, rota de rolagem ou schema de limites"); failures++; }
 
     // ---- Teste 5: a Carteira na ordem do método, com rolagem, zeragem por estrutura e limites
-    const srcCart = lerSrc("app/carteira/page.tsx");
+    const srcCart = lerSrc("app/portfolio/page.tsx");
     const srcPE = lerSrc("components/PainelEstruturas.tsx");
     const idx = (re: RegExp) => srcCart.search(re);
     const ordem = idx(/id="acao-do-dia"/) < idx(/<PainelEstruturas /) && idx(/<PainelEstruturas /) < idx(/id="capital"/) && idx(/id="capital"/) < idx(/<PainelLimites /) && idx(/<PainelLimites /) < idx(/id="boleta"/) && idx(/id="boleta"/) < idx(/<PainelVencimentos \/>/);
@@ -5542,7 +5543,7 @@ async function testesWo28Restaurados() {
     else { console.log(`✘ WO-54 Teste 4 falhou: ${JSON.stringify({ coerente: [coerente.ok, coerente.strikes.length], inflada: inflada.suspeitos, comProvento: comProvento.dividendoImplicito, corrigido: [corrigido.ok, corrigido.dividendoImplicito] })}`); failures++; }
 
     // ---- Teste 5: as telas — VaR histórico na Carteira, paridade no modo Cadeia, PoP no smile e β na Estratégia, interruptor na matriz
-    const t5 = /<PainelVarHistorico /.test(lerSrc("app/carteira/page.tsx")) && /<PainelParidade \/>/.test(lerSrc("components/PainelCadeia.tsx"))
+    const t5 = /<PainelVarHistorico /.test(lerSrc("app/portfolio/page.tsx")) && /<PainelParidade \/>/.test(lerSrc("components/PainelCadeia.tsx"))
       && /PoP no smile/.test(lerSrc("app/estrategia/page.tsx")) && /betaEstimado=\{betaEstimado\}/.test(lerSrc("app/estrategia/page.tsx"))
       && /vol acoplada/.test(lerSrc("components/SensitivityMatrix.tsx")) && /betaVol = 0/.test(lerSrc("lib/payoff.ts"))
       && /expected shortfall/i.test(lerSrc("components/PainelVarHistorico.tsx")) && /dividendo implícito/.test(lerSrc("components/PainelParidade.tsx"));
@@ -5696,7 +5697,7 @@ Líquido para 04/09/2026 5.134,69 D`;
     const srcStore = lerSrc("store/market.ts");
     const t5 = /COTAHIST_D/.test(srcRota) && /lerZip\(buf\)/.test(srcRota) && /pregaoAnterior/.test(srcRota) && /gravarCache\(`cotahist-/.test(srcRota)
       && /\/api\/cotahist\?data=/.test(srcStore) && /o\.mid = c\.mid/.test(srcStore) && srcStore.includes("o.opTicker.replace(/_" + String.fromCharCode(92) + "d{4}$/, " + '""' + ")") && /export function marcaDaSerie/.test(lerSrc("lib/marcacao.ts")) && /fonte,\n/.test(lerSrc("lib/marcacao.ts"))
-      && /mark\.fonte === "mid"/.test(lerSrc("app/carteira/page.tsx")) && /<ReconciliacaoNota \/>/.test(lerSrc("app/carteira/page.tsx"))
+      && /mark\.fonte === "mid"/.test(lerSrc("app/portfolio/page.tsx")) && /<ReconciliacaoNota \/>/.test(lerSrc("app/portfolio/page.tsx"))
       && /ofertas de fechamento/.test(lerSrc("components/OptionChain.tsx")) && /bid\?: number \| null/.test(lerSrc("lib/types.ts"));
     if (t5) console.log("✔ WO-56 Teste 5: /api/cotahist com cache e recuo de datas; o store junta bid/ask/mid à cadeia; Carteira marca MID e tem a reconciliação; a cadeia mostra a cobertura de ofertas");
     else { console.log("✘ WO-56 Teste 5 falhou: rota, store ou telas"); failures++; }
@@ -5831,6 +5832,22 @@ Líquido para 04/09/2026 5.134,69 D`;
 
     if (valOk && convOk && rolOk && slipOk && fechOk && rolRascOk) console.log("✔ WO-58 Teste 1: rascunho — validação recusa sem preço, vencido, acima da aberta e já confirmado; N pernas viram N boletas (estrutura criada e encadeada, custo sobrescrito viaja); slippage com o sinal do operador; fechamento inverte o lado; rolagem junta fecha + abre");
     else { console.log(`✘ WO-58 Teste 1 falhou: val=${valOk} conv=${convOk} rol=${rolOk} slip=${slipOk} fech=${fechOk} rolRasc=${rolRascOk}`); failures++; }
+
+    // ---- Teste 2: a Boletagem não analisa; a Nav tem nove abas na ordem decidida; B abre a Boletagem
+    const fs2 = await import("node:fs");
+    const path2 = await import("node:path");
+    const ler2 = (rel: string) => fs2.readFileSync(path2.join(process.cwd(), rel), "utf8");
+    const srcBol = ler2("app/boletagem/page.tsx");
+    const semAnalise = !/lib\/portfolio|lib\/var-historico|PainelLimites|PerformanceCharts|PainelAlocacao|PainelCorrelacao|FichasEstruturas/.test(srcBol)
+      && /PainelRascunhos/.test(srcBol) && /FormularioBoleta/.test(srcBol) && /PainelVencimentos/.test(srcBol) && /ReconciliacaoNota/.test(srcBol) && /PainelCustos/.test(srcBol) && /MigracaoLivro/.test(srcBol) && /UltimasBoletas/.test(srcBol);
+    const srcNav2 = ler2("components/Nav.tsx");
+    const ordem = Array.from(srcNav2.matchAll(/href: "([^"]+)", label: "([^"]+)", key: "(\d)"/g)).map((m) => `${m[3]}:${m[1]}`).join(" ");
+    const navOk = ordem === "1:/consultor 2:/ 3:/portfolio 4:/boletagem 5:/noticias 6:/macro 7:/scanner 8:/estrategia 9:/manual" && /router\.push\("\/boletagem#boleta"\)/.test(srcNav2) && !/\/carteira/.test(srcNav2);
+    const srcPR = ler2("components/PainelRascunhos.tsx");
+    const fichaOk = /validarParaConfirmar\(/.test(srcPR) && /slippageDoRascunho\(/.test(srcPR) && /disabled=\{impedimentos\.length > 0/.test(srcPR) && /acao=confirmar|confirmar\(r\.id\)/.test(srcPR) && /rascunho-\$\{r\.id\}/.test(srcPR);
+    const rotasOk = /export async function (GET|PATCH|POST)/.test(ler2("app/api/rascunhos/[id]/route.ts")) && /acao === "confirmar"/.test(ler2("app/api/rascunhos/[id]/route.ts")) && /executarBoletasJuntas\(c, paraEntradasBoleta\(r\)\)/.test(ler2("lib/rascunhos.ts")) && /FOR UPDATE/.test(ler2("lib/rascunhos.ts"));
+    if (semAnalise && navOk && fichaOk && rotasOk) console.log("✔ WO-58 Teste 2: a Boletagem só registra (sem análise); Nav com nove abas — Portfolio 3, Boletagem 4 — e B abre a Boletagem; a ficha valida com a lib e a confirmação grava boletas e rascunho no mesmo COMMIT");
+    else { console.log(`✘ WO-58 Teste 2 falhou: semAnalise=${semAnalise} nav=${navOk} (${ordem}) ficha=${fichaOk} rotas=${rotasOk}`); failures++; }
   }
 
 }

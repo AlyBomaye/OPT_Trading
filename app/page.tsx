@@ -151,7 +151,7 @@ function PreMarketPanel() {
                 <span className={pnlColor(greeks.thetaPerDay)}>{fmtBRL(greeks.thetaPerDay, 0)}</span>
               </div>
               <div className="text-xxs text-term-dim pt-0.5">
-                {positions.length} posição(ões) · <Link href="/carteira" className="text-term-cyan underline">ir para carteira →</Link>
+                {positions.length} posição(ões) · <Link href="/portfolio" className="text-term-cyan underline">ir para carteira →</Link>
               </div>
             </div>
           </div>
@@ -337,7 +337,7 @@ export default function CockpitPage() {
         {suggestion && (
           <div className="px-3 pb-3 text-xs text-term-dim">
             Estrutura favorecida: <b className="text-term-text">{suggestion.title}</b> — {suggestion.reason}{" "}
-            <Link href="/estrategia" className="text-term-cyan">montar na Estratégia (7) →</Link>
+            <Link href="/estrategia" className="text-term-cyan">montar na Estratégia (8) →</Link>
           </div>
         )}
         <div className="px-3 pb-2 text-xxs text-term-dim">
@@ -366,7 +366,7 @@ export default function CockpitPage() {
               title="Reavaliação em grade 3×3: spot {−1,645σ, 0, +1,645σ} × vol {−20%, 0, +30%}, com theta carry"
             />
             <div className="text-xxs text-term-dim pt-1">
-              {positions.length} posição(ões) aberta(s) · <Link href="/carteira" className="text-term-cyan">ver carteira →</Link>
+              {positions.length} posição(ões) aberta(s) · <Link href="/portfolio" className="text-term-cyan">ver carteira →</Link>
             </div>
           </div>
         </div>

@@ -40,19 +40,19 @@ function buildDeterministicLetter(
 
   const p2 = `### 2. Diagnóstico da carteira e baldes de risco\n\n${
     hasAlloc
-      ? `A carteira atual apresenta **[${alocacao.mix.alto.toFixed(1)}%](/carteira#risk-profile)** em Risco ALTO — pernas secas ou ilimitadas, alvo 20% —, **[${alocacao.mix.medio.toFixed(1)}%](/carteira#risk-profile)** em Risco MÉDIO — travas e estruturas compostas, alvo 50% — e **[${alocacao.mix.baixo.toFixed(1)}%](/carteira#risk-profile)** em Risco BAIXO — coberturas e renda fixa, alvo 30% —. A utilização do capital total é de ${alocacao.utilizacaoCapitalPct.toFixed(1)}%, com R$ ${alocacao.capitalLivre.toFixed(0)} em caixa livre.`
+      ? `A carteira atual apresenta **[${alocacao.mix.alto.toFixed(1)}%](/portfolio#risk-profile)** em Risco ALTO — pernas secas ou ilimitadas, alvo 20% —, **[${alocacao.mix.medio.toFixed(1)}%](/portfolio#risk-profile)** em Risco MÉDIO — travas e estruturas compostas, alvo 50% — e **[${alocacao.mix.baixo.toFixed(1)}%](/portfolio#risk-profile)** em Risco BAIXO — coberturas e renda fixa, alvo 30% —. A utilização do capital total é de ${alocacao.utilizacaoCapitalPct.toFixed(1)}%, com R$ ${alocacao.capitalLivre.toFixed(0)} em caixa livre.`
       : "A carteira atual **não possui capital alocado em posições de opções ativas** — a composição de risco por baldes (20/50/30) permanece zerada até o registro de operações."
   }`;
 
   const p3 = `### 3. Raciocínio por trás das ações recomendadas\n\n${
     recomendacoes.length > 0
-      ? recomendacoes.slice(0, 3).map((r, i) => `${i + 1}. **[${r.risco}]** ${r.acao} — *${r.justificativa}* [Ver na aba](${r.deepLink ?? "/carteira"})`).join("\n\n")
+      ? recomendacoes.slice(0, 3).map((r, i) => `${i + 1}. **[${r.risco}]** ${r.acao} — *${r.justificativa}* [Ver na aba](${r.deepLink ?? "/portfolio"})`).join("\n\n")
       : "Nenhuma ação recomendada hoje. O book e as métricas de exposição permanecem dentro dos parâmetros toleráveis de risco, de modo que a preservação de capital em caixa livre é a postura indicada."
   }`;
 
   const p4 = `### 4. O que observar e gatilhos de mudança\n\n${
     achados.length > 0
-      ? achados.slice(0, 4).map((a) => `- **[${a.severidade.toUpperCase()}]** [${a.titulo}](${a.deepLink ?? "/carteira"}): ${a.detalhe}`).join("\n\n")
+      ? achados.slice(0, 4).map((a) => `- **[${a.severidade.toUpperCase()}]** [${a.titulo}](${a.deepLink ?? "/portfolio"}): ${a.detalhe}`).join("\n\n")
       : "- Monitorar oscilações no Skew Ratio — assimetria entre opções de venda e compra\n- Acompanhar o radar de eventos econômicos e balanços de empresas\n- Observar o comportamento da volatilidade implícita frente à volatilidade histórica"
   }\n\n*Nota: Este relatório é gerado automaticamente como síntese dos relatórios dos agentes e possui caráter estritamente educacional.*`;
 

@@ -33,9 +33,9 @@ export const AGENTS: AgentDef[] = [
   },
   {
     id: "carteira",
-    nome: "Agente de Carteira",
+    nome: "Agente de Portfolio",
     camada: "aba",
-    aba: "/carteira",
+    aba: "/portfolio",
     role: "Portfolio manager sênior, PhD em finanças: gestão de carteira, timing de mercado e recomendação de posições. Explica cada conceito como se falasse com um trader júnior — define o termo antes de usá-lo.",
     motor: "regras",
     dependeDe: [],

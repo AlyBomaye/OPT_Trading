@@ -38,6 +38,10 @@ interface Props {
   lucroAlvoSugerido: number | null;
   onConfirmar: (d: DadosAbertura) => void;
   onCancelar: () => void;
+  /** WO-58: editar o plano de um rascunho já criado — começa com o que foi respondido. */
+  inicial?: { tese?: string; alvo?: number; regraSaida?: string };
+  /** WO-58: "Boletar" na Estratégia; "Guardar plano" na Boletagem. */
+  rotuloConfirmar?: string;
 }
 
 export function FormularioAbertura({
@@ -46,10 +50,12 @@ export function FormularioAbertura({
   lucroAlvoSugerido,
   onConfirmar,
   onCancelar,
+  inicial,
+  rotuloConfirmar = "Boletar",
 }: Props) {
-  const [tese, setTese] = useState("");
-  const [alvo, setAlvo] = useState("");
-  const [regraSaida, setRegraSaida] = useState("");
+  const [tese, setTese] = useState(inicial?.tese ?? "");
+  const [alvo, setAlvo] = useState(inicial?.alvo != null ? inicial.alvo.toFixed(2) : "");
+  const [regraSaida, setRegraSaida] = useState(inicial?.regraSaida ?? "");
   const [regime, setRegime] = useState<Regime | null>(null);
   const [tentou, setTentou] = useState(false);
 
@@ -167,7 +173,7 @@ export function FormularioAbertura({
 
         <div className="flex items-center gap-2 pt-1">
           <button className="btn btn-primary flex items-center gap-1" onClick={confirmar}>
-            <Save size={12} /> Boletar
+            <Save size={12} /> {rotuloConfirmar}
           </button>
           <button className="btn flex items-center gap-1 text-term-dim" onClick={onCancelar}>
             <X size={12} /> Cancelar

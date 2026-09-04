@@ -27,7 +27,7 @@ export async function POST(req: Request) {
     const regras = `1. Abra o relatório com o veredito em uma frase.
 2. Explique didaticamente todo termo técnico na primeira aparição entre travessões.
 3. Seções obrigatórias: Leitura do dia | Sua carteira hoje (tabela 20/50/30) | O que eu faria | O que observar | Termos que usei.
-4. Todo número DEVE virar um link markdown para a aba e âncora corretas (ex: [1,27](/chain#skew), [R$ 320/dia](/carteira#greeks)).
+4. Todo número DEVE virar um link markdown para a aba e âncora corretas (ex: [1,27](/chain#skew), [R$ 320/dia](/portfolio#greeks)).
 5. Proibido inventar números — utilize estritamente as métricas e achados dos reports.
 6. Termine com o disclaimer educacional.
 7. Se não houver recomendações de trading (array vazio), escreva exatamente "nenhuma ação recomendada hoje" na seção 'O que eu faria'.

@@ -45,17 +45,17 @@ export const ROTINA_PRE_MARKET = [
     detalhe: "Dashboard setorial, Mapa de Oportunidades, radar de eventos por vencimento e calendário macro (Copom/Fed, IPCA/CPI, payroll) — o que pode disparar volatilidade na sessão.",
   },
   {
-    passo: "4. Estratégia (tecla 7)",
+    passo: "4. Estratégia (tecla 8)",
     detalhe: "Cadeia recolhível no topo, pernas logo abaixo, preço e vol histórica, payoff e P&L da operação, critérios do método. O modo Contexto traz cone de vol, IV×HV e a marcação de tendência.",
   },
   {
-    passo: "5. Carteira (tecla 3, boleta com B)",
+    passo: "5. Boletagem (tecla 4, B) — e o Portfolio (tecla 3) para gerir",
     detalhe: "Bolete o que executou — abrir, aumentar, reduzir, fechar, caixa — e acompanhe por estrutura: % do lucro máximo, DU restantes, alvo, regime. Apuração mensal de DARF e exportação em Excel.",
   },
 ];
 
 export const PASSO_A_PASSO_WORKBENCH = [
-  "Na Estratégia (tecla 7), modo Montagem, selecione o vencimento na Cadeia — a linha recolhível no topo da tela.",
+  "Na Estratégia (tecla 8), modo Montagem, selecione o vencimento na Cadeia — a linha recolhível no topo da tela.",
   "Para montar uma Trava de Alta com Calls (Bull Call Spread): clique no botão C (Call) da opção ATM desejada para comprar (+1) e no botão V (Call) de um strike superior OTM para vender (-1).",
   "Confirme se o nome da estrutura detectada automaticamente nas pernas é 'Trava de Alta com Call'.",
   "Observe o mapa de strikes: setas ▲/▼ indicam direcionalidade, a zona verde destaca o intervalo de lucro e as linhas verticais mostram os breakevens.",
@@ -67,7 +67,7 @@ export const PASSO_A_PASSO_WORKBENCH = [
 ];
 
 export const RESUMO_TELAS = [
-  // WO-49: as oito abas, na ordem da barra lateral — a tecla é a posição. O Teste WO-49 6 confere
+  // WO-49/WO-58: as nove abas, na ordem da barra lateral — a tecla é a posição. O Teste WO-49 6 confere
   // esta lista contra a Nav; se a barra mudar, o Manual tem de mudar junto.
   {
     modulo: "1. Consultor",
@@ -80,32 +80,37 @@ export const RESUMO_TELAS = [
     resposta: "Leitura de pré-abertura, alertas do dia (walls, flip, skew e flags do book, com aviso do navegador — e pelo vigia, com tudo fechado; o vigia usa os walls calculados da B3, não o override manual), checklist pré-market por pregão, perfil de GEX por strike (posições em aberto da B3, com override manual e a variação desde ontem), Foco do dia, Watchlist do universo, choque do portfólio e pozinhos.",
   },
   {
-    modulo: "3. Carteira",
-    pergunta: "O que tenho aberto, o que o método manda fazer e quanto isso custa?",
-    resposta: "Ação do dia, estruturas (rolagem numa boleta composta, zeragem líquida por estrutura, fechamento), capital e limites de risco com vigência, boleta (B) e livro no banco, vencimentos pendentes, tabela de custos, apuração fiscal, reconciliação com a nota de corretagem, stress, VaR da grade e VaR histórico com expected shortfall, e exportação em Excel. Marcação pelo mid das ofertas de fechamento da B3 quando há bid e ask.",
+    modulo: "3. Portfolio",
+    pergunta: "O que tenho aberto, o que o método manda fazer, onde está concentrado o risco?",
+    resposta: "Só gestão e análise — nada é gravado aqui. Ação do dia, as fichas por estrutura (as três perguntas do método respondidas hoje, com veredito), estruturas (Fechar e Rolar mandam um rascunho para a Boletagem), capital e baldes, limites com vigência, alocação e concentração (por setor, vencimento, tipo de estrutura, comprado × vendido), correlação entre os papéis do book (VaR direcional somado × diversificado), gregas líquidas, pernas, stress, VaR da grade e VaR histórico, journal, apuração fiscal, curva de patrimônio, arquivo de IV e encerradas.",
   },
   {
-    modulo: "4. Notícias",
+    modulo: "4. Boletagem",
+    pergunta: "Como registro o que executei no Profit, com o preço que saiu de verdade?",
+    resposta: "A única porta por onde uma transação entra no livro. Rascunhos pendentes (a estrutura esperando a execução: preço da montagem só leitura, preço de execução, quantidade, hora e custos por perna, slippage com sinal, Confirmar só quando nada impede), boleta manual (B), vencimentos que a B3 resolveu, reconciliação com a nota de corretagem, tabela de custos, migração do navegador e as últimas boletas da fita.",
+  },
+  {
+    modulo: "5. Notícias",
     pergunta: "Onde está o calor do dia e quais eventos vão mexer na vol?",
     resposta: "Dashboard setorial, Mapa de Oportunidades do universo, radar de eventos por vencimento (macro, balanços, ex-dividendo), cobertura por ação e feed agregado com agenda de 45 dias.",
   },
   {
-    modulo: "5. Macro",
+    modulo: "6. Macro",
     pergunta: "O que o mundo fez enquanto a B3 estava fechada, e como isso chega aos meus papéis?",
     resposta: "Sessões globais, painéis de índices, futuros, VIX, moedas e commodities, Rates & FX (pré, Treasuries, cupom cambial, NTN-B, inflação), Boletim Focus e impacto por driver no universo.",
   },
   {
-    modulo: "6. Scanner",
+    modulo: "7. Scanner",
     pergunta: "O que o método montaria hoje, em qual papel e vencimento — e quanto custa líquido?",
     resposta: "Prateleira do método: para cada papel do universo e vencimento na janela de 20–40 DU, as estruturas do manual montadas, julgadas pelos critérios e precificadas líquidas de custos, com aderência ao regime marcado e à vol; abaixo, os pozinhos com o aviso do método.",
   },
   {
-    modulo: "7. Estratégia",
+    modulo: "8. Estratégia",
     pergunta: "Como montar, medir líquido de custos e Boletar uma estrutura?",
-    resposta: "Três modos: Montagem (cadeia recolhível, pernas, payoff, P&L da operação líquido de custos, semáforo do método, sensibilidade e a porta das 3 perguntas), Cadeia (grade completa, paridade put-call como qualidade, smile e estrutura a termo) e Contexto (tendência, vol realizada, IV×HV e cone).",
+    resposta: "Três modos: Montagem (cadeia recolhível, pernas, payoff, P&L da operação líquido de custos, semáforo do método, sensibilidade e a porta das 3 perguntas — Boletar cria um rascunho na Boletagem, com o preço da montagem; a boleta só nasce lá, com o preço da execução), Cadeia (grade completa, paridade put-call como qualidade, smile e estrutura a termo) e Contexto (tendência, vol realizada, IV×HV e cone).",
   },
   {
-    modulo: "8. Manual",
+    modulo: "9. Manual",
     pergunta: "Onde encontro cada informação e o que cada termo significa?",
     resposta: "Rotina pré-market, passo a passo da montagem, o que cada tela responde, atalhos, proveniência dos dados, mapa de informações e glossário.",
   },
@@ -114,13 +119,14 @@ export const RESUMO_TELAS = [
 export const HOTKEYS_MANUAL = [
   { atalho: "1", descricao: "Consultor — relatório consolidado dos agentes" },
   { atalho: "2", descricao: "Cockpit — GEX, Foco do dia, Watchlist, choque do book, pozinhos" },
-  { atalho: "3", descricao: "Carteira — estruturas, pernas, boleta, apuração fiscal" },
-  { atalho: "4", descricao: "Notícias — setorial, Mapa de Oportunidades, radar de eventos, feed" },
-  { atalho: "5", descricao: "Macro — sessões, painéis, Rates & FX, Focus, impacto no universo" },
-  { atalho: "6", descricao: "Scanner — prateleira do método e pozinhos" },
-  { atalho: "7", descricao: "Estratégia — montagem, cadeia completa e contexto de volatilidade" },
-  { atalho: "8", descricao: "Manual — este guia" },
-  { atalho: "B", descricao: "Abre a Carteira com a boleta focada, de qualquer aba" },
+  { atalho: "3", descricao: "Portfolio — gestão e análise: fichas, estruturas, limites, alocação, correlação, VaR" },
+  { atalho: "4", descricao: "Boletagem — rascunhos pendentes, boleta manual, vencimentos, nota, custos, fita" },
+  { atalho: "5", descricao: "Notícias — setorial, Mapa de Oportunidades, radar de eventos, feed" },
+  { atalho: "6", descricao: "Macro — sessões, painéis, Rates & FX, Focus, impacto no universo" },
+  { atalho: "7", descricao: "Scanner — prateleira do método e pozinhos" },
+  { atalho: "8", descricao: "Estratégia — montagem, cadeia completa e contexto de volatilidade" },
+  { atalho: "9", descricao: "Manual — este guia" },
+  { atalho: "B", descricao: "Abre a Boletagem com a boleta manual focada, de qualquer aba" },
   { atalho: "[", descricao: "Recolhe / expande a barra lateral" },
   { atalho: "G", descricao: "Abre o Gestor (chat com o agente da aba)" },
   { atalho: "R", descricao: "Força o refresh instantâneo do Chain de Opções (ignora cache de 60s)" },
@@ -169,15 +175,15 @@ export const MAPA_INFORMACOES: LinhaMapa[] = [
   { informacao: "Estrutura a Termo da Volatilidade", onde: "Chain de Opções", painel: "Aba 'Estrutura a Termo' no topo do Chain" },
   { informacao: "Smile de Volatilidade por Strike", onde: "Chain de Opções", painel: "Aba 'Vol Smile' no topo do Chain" },
   { informacao: "Pozinhos (opções OTM de alta convexidade)", onde: "Scanner / Cockpit", painel: "Tabela do Scanner de Pozinhos e Card 3 do Cockpit Matinal" },
-  { informacao: "Gregas líquidas do book (Δ, Γ, Vega, Θ)", onde: "Cockpit / Carteira", painel: "Card 1 do Cockpit e painel 'Net Greeks' na Carteira" },
+  { informacao: "Gregas líquidas do book (Δ, Γ, Vega, Θ)", onde: "Cockpit / Portfolio", painel: "Card 1 do Cockpit e gregas líquidas no Portfolio" },
   { informacao: "Gregas da estrutura em montagem", onde: "Estratégia (Workbench)", painel: "Painel de pernas e gregas combinadas à direita" },
-  { informacao: "VaR 95% 1d, Expected Shortfall (ES) e Estresse", onde: "Carteira / Cockpit", painel: "Painel 'Risco & VaR 95%' na Carteira e Card 1 do Cockpit" },
-  { informacao: "Capital alocado, disponível e dimensionamento ¼-Kelly", onde: "Carteira / Estratégia", painel: "Resumo financeiro na Carteira e sugestão de Kelly no Workbench" },
-  { informacao: "Win Rate, Payoff Ratio e Curva de Patrimônio", onde: "Carteira", painel: "Painel 'Journal & Estatísticas' e gráfico de Curva de Equity" },
+  { informacao: "VaR 95% 1d, Expected Shortfall (ES) e Estresse", onde: "Portfolio / Cockpit", painel: "Stress, VaR da grade e VaR histórico no Portfolio; Card 1 do Cockpit" },
+  { informacao: "Capital alocado, disponível e dimensionamento ¼-Kelly", onde: "Portfolio / Estratégia", painel: "Capital e baldes no Portfolio e sugestão de Kelly na Estratégia" },
+  { informacao: "Win Rate, Payoff Ratio e Curva de Patrimônio", onde: "Portfolio", painel: "Journal e curva de patrimônio no Portfolio" },
   { informacao: "Proventos (dividendos/JCP) e ex-dates", onde: "TickerBar / Chain", painel: "Engrenagem da TickerBar e chips 'DIV' nas opções do Chain" },
-  { informacao: "Alerta de risco de exercício antecipado (Americanas)", onde: "Carteira", painel: "Alerta visual destacado em posições ITM na Carteira" },
+  { informacao: "Alerta de risco de exercício antecipado (Americanas)", onde: "Portfolio", painel: "Alerta destacado nas pernas ITM do Portfolio" },
   { informacao: "Agenda econômica e notícias de mercado", onde: "Notícias & Macro", painel: "Painéis de Feed de Notícias e Calendário Macroeconômico" },
-  { informacao: "Reavaliação a mercado de posições do book", onde: "Carteira", painel: "Botão 'Reavaliar tudo' no painel de posições da Carteira" },
+  { informacao: "Reavaliação a mercado de posições do book", onde: "Portfolio", painel: "Botão 'Reavaliar tudo' nas pernas abertas do Portfolio" },
   { informacao: "Breakevens exatos da operação", onde: "Estratégia (Workbench)", painel: "Resumo de métricas no cabeçalho do Workbench" },
   { informacao: "Probabilidade de Lucro (PoP risco-neutra)", onde: "Estratégia (Workbench)", painel: "Resumo de métricas no cabeçalho do Workbench" },
   { informacao: "Distribuição Lognormal de probabilidades do spot", onde: "Estratégia (Workbench)", painel: "Gráfico de densidade Lognormal no Workbench" },
@@ -195,7 +201,7 @@ export const GLOSSARIO: Termo[] = [
   {
     termo: "Titular / Lançador",
     definicao: "Titular é quem COMPRA a opção: paga prêmio, tem risco limitado ao que pagou e direito — nunca obrigação. Lançador é quem VENDE: recebe prêmio, assume obrigação e precisa de margem; o ganho é limitado ao prêmio e a perda pode ser muito maior. O método começa pelo titular justamente porque o risco já vem travado pelo prêmio.",
-    ondeAparece: "Estratégia (Workbench), Carteira",
+    ondeAparece: "Estratégia (Workbench), Portfolio",
   },
   {
     termo: "Regime (alta / baixa / lateral)",
@@ -205,7 +211,7 @@ export const GLOSSARIO: Termo[] = [
   {
     termo: "As 3 perguntas",
     definicao: "O que o método exige responder ANTES de abrir qualquer operação: (1) qual é a tese? (2) qual é o alvo? (3) qual é a regra de saída? Na plataforma são três campos próprios da posição, não texto livre — porque uma tese que não cabe num campo normalmente não existe.",
-    ondeAparece: "Carteira (registro da posição)",
+    ondeAparece: "Estratégia (ao Boletar) e Boletagem (o plano viaja no rascunho)",
   },
   {
     termo: "Lei dos Grandes Números",
@@ -220,7 +226,7 @@ export const GLOSSARIO: Termo[] = [
   {
     termo: "Convexo / Côncavo",
     definicao: "Convexa é a estrutura cujo ganho cresce mais rápido que a perda: risco travado, retorno aberto — a compra a seco e as travas de débito. Côncava é o inverso: ganho limitado ao prêmio recebido e perda que pode ser muito maior — a venda a seco. O método prioriza convexidade enquanto a amostra do trader ainda é pequena.",
-    ondeAparece: "Estratégia (Workbench), Carteira",
+    ondeAparece: "Estratégia (Workbench), Portfolio",
   },
   {
     termo: "A seco",
@@ -240,22 +246,22 @@ export const GLOSSARIO: Termo[] = [
   {
     termo: "Δ Delta",
     definicao: "Exposição direcional da opção em ações equivalentes. Indica quanto o preço da opção varia em R$ para cada R$ 1,00 de movimentação no ativo objeto. O Delta Cash é calculado por Δ × Spot.",
-    ondeAparece: "Chain, Workbench, Cockpit, Carteira",
+    ondeAparece: "Chain, Workbench, Cockpit, Portfolio",
   },
   {
     termo: "Γ Gamma",
     definicao: "Taxa de variação do Delta para cada R$ 1,00 de deslocamento no preço do ativo objeto (∂Δ/∂S). Mede a aceleração da exposição direcional e o risco de movimentos bruscos.",
-    ondeAparece: "Chain, Workbench, Cockpit, Carteira",
+    ondeAparece: "Chain, Workbench, Cockpit, Portfolio",
   },
   {
     termo: "ν Vega",
     definicao: "Sensibilidade do preço da opção a mudanças na volatilidade implícita. No terminal, é expresso em variação financeira (R$) por incremento de +1 ponto percentual (+1%) na vol (÷100).",
-    ondeAparece: "Chain, Workbench, Cockpit, Carteira",
+    ondeAparece: "Chain, Workbench, Cockpit, Portfolio",
   },
   {
     termo: "Θ Theta",
     definicao: "Taxa de depreciação temporal do valor da opção. Expresso no terminal em variação financeira (R$) perdida por dia corrido (÷365). Opções compradas possuem Theta negativo.",
-    ondeAparece: "Chain, Workbench, Cockpit, Carteira",
+    ondeAparece: "Chain, Workbench, Cockpit, Portfolio",
   },
   {
     termo: "Rho (ρ)",

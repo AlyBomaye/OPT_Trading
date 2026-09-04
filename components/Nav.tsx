@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
-import { Gauge, Table2, GitBranch, Search, Briefcase, Newspaper, History, LayoutGrid, BookOpen, Globe, Bot } from "lucide-react";
+import { Gauge, GitBranch, Search, Briefcase, Newspaper, BookOpen, Globe, Bot, ClipboardList } from "lucide-react";
 import clsx from "clsx";
 
 import { useMarket } from "@/store/market";
@@ -18,19 +18,22 @@ import { PanelLeftClose, PanelLeftOpen } from "lucide-react";
  * WO-36: o Consultor abre a barra — é a tela que consolida as outras.
  * WO-46: o Cockpit vem logo depois, já contendo a Watchlist; Chain e Histórico foram absorvidos
  * pela Estratégia. Onze abas viraram oito.
- * 02/09/2026: as teclas passam a SEGUIR A POSIÇÃO — 1 a 8, de cima para baixo. O WO-36 as
- * mantinha fixas por memória muscular quando a barra ainda mudava; com oito abas estáveis, a
+ * 02/09/2026: as teclas passam a SEGUIR A POSIÇÃO — de cima para baixo. O WO-36 as
+ * mantinha fixas por memória muscular quando a barra ainda mudava; com abas estáveis, a
  * posição é o mapa mental, e a tecla igual à posição é o que se decora sem esforço.
+ * WO-58: a Carteira virou Portfolio (só gestão e análise) e a Boletagem nasceu ao lado dela — a
+ * única porta por onde uma transação entra no livro. Oito abas viraram nove.
  */
-const ITEMS = [
+export const ITEMS = [
   { href: "/consultor", label: "Consultor", key: "1", icon: Bot },
   { href: "/", label: "Cockpit", key: "2", icon: Gauge },
-  { href: "/carteira", label: "Carteira", key: "3", icon: Briefcase },
-  { href: "/noticias", label: "Notícias", key: "4", icon: Newspaper },
-  { href: "/macro", label: "Macro", key: "5", icon: Globe },
-  { href: "/scanner", label: "Scanner", key: "6", icon: Search },
-  { href: "/estrategia", label: "Estratégia", key: "7", icon: GitBranch },
-  { href: "/manual", label: "Manual", key: "8", icon: BookOpen },
+  { href: "/portfolio", label: "Portfolio", key: "3", icon: Briefcase },
+  { href: "/boletagem", label: "Boletagem", key: "4", icon: ClipboardList },
+  { href: "/noticias", label: "Notícias", key: "5", icon: Newspaper },
+  { href: "/macro", label: "Macro", key: "6", icon: Globe },
+  { href: "/scanner", label: "Scanner", key: "7", icon: Search },
+  { href: "/estrategia", label: "Estratégia", key: "8", icon: GitBranch },
+  { href: "/manual", label: "Manual", key: "9", icon: BookOpen },
 ];
 
 export function Nav() {
@@ -53,7 +56,7 @@ export function Nav() {
     subText = chain?.dataEfetiva ? `B3 · fechado (${fmtDateBR(chain.dataEfetiva)})` : "B3 · fechado";
   }
 
-  // Atalhos: teclas 1–8 navegam entre as abas na ordem da barra, ? abre a ajuda (fora de inputs)
+  // Atalhos: teclas 1–9 navegam entre as abas na ordem da barra, ? abre a ajuda (fora de inputs)
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const tag = (e.target as HTMLElement)?.tagName;
@@ -70,9 +73,9 @@ export function Nav() {
         setRecolhida(!recolhida);
         return;
       }
-      // WO-48: B abre a Carteira com a boleta focada, de qualquer aba.
+      // WO-48/WO-58: B abre a Boletagem com a boleta manual focada, de qualquer aba.
       if (e.key === "b" || e.key === "B") {
-        router.push("/carteira#boleta");
+        router.push("/boletagem#boleta");
         return;
       }
       const item = ITEMS.find((i) => i.key === e.key);
@@ -138,7 +141,7 @@ export function Nav() {
 
       {!recolhida && (
         <div className="px-3 py-2 text-xxs text-term-dim border-t border-term-line">
-          Atalhos: <kbd>1</kbd>–<kbd>8</kbd> abas · <kbd>B</kbd> boleta · <kbd>G</kbd> Gestor · <kbd>R</kbd> atualizar · <kbd>[</kbd> barra · <kbd>?</kbd> ajuda
+          Atalhos: <kbd>1</kbd>–<kbd>9</kbd> abas · <kbd>B</kbd> boletagem · <kbd>G</kbd> Gestor · <kbd>R</kbd> atualizar · <kbd>[</kbd> barra · <kbd>?</kbd> ajuda
         </div>
       )}
 

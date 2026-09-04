@@ -152,7 +152,7 @@ export default function ManualPage() {
                   <span>2. Como Montar Operações no Workbench de Estratégia</span>
                 </div>
                 <p className="text-xs text-term-dim mb-3">
-                  Exemplo prático de montagem de uma **Trava de Alta com Calls (Bull Call Spread)** na Estratégia (tecla 7):
+                  Exemplo prático de montagem de uma **Trava de Alta com Calls (Bull Call Spread)** na Estratégia (tecla 8):
                 </p>
                 <ol className="space-y-2 text-xs list-decimal list-inside text-term-dim">
                   {PASSO_A_PASSO_WORKBENCH.map((item, idx) => (
