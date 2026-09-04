@@ -5775,6 +5775,64 @@ Líquido para 04/09/2026 5.134,69 D`;
     if (t5) console.log("✔ WO-57 Teste 5: os scripts entram com a senha do .env.local (sem logá-la), a rota repassa o cookie, /api/saude é o único caminho aberto e o start exige APP_PASSWORD");
     else { console.log(`✘ WO-57 Teste 5 falhou: scripts=${scriptsAut}`); failures++; }
   }
+  // ================= WO-58 — Portfolio e Boletagem: o rascunho =================
+  {
+    const { validarParaConfirmar, paraEntradasBoleta, slippage, slippageDoRascunho, debitoCredito, rascunhoDeFechamento, rascunhoDeRolagem } = await import("../rascunhos");
+
+    // ---- Teste 1: validação, conversão em boletas, slippage com sinal, fechamento e rolagem
+    const perna = (over: Partial<import("../rascunhos").PernaRascunho> = {}): import("../rascunhos").PernaRascunho => ({
+      opTicker: "PETRI482", kind: "OPTION", tipoOpcao: "CALL", strike: 48.2, vencimento: "2026-09-18", lado: "compra", quantidade: 100,
+      precoMontagem: 2.0, fontePrecoMontagem: "mid", precoExecucao: 2.1, executadoEm: "2026-09-04T14:00:00.000Z", papel: "abre", ...over,
+    });
+    const hoje = "2026-09-04";
+    const semPreco = validarParaConfirmar({ estado: "pendente", tipo: "abertura", pernas: [perna({ precoExecucao: null })] }, [], hoje);
+    const vencido = validarParaConfirmar({ estado: "pendente", tipo: "abertura", pernas: [perna({ vencimento: "2026-08-21" })] }, [], hoje);
+    const excede = validarParaConfirmar({ estado: "pendente", tipo: "fechamento", pernas: [perna({ papel: "fecha", posicaoId: 7, quantidade: 150 })] }, [{ id: 7, quantidade: 100 }], hoje);
+    const fechada = validarParaConfirmar({ estado: "pendente", tipo: "fechamento", pernas: [perna({ papel: "fecha", posicaoId: 9 })] }, [{ id: 7, quantidade: 100 }], hoje);
+    const jaConfirmado = validarParaConfirmar({ estado: "confirmado", tipo: "abertura", pernas: [perna()] }, [], hoje);
+    const completo = validarParaConfirmar({ estado: "pendente", tipo: "fechamento", pernas: [perna({ papel: "fecha", posicaoId: 7, quantidade: 100 })] }, [{ id: 7, quantidade: 100 }], hoje);
+    const valOk = semPreco.length === 1 && /sem preço de execução/.test(semPreco[0]) && vencido.length === 1 && /já passou/.test(vencido[0])
+      && excede.length === 1 && /excede a aberta/.test(excede[0]) && fechada.length === 1 && /não existe mais/.test(fechada[0]) && jaConfirmado.length === 1 && completo.length === 0;
+
+    const abertura = paraEntradasBoleta({ origem: "estrategia", tipo: "abertura", ticker: "petr4", estruturaId: null, nomeDetectado: "Straddle", plano: { tese: "t", alvo: 50, regraSaida: "r", regimeEntrada: "alta" }, motivoSaida: null, nota: null,
+      pernas: [perna(), perna({ opTicker: "PETRU482", tipoOpcao: "PUT", custos: { corretagem: 1.5 } })] });
+    const convOk = abertura.length === 2 && abertura[0].tipo === "abertura" && abertura[0].origem === "workbench" && abertura[0].ticker === "PETR4" && abertura[0].lado === 1 && abertura[0].preco === 2.1
+      && abertura[0].novaEstrutura?.tese === "t" && abertura[0].novaEstrutura?.nomeDetectado === "Straddle" && abertura[0].corretagem === undefined
+      && abertura[1].encadearEstrutura === true && abertura[1].novaEstrutura === undefined && abertura[1].corretagem === 1.5 && abertura[1].emolumentos === undefined;
+
+    const rolagem = paraEntradasBoleta({ origem: "portfolio-rolar", tipo: "rolagem", ticker: "PETR4", estruturaId: 3, nomeDetectado: null, plano: { tese: "alta" }, motivoSaida: "vencimento", nota: null,
+      pernas: [perna({ papel: "fecha", posicaoId: 7, lado: "venda" }), perna({ papel: "abre", opTicker: "PETRJ482", vencimento: "2026-10-16" })] });
+    const rolOk = rolagem.length === 2 && rolagem[0].tipo === "fechamento" && rolagem[0].posicaoId === 7 && rolagem[0].motivoSaida === "vencimento" && rolagem[0].lado === -1
+      && rolagem[1].tipo === "abertura" && rolagem[1].novaEstrutura?.tese === "Rolagem — alta" && rolagem[1].estruturaId === undefined;
+
+    // Slippage do ponto de vista do operador: pagar mais numa compra é ruim; receber mais numa venda é bom.
+    const s1 = slippage({ lado: "compra", quantidade: 100, precoMontagem: 2.0, precoExecucao: 2.1 });
+    const s2 = slippage({ lado: "compra", quantidade: 100, precoMontagem: 2.0, precoExecucao: 1.9 });
+    const s3 = slippage({ lado: "venda", quantidade: 100, precoMontagem: 2.0, precoExecucao: 2.1 });
+    const s4 = slippage({ lado: "venda", quantidade: 100, precoMontagem: 2.0, precoExecucao: 1.9 });
+    const slipOk = s1 != null && s1.total < -9.99 && s1.total > -10.01 && s2 != null && s2.total > 9.99 && s3 != null && s3.total > 9.99 && s4 != null && s4.total < -9.99 && s1.pct != null && Math.abs(s1.pct + 0.05) < 1e-9
+      && slippage({ lado: "compra", quantidade: 1, precoMontagem: 2, precoExecucao: null }) === null
+      && Math.abs(slippageDoRascunho([perna(), perna({ lado: "venda", precoExecucao: 2.05 })])!.total + 5) < 1e-9 && slippageDoRascunho([perna({ precoExecucao: null })]) === null
+      && debitoCredito([perna(), perna({ lado: "venda", precoMontagem: 0.5 })], "precoMontagem") === 150 && debitoCredito([perna({ precoExecucao: null })], "precoExecucao") === null;
+
+    const posAberta: Position = { id: "db-7", estruturaId: "3", kind: "OPTION", opTicker: "PETRI482", underlying: "PETR4", type: "CALL", strike: 48.2, expiry: "2026-09-18", du: 10, side: 1, qty: 100, price: 2.0, openedAt: "2026-08-20T13:00:00.000Z" };
+    const posVendida: Position = { ...posAberta, id: "db-8", opTicker: "PETRU482", type: "PUT", side: -1 };
+    const fech = rascunhoDeFechamento([posAberta, posVendida], { "db-7": { price: 2.4, fonte: "mid" }, "db-8": { price: null } }, "alvo");
+    const fechOk = fech.tipo === "fechamento" && fech.origem === "portfolio-fechar" && fech.estruturaId === 3 && fech.motivoSaida === "alvo" && fech.pernas.length === 2
+      && fech.pernas[0].lado === "venda" && fech.pernas[0].posicaoId === 7 && fech.pernas[0].quantidade === 100 && fech.pernas[0].precoMontagem === 2.4 && fech.pernas[0].fontePrecoMontagem === "mid" && fech.pernas[0].precoExecucao === null && fech.pernas[0].papel === "fecha"
+      && fech.pernas[1].lado === "compra" && fech.pernas[1].precoMontagem === null && fech.pernas[1].fontePrecoMontagem === null;
+
+    const propostaFake: any = { vencimentoNovo: "2026-10-16", duNovo: 30, foraDaJanela: false, bruto: 0, custos: 0, liquido: 0, pronta: true, avisos: [],
+      fechar: [{ posicao: posAberta, preco: 2.4, custo: 0 }],
+      abrir: [{ opcao: { opTicker: "PETRJ482", type: "CALL", model: "E", strike: 48.2, expiry: "2026-10-16", iv: 0.3, delta: 0.5, vega: 0.1, theta: -0.02, mid: 2.6, last: 2.55 }, side: 1, qty: 100, preco: 2.6, custo: 0 }] };
+    const rol = rascunhoDeRolagem(propostaFake, posAberta);
+    const rolRascOk = rol.tipo === "rolagem" && rol.pernas.length === 2 && rol.pernas[0].papel === "fecha" && rol.pernas[0].lado === "venda" && rol.pernas[1].papel === "abre" && rol.pernas[1].lado === "compra"
+      && rol.pernas[1].fontePrecoMontagem === "mid" && rol.pernas[1].vencimento === "2026-10-16" && rol.nota === "rolagem para 2026-10-16";
+
+    if (valOk && convOk && rolOk && slipOk && fechOk && rolRascOk) console.log("✔ WO-58 Teste 1: rascunho — validação recusa sem preço, vencido, acima da aberta e já confirmado; N pernas viram N boletas (estrutura criada e encadeada, custo sobrescrito viaja); slippage com o sinal do operador; fechamento inverte o lado; rolagem junta fecha + abre");
+    else { console.log(`✘ WO-58 Teste 1 falhou: val=${valOk} conv=${convOk} rol=${rolOk} slip=${slipOk} fech=${fechOk} rolRasc=${rolRascOk}`); failures++; }
+  }
+
 }
 
 testesAssincronos()

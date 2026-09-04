@@ -593,24 +593,32 @@ export async function registrarBoleta(e: EntradaBoleta, opcoes: { simular?: bool
  * abertura anterior da mesma lista — assim a primeira cria e as demais acompanham, sem o cliente
  * precisar de ida e volta. `simular` roda tudo e reverte.
  */
+/**
+ * WO-58: o executor de N boletas dentro de um client já em transação — para quem precisa gravar
+ * boletas E outra coisa (o rascunho confirmado) no mesmo COMMIT. Valida e calcula custos antes de
+ * tocar no banco; encadeia estrutura como `registrarBoletasJuntas`.
+ */
+export async function executarBoletasJuntas(c: PoolClient, lista: EntradaBoleta[]): Promise<ResultadoRegistro[]> {
+  if (lista.length === 0) throw new Error("Nenhuma boleta.");
+  const resultados: ResultadoRegistro[] = [];
+  let estruturaAnterior: number | null = null;
+  for (const original of lista) {
+    const e: EntradaBoleta =
+      original.tipo === "abertura" && original.encadearEstrutura && original.estruturaId == null && estruturaAnterior != null
+        ? { ...original, estruturaId: estruturaAnterior }
+        : original;
+    const executar = await prepararExecucao(e);
+    const r = await executar(c);
+    if (e.tipo === "abertura" && r.estruturaId != null) estruturaAnterior = r.estruturaId;
+    resultados.push(r);
+  }
+  return resultados;
+}
+
 export async function registrarBoletasJuntas(lista: EntradaBoleta[], opcoes: { simular?: boolean } = {}): Promise<ResultadoRegistro[] | null> {
   if (!(await garantirSchema())) return null;
   if (lista.length === 0) throw new Error("Nenhuma boleta.");
-  const executarTodas = async (c: PoolClient): Promise<ResultadoRegistro[]> => {
-    const resultados: ResultadoRegistro[] = [];
-    let estruturaAnterior: number | null = null;
-    for (const original of lista) {
-      const e: EntradaBoleta =
-        original.tipo === "abertura" && original.encadearEstrutura && original.estruturaId == null && estruturaAnterior != null
-          ? { ...original, estruturaId: estruturaAnterior }
-          : original;
-      const executar = await prepararExecucao(e);
-      const r = await executar(c);
-      if (e.tipo === "abertura" && r.estruturaId != null) estruturaAnterior = r.estruturaId;
-      resultados.push(r);
-    }
-    return resultados;
-  };
+  const executarTodas = (c: PoolClient) => executarBoletasJuntas(c, lista);
   if (!opcoes.simular) return emTransacao(executarTodas);
   let capturado: ResultadoRegistro[] | null = null;
   await emTransacao(async (c) => {
