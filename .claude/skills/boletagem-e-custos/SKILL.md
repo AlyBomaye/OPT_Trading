@@ -156,6 +156,15 @@ brasileiro lê; não converta para serial.
 5. Para posições provisórias (pré-confirmação), boletar e depois estornar é o caminho correto —
    a trilha fica.
 
+## 7.1 Recomeçar do zero (a exceção deliberada ao append-only)
+
+`npm run livro:zerar -- --confirmo --capital=5000` apaga boletas, posições, estruturas e rascunhos
+(TRUNCATE ... RESTART IDENTITY) e registra um único aporte inicial pela API (`POST /api/boletas`,
+tipo `caixa`). Não toca custos, limites, IV, GEX, regimes, checklist nem relatórios. Recusa rodar
+sem um dump de HOJE na pasta de backup do OneDrive (`npm run backup:db` antes). Feito em 10/09/2026
+com R$ 5.000, a pedido do operador, antes de começar a operar de verdade. Correção de UMA boleta
+continua sendo ajuste com estorno — isto é reinício, não correção.
+
 ## 8. Ao mudar código de boletagem
 
 - Novo campo → migração guardada em `db/002_boletagem.sql` (ou `003_…`), com `IF NOT EXISTS`, e

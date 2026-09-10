@@ -21,6 +21,7 @@
     "agendar:listar": "powershell -NoProfile -ExecutionPolicy Bypass -File ./scripts/agendar.ps1 listar",
     "senha": "powershell -NoProfile -ExecutionPolicy Bypass -File ./scripts/definir-senha.ps1",
     "backup:db": "powershell -NoProfile -ExecutionPolicy Bypass -File ./scripts/backup-db.ps1",
+    "livro:zerar": "node scripts/zerar-livro.mjs",
     "agents:daily": "node scripts/agents-daily.mjs",
     "setup:db": "powershell -ExecutionPolicy Bypass -File ./scripts/setup-db.ps1",
     "reset:senha-db": "powershell -ExecutionPolicy Bypass -File ./scripts/reset-senha-postgres.ps1"
