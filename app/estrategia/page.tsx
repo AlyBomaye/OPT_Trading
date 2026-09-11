@@ -730,28 +730,18 @@ function Workbench() {
           />
         )}
 
-        {/* 4. Payoff + P&L da operação */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 items-start">
-          <div className="min-w-0 space-y-2">
-          {/* Payoff + sensibilidade */}
+        {/* 4. Payoff + P&L da operação (com a sensibilidade sob o payoff).
+            11/09/2026: a coluna da esquerda deixou de ser mais baixa que o P&L (vão de meia tela):
+            o payoff cresce para preencher a coluna e a matriz de sensibilidade — que usa o mesmo
+            T+n — vem logo abaixo dele. O controle T+n mora no cabeçalho do payoff. */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+          <div className="min-w-0 flex flex-col gap-3">
           {chain && (
             <>
-              <div className="flex items-center gap-2">
-                <label className="text-xxs text-term-dim">
-                  Curva T+n:
-                  <input
-                    type="number"
-                    min={0}
-                    value={tnDay}
-                    onChange={(e) => setTnDay(Number(e.target.value) || 0)}
-                    className="cell-input !w-14 ml-1"
-                  />
-                  du
-                </label>
+              <div id="payoff" className="flex-1 flex flex-col min-h-0">
+                <PayoffChart legs={legs} spot={chain.spot} r={selic} tnDay={tnDay} breakevens={metrics?.breakevens ?? []} onTnDay={setTnDay} />
               </div>
-              <div id="payoff">
-                <PayoffChart legs={legs} spot={chain.spot} r={selic} tnDay={tnDay} breakevens={metrics?.breakevens ?? []} />
-              </div>
+              <SensitivityMatrix legs={legs} spot={chain.spot} r={selic} dayOffset={tnDay} betaEstimado={betaEstimado} />
             </>
           )}
           </div>
@@ -878,8 +868,6 @@ function Workbench() {
           </div>
         </div>
 
-        {/* 6. Sensibilidade */}
-          {chain && <SensitivityMatrix legs={legs} spot={chain.spot} r={selic} dayOffset={tnDay} betaEstimado={betaEstimado} />}
       </div>
         </>
       )}

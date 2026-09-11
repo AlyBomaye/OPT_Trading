@@ -2442,6 +2442,24 @@ async function testesAjustes0209() {
     failures++;
   }
 
+  // ---- Teste 14 (11/09/2026): o mapa de strikes desenha em pixels de tela; o payoff preenche a coluna e a sensibilidade vem abaixo dele
+  {
+    const srcLeg = ler("components/LegDiagram.tsx");
+    const srcPay = ler("components/PayoffChart.tsx");
+    const srcEst = ler("app/estrategia/page.tsx");
+    // Sem viewBox: a largura vem do contêiner e o texto tem tamanho fixo (12 px); a ficha traz qtd × prêmio e a dica completa.
+    const pixels = !/viewBox=/.test(srcLeg) && /ResizeObserver/.test(srcLeg) && /<svg width=\{W\} height=\{H\}/.test(srcLeg) && /fontSize=\{12\}/.test(srcLeg) && /<title>\{c\.dica\}<\/title>/.test(srcLeg) && /\$\{l\.qty\} × \$\{fmtNum\(l\.price\)\}/.test(srcLeg);
+    // O payoff cresce na coluna e hospeda o controle T+n; a sensibilidade fica logo abaixo, na mesma coluna; a linha não é items-start.
+    const payoffCresce = /className="panel h-full flex flex-col"/.test(srcPay) && /onTnDay\?: \(n: number\) => void/.test(srcPay) && /Curva T\+n:/.test(srcPay) && !/h-72/.test(srcPay) && /flex-1 min-h-\[18rem\]/.test(srcPay);
+    const iPay = srcEst.indexOf("<PayoffChart");
+    const iSens = srcEst.indexOf("<SensitivityMatrix");
+    const iPnl = srcEst.indexOf("<PainelPnl");
+    const trechoLinha = srcEst.slice(srcEst.indexOf("{/* 4. Payoff"), iPnl);
+    const colunaOk = iPay > 0 && iSens > iPay && iSens < iPnl && /onTnDay=\{setTnDay\}/.test(srcEst) && !/Curva T\+n:/.test(srcEst) && !/items-start/.test(trechoLinha) && /id="payoff" className="flex-1 flex flex-col/.test(srcEst) && srcEst.split("<SensitivityMatrix").length === 2;
+    if (pixels && payoffCresce && colunaOk) console.log("✔ AJ Teste 14: o mapa de strikes desenha em pixels (ResizeObserver, texto 12 px, ficha qtd × prêmio com dica); o payoff preenche a coluna com o T+n no cabeçalho e a matriz de sensibilidade logo abaixo, ao lado do P&L");
+    else { console.log(`✘ AJ Teste 14 falhou: pixels=${pixels} payoff=${payoffCresce} coluna=${colunaOk}`); failures++; }
+  }
+
   // ---- Teste 9: apuracao fiscal cita opcoes SEM isencao e IRRF 0,005% (regras vigentes)
   const { IRRF_SWING_SOBRE_VENDA, ALIQUOTA_SWING } = await import("../fiscal");
   const semIsencaoOpcao = /NÃO vale para opções/.test(ler("lib/fiscal.ts"));

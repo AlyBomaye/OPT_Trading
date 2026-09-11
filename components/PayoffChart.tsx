@@ -18,18 +18,26 @@ import { buildPayoffCurve } from "@/lib/payoff";
 import { downloadSvgAsPng, fmtBRL } from "@/lib/format";
 import type { Leg } from "@/lib/types";
 
+/**
+ * 11/09/2026 — o painel cresce para preencher a coluna (`h-full flex flex-col`) em vez de ter
+ * 18 rem fixos: ao lado do P&L da operação, que é alto, o gráfico ficava com um vão de meia tela
+ * embaixo. O controle "Curva T+n" mora no cabeçalho, porque é dele que a curva T+n e a matriz de
+ * sensibilidade (logo abaixo) dependem.
+ */
 export function PayoffChart({
   legs,
   spot,
   r,
   tnDay,
   breakevens,
+  onTnDay,
 }: {
   legs: Leg[];
   spot: number;
   r: number;
   tnDay: number;
   breakevens: number[];
+  onTnDay?: (n: number) => void;
 }) {
   const ref = useRef<HTMLDivElement>(null);
   const data = useMemo(
@@ -46,10 +54,23 @@ export function PayoffChart({
   }
 
   return (
-    <div className="panel" ref={ref}>
-      <div className="flex items-center px-3 pt-2">
+    <div className="panel h-full flex flex-col" ref={ref}>
+      <div className="flex items-center gap-3 px-3 pt-2 flex-wrap">
         <span className="panel-title !p-0">Payoff — Expiração · T+0 · T+{tnDay}</span>
         <div className="flex-1" />
+        {onTnDay && (
+          <label className="text-xxs text-term-dim flex items-center gap-1" title="Quantos dias úteis à frente a curva amarela (T+n) e a matriz de sensibilidade avaliam a estrutura">
+            Curva T+n:
+            <input
+              type="number"
+              min={0}
+              value={tnDay}
+              onChange={(e) => onTnDay(Number(e.target.value) || 0)}
+              className="cell-input !w-14"
+            />
+            du
+          </label>
+        )}
         <button
           className="btn"
           title="Exportar PNG"
@@ -58,8 +79,8 @@ export function PayoffChart({
           <ImageDown size={13} />
         </button>
       </div>
-      <div className="h-72 px-2 pb-2">
-        <ResponsiveContainer>
+      <div className="flex-1 min-h-[18rem] px-2 pb-2">
+        <ResponsiveContainer width="100%" height="100%">
           <LineChart data={data} margin={{ top: 10, right: 15, bottom: 5, left: 5 }}>
             <CartesianGrid stroke="#232a38" strokeDasharray="3 3" />
             <XAxis
