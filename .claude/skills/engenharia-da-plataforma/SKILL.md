@@ -98,6 +98,12 @@ e diga no commit. Se a quebra não for intencional, o teste venceu.
 - `lib/chart-attack.ts` é puro (médias, leitura, divergência, geometria do candle, marcadores,
   terceiras sextas); `components/GraficoCandles.tsx` é SVG sem Recharts.
 
+- WO-60: `lib/projecoes.ts` (puro: mercado/bootstrap/reversão, `serieParaGrafico`) alimenta
+  `components/PainelProjecoes.tsx` (entre o Histórico e o Payoff da Estratégia; busca 1 ano do
+  `/api/history`); os preços no vencimento sobem por `onPrecosNoVencimento` para o `PainelPnl`.
+  A aritmética da ordem (`premioAlvo`, `datasDasRegras`, `custoExecucaoSpread`,
+  `caixaDepoisDaOrdem`, `cenariosProjetados`, `leituraEvPop`) vive em `lib/pnl-operacao.ts`.
+
 ## 6. Convenções numéricas (resumo; detalhe nas skills de domínio)
 
 `t = du/252`; vol ×√252; theta/365; vega por +1pp; Selic fração do contexto; `qty` sem lote;

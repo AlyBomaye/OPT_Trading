@@ -110,7 +110,7 @@ export const RESUMO_TELAS = [
   {
     modulo: "8. Estratégia",
     pergunta: "Como montar, medir líquido de custos e Boletar uma estrutura?",
-    resposta: "Três modos: Montagem (cadeia recolhível, pernas, payoff, P&L da operação líquido de custos, semáforo do método, sensibilidade e a porta das 3 perguntas — Boletar cria um rascunho na Boletagem, com o preço da montagem; a boleta só nasce lá, com o preço da execução), Cadeia (grade completa, paridade put-call como qualidade, smile e estrutura a termo) e Contexto (tendência, vol realizada, IV×HV e cone).",
+    resposta: "Três modos: Montagem (cadeia recolhível, pernas, Histórico, Projeções — onde o preço pode estar no vencimento por três caminhos: mercado com a banda da IV, bootstrap histórico e reversão à média —, payoff, P&L da operação líquido de custos e já como ordem: régua de preço, prêmio-alvo da estrutura, datas de rolar e zerar, spread, caixa depois, cenários nos preços projetados; semáforo do método, sensibilidade e a porta das 3 perguntas — Boletar cria um rascunho na Boletagem, com o preço da montagem; a boleta só nasce lá, com o preço da execução), Cadeia (grade completa, paridade put-call como qualidade, smile e estrutura a termo) e Contexto (tendência, vol realizada, IV×HV e cone).",
   },
   {
     modulo: "9. Manual",
@@ -248,6 +248,16 @@ export const GLOSSARIO: Termo[] = [
     termo: "Regime (alta / baixa / lateral)",
     definicao: "A leitura de tendência do ativo, e a PRIMEIRA das quatro camadas de decisão do método — antes da volatilidade, da estrutura e do tamanho. A plataforma NÃO calcula o regime: os parâmetros do indicador por ativo são proprietários do material. Você marca, e a plataforma guarda a marcação com a data do pregão observado para você conferir depois se a leitura estava certa.",
     ondeAparece: "Histórico (Tendência), Watchlist, Cockpit",
+  },
+  {
+    termo: "Projeções (mercado · bootstrap · reversão)",
+    definicao: "Três respostas independentes para 'onde o preço pode estar no vencimento', desenhadas sobre o histórico na Estratégia (WO-60). MERCADO: o forward do spot (menos proventos até o vencimento) com a banda ±1σ da IV ATM do vencimento — o que o mercado precifica; é a régua das opções. BOOTSTRAP HISTÓRICO: milhares de caminhos montados reamostrando em blocos os retornos reais do último ano — se o passado se repetir, com as caudas que ele teve, sem assumir curva normal; a linha é a mediana, p10–p90 nos números. REVERSÃO À MÉDIA: um Ornstein-Uhlenbeck ajustado no log-preço de 63 pregões — se o preço voltar para a média, na velocidade (meia-vida) que a janela mostra; quando a janela não puxa para a média (κ ≤ 0), a linha não existe e o motivo é escrito. Nenhuma é recomendação: compare com os breakevens e decida.",
+    ondeAparece: "Estratégia (Projeções, entre o Histórico e o Payoff; os preços no vencimento entram nos cenários do P&L da operação)",
+  },
+  {
+    termo: "Prêmio-alvo (a ordem no Profit)",
+    definicao: "O prêmio da ESTRUTURA que realiza a regra dos 70% — entrada + lucro-alvo + custos de ida e volta. Numa estrutura de débito você a vende por esse valor; numa de crédito você a recompra por ele. É esse número que vai para a ordem limitada no Profit, não o preço do ativo (que o box também mostra, para acompanhar).",
+    ondeAparece: "Estratégia (P&L da operação — o que decide a ordem)",
   },
   {
     termo: "As 3 perguntas",

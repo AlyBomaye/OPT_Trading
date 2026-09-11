@@ -628,6 +628,13 @@ Comportamentos-chave:
   estrutura)`; custo = débito, ou |máx perda| em crédito. Banner vermelho quando excede;
   gate "NO EDGE — DO NOT TRADE" quando journal ≥ 20 trades tem Kelly realizado ≤ 0.
 - "Boletar" abre as três perguntas do método e cria um RASCUNHO na Boletagem (WO-58) com o preço da montagem e `gregasEntrada`; a boleta nasce lá, com o preço da execução (antes gravava direto; antes disso chamava-se "Abrir posição").
+- **WO-60 Projeções (`PainelProjecoes`, entre o Histórico e o Payoff)**: fechamento dos últimos 63
+  pregões + três projeções até o vencimento selecionado + 20 DU — mercado (forward do spot ajustado
+  com banda ±1σ da IV ATM), bootstrap histórico em blocos (2 000 caminhos, semente fixa, mediana) e
+  reversão à média (OU no log-preço, recusa escrita quando κ ≤ 0). `lib/projecoes.ts`. Os preços no
+  vencimento viram cenários do `PainelPnl`, que também ganhou régua de preço, prêmio-alvo da
+  estrutura (a ordem do Profit), datas de rolar/zerar com custo de esperar, spread como custo de
+  execução, caixa depois da ordem e a frase EV × PoP (`lib/pnl-operacao.ts`).
 - **WO-16 Painel de Histórico (`PriceHistoryPanel`)**: colapsável com `ComposedChart` Recharts
   (linha de fechamento ciana + barras de volume), botões de range (3M | 6M | 1A), estado
   persistido em `localStorage` (`wb-history-open`), HV21, IV ATM live e spread IV−HV21, e **linhas

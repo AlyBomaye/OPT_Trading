@@ -125,3 +125,24 @@ Cada número com a data de origem e a fonte (WO-30: sem data, sem número).
 - Uma série com menos de `janela + 1` candles devolve `null`, não uma vol calculada com o que
   há.
 - Rode `npm run typecheck && npm run test:engine`.
+
+## 7. Projeções de preço na Estratégia (WO-60, `lib/projecoes.ts`)
+
+Três caminhos, três perguntas, nenhuma recomendação. Ao mexer neles, preserve o que cada um
+significa — misturar os três num "consenso" destruiria a informação:
+
+- **Mercado**: forward `S_aj·e^{rt}` (spot menos o valor presente dos proventos até o vencimento,
+  `adjustedSpot`) com banda `·e^{±σ√t}` da **IV ATM do vencimento selecionado**. É a
+  distribuição risco-neutra que precifica as opções da tela — por isso é a única banda desenhada
+  e a régua contra a qual os breakevens fazem sentido. Sem IV medida: sem linha, com motivo.
+- **Bootstrap histórico**: reamostragem em **blocos** de 5 pregões dos log-retornos do último ano
+  (preserva clusters de vol), 2 000 caminhos, semente fixa (`mulberry32`) para a tela não mudar a
+  cada render. Mediana como linha; p10/p90 só nos números. É a distribuição empírica, com as caudas
+  que o papel teve — não assume normal. Menos de 60 retornos: `null`.
+- **Reversão à média**: Ornstein-Uhlenbeck discreto no log-preço, `Δx = a + b·x + ε`, `κ = −b`,
+  `μ = a/κ`, meia-vida `ln2/κ`, janela de 63 pregões. Só existe quando `κ > 0` **e** a média
+  estimada está entre 0,5× e 2× do spot; fora disso é recusa com motivo — uma reta inventada seria
+  pior que nada. Em tendência forte, a recusa é a resposta certa.
+
+Horizonte: vencimento selecionado + 20 pregões; `t = du/252`. Os preços no vencimento sobem para o
+`PainelPnl` como cenários ("para onde as projeções o colocam"), ao lado das variações fixas.

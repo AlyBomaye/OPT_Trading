@@ -6177,6 +6177,16 @@ Líquido para 04/09/2026 5.134,69 D`;
       && /onPrecosNoVencimento\?: \(precos: PrecoProjetado\[\]\) => void/.test(ler60("components/PainelProjecoes.tsx"));
     if (boxOk && ligacaoOk) console.log("✔ WO-60 Teste 4: o P&L da operação chama a lib para prêmio-alvo, datas, spread, caixa, cenários projetados e a frase; a régua é SVG sem Recharts; a página passa PoP, prêmio bruto, cadeia, caixa livre e vencimento, e as projeções sobem do painel para o box");
     else { console.log(`✘ WO-60 Teste 4 falhou: box=${boxOk} ligacao=${ligacaoOk}`); failures++; }
+    // ---- Teste 5: Manual, glossário, skills e ANTIGRAVITY acompanham; a leitura das projeções nunca vira recomendação
+    const { RESUMO_TELAS: RT60, GLOSSARIO: GL60 } = await import("../manual-content");
+    const estr60 = RT60.find((r) => r.modulo === "8. Estratégia")?.resposta ?? "";
+    const manual60 = /Projeções/.test(estr60) && /bootstrap/i.test(estr60) && /reversão/i.test(estr60) && /prêmio-alvo/i.test(estr60)
+      && GL60.some((t) => /^Projeções/.test(t.termo) && /κ ≤ 0/.test(t.definicao) && /Nenhuma é recomendação/.test(t.definicao)) && GL60.some((t) => /^Prêmio-alvo/.test(t.termo) && /Profit/.test(t.definicao));
+    const skills60 = /## 7\. Projeções de preço/.test(ler60(".claude/skills/volatilidade-e-smile/SKILL.md")) && /mulberry32/.test(ler60(".claude/skills/volatilidade-e-smile/SKILL.md")) && /0,5× e 2×/.test(ler60(".claude/skills/volatilidade-e-smile/SKILL.md"))
+      && /lib\/projecoes\.ts/.test(ler60(".claude/skills/engenharia-da-plataforma/SKILL.md")) && /onPrecosNoVencimento/.test(ler60(".claude/skills/engenharia-da-plataforma/SKILL.md"))
+      && /WO-60 Projeções/.test(ler60("ANTIGRAVITY.md")) && /lib\/projecoes\.ts/.test(ler60("ANTIGRAVITY.md"));
+    if (manual60 && skills60) console.log("✔ WO-60 Teste 5: Manual (Estratégia cita projeções e prêmio-alvo; glossário com os três caminhos e a recusa da reversão), skill de vol com a seção 7, skill de engenharia com a lib e a ligação, ANTIGRAVITY com a WO");
+    else { console.log(`✘ WO-60 Teste 5 falhou: manual=${manual60} skills=${skills60}`); failures++; }
   }
 
 }
