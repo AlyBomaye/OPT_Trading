@@ -6105,6 +6105,23 @@ Líquido para 04/09/2026 5.134,69 D`;
 
     if (datasOk && mkOk && bOk && ouOk && sgOk) console.log("✔ WO-60 Teste 1: dias úteis pulam o fim de semana; mercado = forward exato com banda simétrica em log (null sem IV); bootstrap determinístico com p10 < mediana < p90 e partida no spot (null com poucos retornos); OU sintético recupera κ e meia-vida e a linha converge para a média; tendência pura e janela curta não têm reversão (motivo escrito); a série do gráfico cola as três ao último fechamento e nada é projetado no passado");
     else { console.log(`✘ WO-60 Teste 1 falhou: datas=${datasOk} mercado=${mkOk} bootstrap=${bOk} ou=${ouOk} (${ou.ok ? `κ=${ou.projecao.kappa.toFixed(3)} μ=${ou.projecao.mediaPreco.toFixed(2)}` : ou.motivo}; tend=${tend.ok ? "ok?!" : tend.motivo}) serie=${sgOk}`); failures++; }
+    // ---- Teste 2: o painel fica entre o Histórico e o Payoff, é cliente puro, projeta até o vencimento e não recomenda
+    const fs60 = await import("node:fs");
+    const path60 = await import("node:path");
+    const ler60 = (rel: string) => fs60.readFileSync(path60.join(process.cwd(), rel), "utf8");
+    const pagE = ler60("app/estrategia/page.tsx");
+    const iHist = pagE.indexOf("3. Preço histórico");
+    const iProj = pagE.indexOf("<PainelProjecoes");
+    const iPay = pagE.indexOf("4. Payoff + P&L");
+    const ordemOk = iHist > 0 && iProj > iHist && iPay > iProj && /import \{ PainelProjecoes \} from "@\/components\/PainelProjecoes"/.test(pagE) && /selectedExpiry=\{selectedExpiry\}/.test(pagE.slice(iProj, iPay));
+    const comp = ler60("components/PainelProjecoes.tsx");
+    const compOk = /^"use client";/.test(comp) && !/from "fs"|from "node:fs"|from "pg"|cache-disco|historico-fonte"/.test(comp)
+      && /atmIvNearest\(chain, selectedExpiry\)/.test(comp) && /adjustedSpot\(spot, divs, r, selectedExpiry\)/.test(comp) && /sessionsBetween\(ultimaData, selectedExpiry\)/.test(comp)
+      && /diasUteisSeguintes\(ultimaData, duVencimento \+ FOLGA_DU\)/.test(comp) && /ReferenceLine x=\{calc\.xVencimento\}/.test(comp) && /dataKey="banda"/.test(comp)
+      && /calc\.reversao\.motivo/.test(comp) && /nenhuma recomendação/.test(comp) && !/sugest|recomendamos|recomendo/i.test(comp) && /range=1y/.test(comp);
+    const libOk = !/from "react"|next\//.test(ler60("lib/projecoes.ts"));
+    if (ordemOk && compOk && libOk) console.log("✔ WO-60 Teste 2: o painel de projeções entra entre o Histórico e o Payoff com o vencimento selecionado; é cliente puro; usa IV ATM do vencimento, spot ajustado por proventos, dias úteis até o vencimento + folga, banda do mercado e linha do vencimento; escreve o motivo quando a reversão não existe e não recomenda; a lib não importa React");
+    else { console.log(`✘ WO-60 Teste 2 falhou: ordem=${ordemOk} comp=${compOk} lib=${libOk}`); failures++; }
   }
 
 }

@@ -17,6 +17,7 @@ import { LegDiagram } from "@/components/LegDiagram";
 import { PayoffChart } from "@/components/PayoffChart";
 import { SensitivityMatrix } from "@/components/SensitivityMatrix";
 import { PriceHistoryPanel } from "@/components/PriceHistoryPanel";
+import { PainelProjecoes } from "@/components/PainelProjecoes";
 import { GraficoVolHistorica } from "@/components/GraficoVolHistorica";
 import { usePersistedState } from "@/lib/use-persisted-state";
 import { AgentPanel } from "@/components/AgentPanel";
@@ -710,6 +711,19 @@ function Workbench() {
               <GraficoVolHistorica ticker={chain.ticker} chain={chain} altura={240} comRodape={false} />
             </div>
           </div>
+        )}
+
+        {/* 3.5 WO-60 — Projeções: onde o preço pode estar no vencimento, por três caminhos (mercado,
+            bootstrap histórico, reversão à média). Entre o passado e o payoff, com os breakevens no lugar. */}
+        {chain && (
+          <PainelProjecoes
+            ticker={chain.ticker}
+            chain={chain}
+            selectedExpiry={selectedExpiry}
+            legs={legs}
+            breakevens={metrics?.breakevens ?? []}
+            r={selic}
+          />
         )}
 
         {/* 4. Payoff + P&L da operação */}
