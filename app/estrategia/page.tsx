@@ -18,6 +18,7 @@ import { PayoffChart } from "@/components/PayoffChart";
 import { SensitivityMatrix } from "@/components/SensitivityMatrix";
 import { PriceHistoryPanel } from "@/components/PriceHistoryPanel";
 import { PainelProjecoes } from "@/components/PainelProjecoes";
+import type { PrecoProjetado } from "@/lib/pnl-operacao";
 import { GraficoVolHistorica } from "@/components/GraficoVolHistorica";
 import { usePersistedState } from "@/lib/use-persisted-state";
 import { AgentPanel } from "@/components/AgentPanel";
@@ -114,6 +115,8 @@ function Workbench() {
   // WO-47 §2: a chain e uma linha recolhivel no topo. Chave por secao (WO-35/39).
   const [chainAberta, setChainAberta] = usePersistedState<boolean>("wb-chain-open", true);
   const [tnDay, setTnDay] = useState(5);
+  // WO-60 E: os preços que as projeções colocam no vencimento, para os cenários do P&L da operação.
+  const [precosProjetados, setPrecosProjetados] = useState<PrecoProjetado[]>([]);
   const [showPresets, setShowPresets] = useState(true);
 
   // WO-16: Estado das 3 sugestões por EV ajustado a risco
@@ -723,6 +726,7 @@ function Workbench() {
             legs={legs}
             breakevens={metrics?.breakevens ?? []}
             r={selic}
+            onPrecosNoVencimento={setPrecosProjetados}
           />
         )}
 
@@ -767,6 +771,12 @@ function Workbench() {
               acertoHistorico={acerto.taxa}
               operacoesFechadas={acerto.n}
               custos={custos?.total ?? null}
+              pop={dec!.pop ?? null}
+              netDebitBruto={metrics.netDebit}
+              chain={chain}
+              capitalLivre={capitalLivre}
+              expiryIso={structExpiry}
+              precosProjetados={precosProjetados}
             />
           )}
 

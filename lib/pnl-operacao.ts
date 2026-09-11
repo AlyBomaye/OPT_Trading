@@ -26,8 +26,8 @@
 import { pnlAtDay, pnlAtExpiry } from "./payoff";
 import { lognormalPdf } from "./black-scholes";
 import { acertoMinimoParaEmpatar } from "./amostra";
-import { REALIZAR_PCT_LUCRO_MAXIMO, DU_ROLAR, TETO_POR_OPERACAO } from "./metodo";
-import type { Leg } from "./types";
+import { REALIZAR_PCT_LUCRO_MAXIMO, DU_ROLAR, DU_FECHAR, TETO_POR_OPERACAO, EXPOSICAO_MIN, EXPOSICAO_MAX } from "./metodo";
+import type { ChainData, Leg } from "./types";
 
 /** Onde o método manda realizar, traduzido para um preço do ativo. */
 export interface AlvoRealizacao {
@@ -233,4 +233,182 @@ export function analisarPnl(args: {
     cenarios,
     duEstrutura,
   };
+}
+
+/* ============================================================================
+ * WO-60 · Parte E — o que faltava para o box virar a ordem do Profit.
+ *
+ * Tudo abaixo é aritmética sobre números que a tela já tem. Nada reprecifica opção por conta
+ * própria: onde há tempo envolvido, é `pnlAtDay` de `lib/payoff` de novo.
+ * ==========================================================================*/
+
+/** Prêmio da estrutura na saída: o número da ordem limitada no Profit. */
+export interface PremioAlvo {
+  /** Prêmio líquido da estrutura na ENTRADA (bruto, sinal do débito: > 0 pagou, < 0 recebeu). */
+  premioEntrada: number;
+  /** Prêmio da estrutura que entrega a fração pedida do lucro máximo, já cobrindo os custos. */
+  premioAlvo: number;
+  /** Idem para 100% do lucro máximo. */
+  premioMaximo: number;
+  /** "vender a estrutura por" (débito) ou "recomprar a estrutura por" (crédito). */
+  acao: "vender" | "recomprar";
+  pctDoMaximo: number;
+}
+
+/**
+ * P&L líquido = V − prêmioEntrada − custos, onde V é o prêmio da estrutura hoje (Σ lado·qtd·valor).
+ * Logo o prêmio que realiza o alvo é `prêmioEntrada + lucroAlvo + custos` — exato, sem varrer grade.
+ * Estrutura de débito: você a VENDE por esse valor; de crédito (prêmio negativo): você a RECOMPRA
+ * por |valor|. `null` sem lucro máximo finito.
+ */
+export function premioAlvo(args: { netDebitBruto: number; maxProfitLiquido: number | null; custos: number; pct?: number }): PremioAlvo | null {
+  const { netDebitBruto, maxProfitLiquido, custos } = args;
+  const pct = args.pct ?? REALIZAR_PCT_LUCRO_MAXIMO;
+  if (maxProfitLiquido == null || !(maxProfitLiquido > 0)) return null;
+  return {
+    premioEntrada: netDebitBruto,
+    premioAlvo: netDebitBruto + maxProfitLiquido * pct + custos,
+    premioMaximo: netDebitBruto + maxProfitLiquido + custos,
+    acao: netDebitBruto >= 0 ? "vender" : "recomprar",
+    pctDoMaximo: pct,
+  };
+}
+
+/** `n` dias úteis (seg–sex) ANTES de `iso`, exclusive. Feriados não são tratados. */
+export function diaUtilAntes(iso: string, n: number): string {
+  const d = new Date(`${iso}T12:00:00Z`);
+  let k = 0;
+  while (k < n) {
+    d.setUTCDate(d.getUTCDate() - 1);
+    const dia = d.getUTCDay();
+    if (dia !== 0 && dia !== 6) k++;
+  }
+  return d.toISOString().slice(0, 10);
+}
+
+export interface DataDaRegra {
+  regra: "rolar" | "fechar";
+  duAntesDoVencimento: number;
+  data: string;
+  /** Pregões daqui até lá. `null` quando já passou. */
+  emDu: number | null;
+  /** P&L com o preço parado nesse dia, líquido de custos. `null` quando já passou. */
+  pnlPrecoParado: number | null;
+  /** Quanto o tempo tira (ou põe) entre hoje e lá, com o preço parado: pnlPrecoParado − pnlHoje. */
+  custoDeEsperar: number | null;
+}
+
+/**
+ * As datas em que a regra manda rolar (10 DU) e zerar (5 DU) para o vencimento da estrutura, e o
+ * que o theta faz até cada uma com o preço parado. `[]` sem vencimento.
+ */
+export function datasDasRegras(args: { legs: Leg[]; spot: number; r: number; custos: number; expiryIso: string | null; duEstrutura: number | null }): DataDaRegra[] {
+  const { legs, spot, r, custos, expiryIso, duEstrutura } = args;
+  if (!expiryIso || duEstrutura == null) return [];
+  const hoje = pnlAtDay(legs, spot, 0, r) - custos;
+  return ([["rolar", DU_ROLAR], ["fechar", DU_FECHAR]] as const).map(([regra, du]) => {
+    const emDu = duEstrutura - du;
+    const passou = emDu < 0;
+    const pnl = passou ? null : pnlAtDay(legs, spot, emDu, r) - custos;
+    return { regra, duAntesDoVencimento: du, data: diaUtilAntes(expiryIso, du), emDu: passou ? null : emDu, pnlPrecoParado: pnl, custoDeEsperar: pnl == null ? null : pnl - hoje };
+  });
+}
+
+export interface CustoExecucao {
+  /** R$ que o spread cobra para entrar agora: compra paga o ask, venda recebe o bid, contra o mid. */
+  total: number;
+  pernasComOferta: number;
+  pernasSemOferta: number;
+  /** Fração do valor esperado que o spread come. `null` sem EV ou EV ≤ 0. */
+  fracaoDoEv: number | null;
+  porPerna: Array<{ opTicker: string; lado: 1 | -1; qtd: number; mid: number; contra: number; custo: number }>;
+}
+
+/**
+ * Spread bid-ask das pernas como custo de execução. `null` quando NENHUMA perna tem oferta (o
+ * COTAHIST da WO-56 é que traz bid/ask); com oferta parcial, devolve o total das que têm e conta
+ * as que não têm — o número é um piso, e a tela diz isso.
+ */
+export function custoExecucaoSpread(legs: Leg[], chain: ChainData | null, valorEsperado: number | null): CustoExecucao | null {
+  if (!chain) return null;
+  const porPerna: CustoExecucao["porPerna"] = [];
+  let semOferta = 0;
+  for (const l of legs) {
+    if (l.kind !== "OPTION" || !l.opTicker) continue;
+    const q = chain.options.find((o) => o.opTicker === l.opTicker);
+    const bid = q?.bid ?? null;
+    const ask = q?.ask ?? null;
+    if (bid == null || ask == null || !(ask >= bid) || !(bid > 0)) { semOferta++; continue; }
+    const mid = q?.mid ?? (bid + ask) / 2;
+    const contra = l.side > 0 ? ask : bid;
+    const custo = Math.abs(contra - mid) * l.qty;
+    porPerna.push({ opTicker: l.opTicker, lado: l.side > 0 ? 1 : -1, qtd: l.qty, mid, contra, custo });
+  }
+  if (porPerna.length === 0) return null;
+  const total = porPerna.reduce((a, p) => a + p.custo, 0);
+  return { total, pernasComOferta: porPerna.length, pernasSemOferta: semOferta, fracaoDoEv: valorEsperado != null && valorEsperado > 0 ? total / valorEsperado : null, porPerna };
+}
+
+export interface CaixaDepois {
+  capitalLivre: number;
+  debito: number;
+  /** 20% × strike × qtd das pernas vendidas (a mesma régua de `allocatedCapital`). */
+  margemVendidas: number;
+  depois: number;
+  /** (débito + margem) ÷ patrimônio. `null` sem patrimônio. */
+  exposicao: number | null;
+  faixa: { min: number; max: number };
+  /** "abaixo" | "dentro" | "acima" da faixa 5–20% do método; `null` sem patrimônio. */
+  situacao: "abaixo" | "dentro" | "acima" | null;
+}
+
+export function caixaDepoisDaOrdem(args: { capitalLivre: number; netDebitLiquido: number; legs: Leg[]; patrimonio: number | null }): CaixaDepois {
+  const { capitalLivre, netDebitLiquido, legs, patrimonio } = args;
+  const debito = Math.max(netDebitLiquido, 0);
+  const margemVendidas = legs.filter((l) => l.side < 0 && l.kind === "OPTION" && l.strike != null).reduce((a, l) => a + 0.2 * (l.strike as number) * l.qty, 0);
+  const alocado = debito + margemVendidas;
+  const exposicao = patrimonio != null && patrimonio > 0 ? alocado / patrimonio : null;
+  const situacao = exposicao == null ? null : exposicao < EXPOSICAO_MIN ? "abaixo" : exposicao > EXPOSICAO_MAX ? "acima" : "dentro";
+  return { capitalLivre, debito, margemVendidas, depois: capitalLivre - alocado, exposicao, faixa: { min: EXPOSICAO_MIN, max: EXPOSICAO_MAX }, situacao };
+}
+
+/** Um preço projetado no vencimento, com o método que o produziu. */
+export interface PrecoProjetado {
+  metodo: "mercado" | "bootstrap" | "reversao";
+  rotulo: string;
+  preco: number;
+}
+
+export interface CenarioProjetado extends CenarioPnl {
+  metodo: PrecoProjetado["metodo"];
+  rotulo: string;
+}
+
+/** Os cenários da tabela, mas nos preços que as projeções colocam no vencimento. */
+export function cenariosProjetados(args: { legs: Leg[]; spot: number; r: number; custos: number; duEstrutura: number | null; precos: PrecoProjetado[] }): CenarioProjetado[] {
+  const { legs, spot, r, custos, duEstrutura, precos } = args;
+  const podeRolar = duEstrutura != null && duEstrutura > DU_ROLAR;
+  return precos.map((p) => ({
+    metodo: p.metodo,
+    rotulo: p.rotulo,
+    variacao: spot > 0 ? p.preco / spot - 1 : 0,
+    spot: p.preco,
+    hoje: pnlAtDay(legs, p.preco, 0, r) - custos,
+    aoRolar: podeRolar ? pnlAtDay(legs, p.preco, duEstrutura! - DU_ROLAR, r) - custos : null,
+    vencimento: pnlAtExpiry(legs, p.preco) - custos,
+  }));
+}
+
+/**
+ * A frase quando PoP e valor esperado discordam — leitura, não julgamento. `null` quando
+ * concordam ou quando falta um dos dois.
+ */
+export function leituraEvPop(pop: number | null, valorEsperado: number | null, capitalEmRisco: number | null): string | null {
+  if (pop == null || valorEsperado == null) return null;
+  const pct = capitalEmRisco != null && capitalEmRisco > 0 ? ` (${(valorEsperado / capitalEmRisco * 100).toFixed(1).replace(".", ",")}% do capital em risco)` : "";
+  const ev = `${valorEsperado < 0 ? "−" : ""}R$ ${Math.abs(valorEsperado).toFixed(2).replace(".", ",")}`;
+  const p = `${(pop * 100).toFixed(0)}%`;
+  if (pop >= 0.5 && valorEsperado < 0) return `Ganha ${p} das vezes, mas o valor esperado é ${ev}${pct} — perde muito quando perde.`;
+  if (pop < 0.5 && valorEsperado > 0) return `Ganha só ${p} das vezes, mas o valor esperado é ${ev}${pct} — ganha muito quando ganha.`;
+  return null;
 }

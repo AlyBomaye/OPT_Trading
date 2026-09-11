@@ -6122,6 +6122,61 @@ Líquido para 04/09/2026 5.134,69 D`;
     const libOk = !/from "react"|next\//.test(ler60("lib/projecoes.ts"));
     if (ordemOk && compOk && libOk) console.log("✔ WO-60 Teste 2: o painel de projeções entra entre o Histórico e o Payoff com o vencimento selecionado; é cliente puro; usa IV ATM do vencimento, spot ajustado por proventos, dias úteis até o vencimento + folga, banda do mercado e linha do vencimento; escreve o motivo quando a reversão não existe e não recomenda; a lib não importa React");
     else { console.log(`✘ WO-60 Teste 2 falhou: ordem=${ordemOk} comp=${compOk} lib=${libOk}`); failures++; }
+    // ---- Teste 3: a aritmética da ordem — prêmio-alvo exato, datas da regra, spread como piso, caixa depois, cenários projetados, frase EV × PoP
+    const PO = await import("../pnl-operacao");
+    const { premioAlvo, datasDasRegras, diaUtilAntes, custoExecucaoSpread, caixaDepoisDaOrdem, cenariosProjetados, leituraEvPop } = PO;
+    const { pnlAtDay } = await import("../payoff");
+    const { DU_ROLAR: R60, DU_FECHAR: F60 } = await import("../metodo");
+    // Trava de alta com calls: compra K=48 a 2,00 e vende K=50 a 1,00, 100 unidades, 20 DU. Débito bruto 100; máx lucro bruto 100.
+    const tr: Leg[] = [
+      { id: "a", kind: "OPTION", opTicker: "PETRJ480", underlying: "PETR4", type: "CALL", strike: 48, expiry: "2026-10-16", du: 20, side: 1, qty: 100, price: 2.0, iv: 0.3 },
+      { id: "b", kind: "OPTION", opTicker: "PETRJ500", underlying: "PETR4", type: "CALL", strike: 50, expiry: "2026-10-16", du: 20, side: -1, qty: 100, price: 1.0, iv: 0.3 },
+    ];
+    const custos60 = 10;
+    const pa = premioAlvo({ netDebitBruto: 100, maxProfitLiquido: 90, custos: custos60 })!;
+    // Vender a estrutura por 173 dá P&L líquido = 173 − 100 − 10 = 63 = 70% de 90. O máximo (200) dá 90.
+    const paOk = pa != null && Math.abs(pa.premioAlvo - 173) < 1e-9 && Math.abs(pa.premioMaximo - 200) < 1e-9 && pa.acao === "vender" && premioAlvo({ netDebitBruto: 100, maxProfitLiquido: null, custos: 0 }) === null
+      && premioAlvo({ netDebitBruto: -80, maxProfitLiquido: 70, custos: 10 })!.acao === "recomprar" && Math.abs(premioAlvo({ netDebitBruto: -80, maxProfitLiquido: 70, custos: 10 })!.premioAlvo - (-80 + 49 + 10)) < 1e-9;
+    const regras = datasDasRegras({ legs: tr, spot: 49, r: 0.15, custos: custos60, expiryIso: "2026-10-16", duEstrutura: 20 });
+    const hoje60 = pnlAtDay(tr, 49, 0, 0.15) - custos60;
+    const regrasOk = regras.length === 2 && regras[0].regra === "rolar" && regras[0].emDu === 20 - R60 && regras[1].emDu === 20 - F60
+      && regras[0].data === diaUtilAntes("2026-10-16", R60) && diaUtilAntes("2026-10-16", 10) === "2026-10-02" && diaUtilAntes("2026-09-14", 1) === "2026-09-11"
+      && regras[0].custoDeEsperar != null && Math.abs(regras[0].custoDeEsperar - ((pnlAtDay(tr, 49, 20 - R60, 0.15) - custos60) - hoje60)) < 1e-9
+      && datasDasRegras({ legs: tr, spot: 49, r: 0.15, custos: 0, expiryIso: "2026-10-16", duEstrutura: 3 }).every((g) => g.emDu === null && g.pnlPrecoParado === null)
+      && datasDasRegras({ legs: tr, spot: 49, r: 0.15, custos: 0, expiryIso: null, duEstrutura: 20 }).length === 0;
+    const chainFake: any = { ticker: "PETR4", spot: 49, options: [
+      { opTicker: "PETRJ480", bid: 1.9, ask: 2.1, mid: 2.0 },
+      { opTicker: "PETRJ500", bid: 0.95, ask: 1.05, mid: 1.0 },
+    ] };
+    const sp = custoExecucaoSpread(tr, chainFake, 40)!;
+    const chainParcial: any = { ...chainFake, options: [chainFake.options[0], { opTicker: "PETRJ500", bid: null, ask: null }] };
+    const spParcial = custoExecucaoSpread(tr, chainParcial, null)!;
+    const spOk = sp != null && Math.abs(sp.total - (0.1 * 100 + 0.05 * 100)) < 1e-9 && sp.pernasComOferta === 2 && sp.pernasSemOferta === 0 && Math.abs(sp.fracaoDoEv! - 15 / 40) < 1e-9
+      && spParcial != null && Math.abs(spParcial.total - 10) < 1e-9 && spParcial.pernasSemOferta === 1 && spParcial.fracaoDoEv === null
+      && custoExecucaoSpread(tr, { ...chainFake, options: [] }, 40) === null && custoExecucaoSpread(tr, null, 40) === null;
+    const cx = caixaDepoisDaOrdem({ capitalLivre: 5000, netDebitLiquido: 110, legs: tr, patrimonio: 5000 });
+    const cxOk = Math.abs(cx.margemVendidas - 0.2 * 50 * 100) < 1e-9 && Math.abs(cx.depois - (5000 - 110 - 1000)) < 1e-9 && Math.abs(cx.exposicao! - 1110 / 5000) < 1e-9 && cx.situacao === "acima"
+      && caixaDepoisDaOrdem({ capitalLivre: 5000, netDebitLiquido: -50, legs: tr, patrimonio: 5000 }).debito === 0 && caixaDepoisDaOrdem({ capitalLivre: 5000, netDebitLiquido: 110, legs: tr, patrimonio: null }).exposicao === null
+      && caixaDepoisDaOrdem({ capitalLivre: 100000, netDebitLiquido: 110, legs: tr, patrimonio: 100000 }).situacao === "abaixo";
+    const cen = cenariosProjetados({ legs: tr, spot: 49, r: 0.15, custos: custos60, duEstrutura: 20, precos: [{ metodo: "mercado", rotulo: "mercado +1σ", preco: 52 }, { metodo: "reversao", rotulo: "reversão à média", preco: 47 }] });
+    const cenOk = cen.length === 2 && cen[0].rotulo === "mercado +1σ" && Math.abs(cen[0].vencimento - (200 - 100 - custos60)) < 1e-9 && Math.abs(cen[1].vencimento - (0 - 100 - custos60)) < 1e-9 && cen[0].aoRolar != null && Math.abs(cen[0].variacao - (52 / 49 - 1)) < 1e-12;
+    const f1 = leituraEvPop(0.71, -12, 100);
+    const f2 = leituraEvPop(0.35, 30, 100);
+    const fraseOk = f1 != null && /71%/.test(f1) && /−R\$ 12,00/.test(f1) && /12,0% do capital em risco/.test(f1) && /perde muito quando perde/.test(f1)
+      && f2 != null && /ganha muito quando ganha/.test(f2) && leituraEvPop(0.71, 12, 100) === null && leituraEvPop(0.3, -5, 100) === null && leituraEvPop(null, 5, 100) === null;
+    if (paOk && regrasOk && spOk && cxOk && cenOk && fraseOk) console.log("✔ WO-60 Teste 3: prêmio-alvo = entrada + lucro + custos (vender no débito, recomprar no crédito; null sem máximo); datas de rolar/zerar em dias úteis com o custo de esperar pelo pnlAtDay e 'já passou' quando a estrutura é curta; spread pelo ask/bid contra o mid, piso quando falta oferta, null sem nenhuma; caixa depois com margem 20%×K×qtd e a faixa 5–20%; cenários projetados com o rótulo do método; frase EV × PoP só quando discordam");
+    else { console.log(`✘ WO-60 Teste 3 falhou: premio=${paOk} regras=${regrasOk} spread=${spOk} caixa=${cxOk} cen=${cenOk} frase=${fraseOk}`); failures++; }
+
+    // ---- Teste 4: o box usa a lib (não recalcula), a régua é SVG, a página liga as projeções ao P&L
+    const pnlSrc = ler60("components/PainelPnl.tsx");
+    const boxOk = /premioAlvo\(\{ netDebitBruto/.test(pnlSrc) && /datasDasRegras\(\{/.test(pnlSrc) && /custoExecucaoSpread\(legs, chain, a\.valorEsperado\)/.test(pnlSrc) && /caixaDepoisDaOrdem\(\{/.test(pnlSrc) && /cenariosProjetados\(\{/.test(pnlSrc) && /leituraEvPop\(pop, a\.valorEsperado, a\.capitalEmRisco\)/.test(pnlSrc)
+      && /function ReguaPreco/.test(pnlSrc) && /<svg viewBox/.test(pnlSrc) && !/recharts/.test(pnlSrc) && /prêmio da estrutura/i.test(pnlSrc) && /custo de esperar/i.test(pnlSrc) && /engole o valor esperado/.test(pnlSrc)
+      && !/sugest|recomendamos|recomendo/i.test(pnlSrc) && /A ordem no Profit/.test(pnlSrc);
+    const pagE2 = ler60("app/estrategia/page.tsx");
+    const ligacaoOk = /onPrecosNoVencimento=\{setPrecosProjetados\}/.test(pagE2) && /precosProjetados=\{precosProjetados\}/.test(pagE2) && /netDebitBruto=\{metrics\.netDebit\}/.test(pagE2) && /capitalLivre=\{capitalLivre\}/.test(pagE2) && /expiryIso=\{structExpiry\}/.test(pagE2)
+      && /onPrecosNoVencimento\?: \(precos: PrecoProjetado\[\]\) => void/.test(ler60("components/PainelProjecoes.tsx"));
+    if (boxOk && ligacaoOk) console.log("✔ WO-60 Teste 4: o P&L da operação chama a lib para prêmio-alvo, datas, spread, caixa, cenários projetados e a frase; a régua é SVG sem Recharts; a página passa PoP, prêmio bruto, cadeia, caixa livre e vencimento, e as projeções sobem do painel para o box");
+    else { console.log(`✘ WO-60 Teste 4 falhou: box=${boxOk} ligacao=${ligacaoOk}`); failures++; }
   }
 
 }

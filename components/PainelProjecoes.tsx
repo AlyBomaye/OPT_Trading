@@ -21,6 +21,7 @@ import { Area, CartesianGrid, ComposedChart, Line, ReferenceLine, ResponsiveCont
 import { RefreshCw, Route } from "lucide-react";
 import type { Candle } from "@/app/api/history/route";
 import type { ChainData, Leg } from "@/lib/types";
+import type { PrecoProjetado } from "@/lib/pnl-operacao";
 import { atmIvNearest } from "@/lib/scanner";
 import { adjustedSpot, effectiveDividends, useDividends } from "@/lib/dividends";
 import { sessionsBetween } from "@/lib/session";
@@ -51,9 +52,11 @@ interface Props {
   legs: Leg[];
   breakevens: number[];
   r: number;
+  /** WO-60 E: os preços que cada método coloca no vencimento, para o P&L da operação usar nos cenários. */
+  onPrecosNoVencimento?: (precos: PrecoProjetado[]) => void;
 }
 
-export function PainelProjecoes({ ticker, chain, selectedExpiry, legs, breakevens, r }: Props) {
+export function PainelProjecoes({ ticker, chain, selectedExpiry, legs, breakevens, r, onPrecosNoVencimento }: Props) {
   const [candles, setCandles] = useState<Candle[] | null>(null);
   const [carregando, setCarregando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
@@ -92,6 +95,27 @@ export function PainelProjecoes({ ticker, chain, selectedExpiry, legs, breakeven
     const xVencimento = datas.find((d) => d >= selectedExpiry) ?? null;
     return { ultimaData, duVencimento, datas, spot, sigma, spotAjustado, mercado, bootstrap, reversao, serie, xVencimento, nRetornos: validos.length - 1 };
   }, [chain, ticker, candles, selectedExpiry, divsByTicker, r]);
+
+  // Os preços no vencimento sobem para a página (o box de P&L os usa como cenários).
+  useEffect(() => {
+    if (!onPrecosNoVencimento) return;
+    if (!calc || "semVencimento" in calc || "vencido" in calc) { onPrecosNoVencimento([]); return; }
+    const precos: PrecoProjetado[] = [];
+    if (calc.mercado?.noVencimento) {
+      precos.push({ metodo: "mercado", rotulo: "mercado −1σ", preco: calc.mercado.noVencimento.inferior });
+      precos.push({ metodo: "mercado", rotulo: "mercado (forward)", preco: calc.mercado.noVencimento.central });
+      precos.push({ metodo: "mercado", rotulo: "mercado +1σ", preco: calc.mercado.noVencimento.superior });
+    }
+    if (calc.bootstrap?.noVencimento) {
+      precos.push({ metodo: "bootstrap", rotulo: "bootstrap p10", preco: calc.bootstrap.noVencimento.p10 });
+      precos.push({ metodo: "bootstrap", rotulo: "bootstrap mediana", preco: calc.bootstrap.noVencimento.mediana });
+      precos.push({ metodo: "bootstrap", rotulo: "bootstrap p90", preco: calc.bootstrap.noVencimento.p90 });
+    }
+    if (calc.reversao.ok && calc.reversao.projecao.noVencimento != null) {
+      precos.push({ metodo: "reversao", rotulo: "reversão à média", preco: calc.reversao.projecao.noVencimento });
+    }
+    onPrecosNoVencimento(precos);
+  }, [calc, onPrecosNoVencimento]);
 
   const strikes = useMemo(
     () => legs.filter((l) => l.kind === "OPTION" && l.strike != null).map((l) => ({ strike: l.strike as number, side: l.side, type: l.type })),
