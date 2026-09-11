@@ -6047,6 +6047,66 @@ Líquido para 04/09/2026 5.134,69 D`;
     else { console.log(`✘ WO-59 Teste 5 falhou: dez=${dezOk} manual=${manualCA} semRegime=${semRegimeNasMedias} semTeclaVelha=${semTeclaVelha} skills=${skillsCA}`); failures++; }
   }
 
+  // =========================================================================
+  // WO-60 — Projeções na Estratégia: mercado (IV), bootstrap histórico e reversão à média
+  // =========================================================================
+  {
+    const PJ = await import("../projecoes");
+    const { diasUteisSeguintes, projecaoMercado, projecaoBootstrap, projecaoReversao, serieParaGrafico, mulberry32, HISTORICO_PREGOES, MIN_RETORNOS_BOOTSTRAP } = PJ;
+
+    const diaUtil60 = (i: number) => { const d = new Date(Date.UTC(2025, 0, 1)); let k = 0; while (k < i) { d.setUTCDate(d.getUTCDate() + 1); if (d.getUTCDay() !== 0 && d.getUTCDay() !== 6) k++; } return d.toISOString().slice(0, 10); };
+    const serie60 = (closes: number[]): Candle[] => closes.map((c, i) => ({ date: diaUtil60(i), open: c, high: c * 1.01, low: c * 0.99, close: c, volume: 1000 }));
+    const datas = diasUteisSeguintes("2026-09-11", 40);
+    const datasOk = datas.length === 40 && datas[0] === "2026-09-14" && datas[1] === "2026-09-15" && datas.every((d) => { const w = new Date(`${d}T12:00:00Z`).getUTCDay(); return w !== 0 && w !== 6; }) && diasUteisSeguintes("2026-09-11", 0).length === 0;
+
+    // ---- mercado: forward exato e banda simétrica em log
+    const mk = projecaoMercado({ spotAjustado: 100, sigma: 0.3, r: 0.1, datas, duVencimento: 20 })!;
+    const mkOk = mk != null && Math.abs(mk.central[19].valor - 100 * Math.exp(0.1 * 20 / 252)) < 1e-9 && Math.abs(mk.superior[19].valor * mk.inferior[19].valor - mk.central[19].valor ** 2) < 1e-6
+      && Math.abs(Math.log(mk.superior[19].valor / mk.central[19].valor) - 0.3 * Math.sqrt(20 / 252)) < 1e-9 && mk.noVencimento != null && Math.abs(mk.noVencimento.central - mk.central[19].valor) < 1e-12
+      && projecaoMercado({ spotAjustado: 100, sigma: null, r: 0.1, datas, duVencimento: 20 }) === null && projecaoMercado({ spotAjustado: 100, sigma: 0.3, r: 0.1, datas: [], duVencimento: 20 }) === null;
+
+    // ---- bootstrap: determinístico, p10 < p50 < p90, partida no spot
+    const rnd = mulberry32(7);
+    const ruido: number[] = [20];
+    for (let i = 1; i < 300; i++) ruido.push(ruido[i - 1] * Math.exp((rnd() - 0.5) * 0.04));
+    const candlesRuido = serie60(ruido);
+    const b1 = projecaoBootstrap({ candles: candlesRuido, spot: 20, datas, duVencimento: 20, nCaminhos: 500 })!;
+    const b2 = projecaoBootstrap({ candles: candlesRuido, spot: 20, datas, duVencimento: 20, nCaminhos: 500 })!;
+    const retsRuido = ruido.slice(1).map((c, i) => Math.log(c / ruido[i]));
+    const bOk = b1 != null && b1.mediana.length === 40 && b1.mediana.every((m, i) => Math.abs(m.valor - b2.mediana[i].valor) < 1e-12)
+      && b1.p10[39].valor < b1.mediana[39].valor && b1.mediana[39].valor < b1.p90[39].valor && b1.noVencimento != null && b1.noVencimento.p10 < b1.noVencimento.mediana
+      && b1.mediana[0].valor >= 20 * Math.exp(Math.min(...retsRuido)) - 1e-9 && b1.mediana[0].valor <= 20 * Math.exp(Math.max(...retsRuido)) + 1e-9
+      && b1.nRetornos === 299 && projecaoBootstrap({ candles: candlesRuido.slice(0, MIN_RETORNOS_BOOTSTRAP), spot: 20, datas, duVencimento: 20 }) === null;
+
+    // ---- reversão: OU sintético recupera κ e meia-vida; tendência pura não tem reversão
+    const rnd2 = mulberry32(11);
+    const gauss = () => { const u = Math.max(rnd2(), 1e-12); const v = rnd2(); return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v); };
+    const kappaReal = 0.1;
+    const mu = Math.log(20);
+    const xs: number[] = [mu + 0.05];
+    for (let i = 1; i < 300; i++) xs.push(xs[i - 1] + kappaReal * (mu - xs[i - 1]) + 0.005 * gauss());
+    const ou = projecaoReversao({ candles: serie60(xs.map(Math.exp)), spot: 21, datas, duVencimento: 20, janela: 250 });
+    const tend = projecaoReversao({ candles: serie60(Array.from({ length: 300 }, (_, i) => 10 * Math.exp(i * 0.004))), spot: 33, datas, duVencimento: 20 });
+    const curta = projecaoReversao({ candles: serie60(xs.slice(0, 10).map(Math.exp)), spot: 21, datas, duVencimento: 20 });
+    const ouOk = ou.ok && Math.abs(ou.projecao.kappa - kappaReal) < 0.06 && Math.abs(ou.projecao.meiaVidaPregoes - Math.log(2) / ou.projecao.kappa) < 1e-9 && Math.abs(ou.projecao.mediaPreco - 20) < 1
+      && ou.projecao.linha[0].valor < 21 && ou.projecao.linha[39].valor < ou.projecao.linha[0].valor && ou.projecao.linha[39].valor > ou.projecao.mediaPreco - 0.5 && ou.projecao.noVencimento != null
+      && !tend.ok && /κ ≤ 0|instável/.test(tend.motivo) && !curta.ok && /30/.test(curta.motivo);
+
+    // ---- série do gráfico: passado + futuro, partida colada ao último fechamento, nada projetado antes
+    const hist = candlesRuido;
+    const sg = serieParaGrafico({ historico: hist, spot: 20, datas, mercado: mk, bootstrap: b1, reversao: ou.ok ? ou.projecao : null });
+    const passado = sg.filter((l) => !l.futuro);
+    const futuro = sg.filter((l) => l.futuro);
+    const sgOk = sg.length === HISTORICO_PREGOES + 40 && passado.length === HISTORICO_PREGOES && futuro.length === 40
+      && passado.slice(0, -1).every((l) => l.mercado === undefined && l.bootstrap === undefined && l.reversao === undefined && l.close != null)
+      && passado[passado.length - 1].mercado === 20 && passado[passado.length - 1].bootstrap === 20 && passado[passado.length - 1].reversao === 20
+      && futuro.every((l) => l.close === undefined && l.mercado != null && l.banda != null && l.banda[0] < l.banda[1] && l.bootstrap != null && l.reversao != null)
+      && serieParaGrafico({ historico: hist, spot: 20, datas, mercado: null, bootstrap: null, reversao: null }).every((l) => l.mercado === undefined);
+
+    if (datasOk && mkOk && bOk && ouOk && sgOk) console.log("✔ WO-60 Teste 1: dias úteis pulam o fim de semana; mercado = forward exato com banda simétrica em log (null sem IV); bootstrap determinístico com p10 < mediana < p90 e partida no spot (null com poucos retornos); OU sintético recupera κ e meia-vida e a linha converge para a média; tendência pura e janela curta não têm reversão (motivo escrito); a série do gráfico cola as três ao último fechamento e nada é projetado no passado");
+    else { console.log(`✘ WO-60 Teste 1 falhou: datas=${datasOk} mercado=${mkOk} bootstrap=${bOk} ou=${ouOk} (${ou.ok ? `κ=${ou.projecao.kappa.toFixed(3)} μ=${ou.projecao.mediaPreco.toFixed(2)}` : ou.motivo}; tend=${tend.ok ? "ok?!" : tend.motivo}) serie=${sgOk}`); failures++; }
+  }
+
 }
 
 testesAssincronos()
