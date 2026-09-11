@@ -2451,12 +2451,13 @@ async function testesAjustes0209() {
     const pixels = !/viewBox=/.test(srcLeg) && /ResizeObserver/.test(srcLeg) && /<svg width=\{W\} height=\{H\}/.test(srcLeg) && /fontSize=\{12\}/.test(srcLeg) && /<title>\{c\.dica\}<\/title>/.test(srcLeg) && /\$\{l\.qty\} × \$\{fmtNum\(l\.price\)\}/.test(srcLeg);
     // O payoff cresce na coluna e hospeda o controle T+n; a sensibilidade fica logo abaixo, na mesma coluna; a linha não é items-start.
     const payoffCresce = /className="panel h-full flex flex-col"/.test(srcPay) && /onTnDay\?: \(n: number\) => void/.test(srcPay) && /Curva T\+n:/.test(srcPay) && !/h-72/.test(srcPay) && /flex-1 min-h-\[18rem\]/.test(srcPay);
-    const iPay = srcEst.indexOf("<PayoffChart");
-    const iSens = srcEst.indexOf("<SensitivityMatrix");
-    const iPnl = srcEst.indexOf("<PainelPnl");
-    const trechoLinha = srcEst.slice(srcEst.indexOf("{/* 4. Payoff"), iPnl);
-    const colunaOk = iPay > 0 && iSens > iPay && iSens < iPnl && /onTnDay=\{setTnDay\}/.test(srcEst) && !/Curva T\+n:/.test(srcEst) && !/items-start/.test(trechoLinha) && /id="payoff" className="flex-1 flex flex-col/.test(srcEst) && srcEst.split("<SensitivityMatrix").length === 2;
-    if (pixels && payoffCresce && colunaOk) console.log("✔ AJ Teste 14: o mapa de strikes desenha em pixels (ResizeObserver, texto 12 px, ficha qtd × prêmio com dica); o payoff preenche a coluna com o T+n no cabeçalho e a matriz de sensibilidade logo abaixo, ao lado do P&L");
+    // Ordem da Montagem (11/09/2026): pernas + mapa → histórico (largura toda) → projeções → payoff | vol realizada → P&L (largura toda) → what-if | critérios → cards.
+    const idx = (m: string) => srcEst.indexOf(m);
+    const iLeg = idx("<LegDiagram"), iHist = idx("<PriceHistoryPanel"), iProj = idx("<PainelProjecoes"), iPay = idx("<PayoffChart"), iVol = idx("<GraficoVolHistorica"), iPnl = idx("<PainelPnl"), iSens = idx("<SensitivityMatrix"), iSem = idx("<SemaforoCriterios"), iKpi = idx("Métricas da operação */");
+    const ordem = iLeg > 0 && iHist > iLeg && iProj > iHist && iPay > iProj && iVol > iPay && iPnl > iVol && iSens > iPnl && iSem > iSens && iKpi > iSem;
+    const histSozinho = !/grid-cols-2[^\n]*\n[^\n]*\n[^\n]*<PriceHistoryPanel/.test(srcEst) && /grid grid-cols-1 lg:grid-cols-2 gap-3">\s*<div id="payoff"/.test(srcEst);
+    const colunaOk = ordem && histSozinho && /onTnDay=\{setTnDay\}/.test(srcEst) && !/Curva T\+n:/.test(srcEst) && srcEst.split("<SensitivityMatrix").length === 2 && srcEst.split("<GraficoVolHistorica").length === 2;
+    if (pixels && payoffCresce && colunaOk) console.log("✔ AJ Teste 14: o mapa de strikes desenha em pixels (ResizeObserver, texto 12 px, ficha qtd × prêmio com dica); Montagem na ordem pernas → histórico → projeções → payoff | vol realizada → P&L → what-if | critérios → cards, com o T+n no cabeçalho do payoff");
     else { console.log(`✘ AJ Teste 14 falhou: pixels=${pixels} payoff=${payoffCresce} coluna=${colunaOk}`); failures++; }
   }
 
@@ -6130,7 +6131,7 @@ Líquido para 04/09/2026 5.134,69 D`;
     const pagE = ler60("app/estrategia/page.tsx");
     const iHist = pagE.indexOf("3. Preço histórico");
     const iProj = pagE.indexOf("<PainelProjecoes");
-    const iPay = pagE.indexOf("4. Payoff + P&L");
+    const iPay = pagE.indexOf("<PayoffChart"); // 11/09/2026: o payoff divide a linha com a vol realizada
     const ordemOk = iHist > 0 && iProj > iHist && iPay > iProj && /import \{ PainelProjecoes \} from "@\/components\/PainelProjecoes"/.test(pagE) && /selectedExpiry=\{selectedExpiry\}/.test(pagE.slice(iProj, iPay));
     const comp = ler60("components/PainelProjecoes.tsx");
     const compOk = /^"use client";/.test(comp) && !/from "fs"|from "node:fs"|from "pg"|cache-disco|historico-fonte"/.test(comp)

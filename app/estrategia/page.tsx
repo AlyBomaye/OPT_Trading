@@ -694,26 +694,16 @@ function Workbench() {
           )}
 
 
-        {/* 3. Preço histórico + Vol histórica (WO-47 §2, pedido explícito) */}
+        {/* 3. Preço histórico (WO-47 §2), logo abaixo das pernas, na largura toda.
+            11/09/2026: a vol realizada desceu para o lado do payoff (seção 4). */}
         {chain && (
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 items-start">
-            <div className="min-w-0">
-          {/* WO-16 Feature 1: Painel de histórico de preços colapsável com overlays */}
-          {chain && (
-            <PriceHistoryPanel
-              ticker={chain.ticker}
-              chain={chain}
-              selectedExpiry={selectedExpiry}
-              legs={legs}
-              breakevens={metrics?.breakevens ?? []}
-            />
-          )}
-
-            </div>
-            <div className="min-w-0">
-              <GraficoVolHistorica ticker={chain.ticker} chain={chain} altura={240} comRodape={false} />
-            </div>
-          </div>
+          <PriceHistoryPanel
+            ticker={chain.ticker}
+            chain={chain}
+            selectedExpiry={selectedExpiry}
+            legs={legs}
+            breakevens={metrics?.breakevens ?? []}
+          />
         )}
 
         {/* 3.5 WO-60 — Projeções: onde o preço pode estar no vencimento, por três caminhos (mercado,
@@ -730,22 +720,23 @@ function Workbench() {
           />
         )}
 
-        {/* 4. Payoff + P&L da operação (com a sensibilidade sob o payoff).
-            11/09/2026: a coluna da esquerda deixou de ser mais baixa que o P&L (vão de meia tela):
-            o payoff cresce para preencher a coluna e a matriz de sensibilidade — que usa o mesmo
-            T+n — vem logo abaixo dele. O controle T+n mora no cabeçalho do payoff. */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
-          <div className="min-w-0 flex flex-col gap-3">
-          {chain && (
-            <>
-              <div id="payoff" className="flex-1 flex flex-col min-h-0">
-                <PayoffChart legs={legs} spot={chain.spot} r={selic} tnDay={tnDay} breakevens={metrics?.breakevens ?? []} onTnDay={setTnDay} />
-              </div>
-              <SensitivityMatrix legs={legs} spot={chain.spot} r={selic} dayOffset={tnDay} betaEstimado={betaEstimado} />
-            </>
-          )}
+        {/* 4. Payoff | vol realizada. 11/09/2026: o payoff vem logo depois do histórico e das
+            projeções (passado → futuro → resultado) e divide a linha com a vol realizada; o
+            controle T+n mora no cabeçalho do payoff e alimenta também a matriz what-if abaixo. */}
+        {chain && (
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+            <div id="payoff" className="min-w-0 flex flex-col">
+              <PayoffChart legs={legs} spot={chain.spot} r={selic} tnDay={tnDay} breakevens={metrics?.breakevens ?? []} onTnDay={setTnDay} />
+            </div>
+            <div className="min-w-0">
+              <GraficoVolHistorica ticker={chain.ticker} chain={chain} altura={240} comRodape={false} />
+            </div>
           </div>
-          <div className="min-w-0">
+        )}
+
+        {/* 5. O quadro da decisão, na largura toda: P&L da operação, depois a matriz what-if ao
+            lado dos critérios do método, depois os cards de métricas e gregas. */}
+        <div className="space-y-3">
           {/* WO-46 — P&L da operação: risco contra patrimônio, acerto necessário, preço da
               realização e cenários. É a tradução das métricas para a decisão da ordem. */}
           {chain && metrics && legs.length > 0 && (
@@ -770,26 +761,30 @@ function Workbench() {
             />
           )}
 
-          </div>
-        </div>
-
-        {/* 5. Critérios do método + Métricas e Gregas */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 items-start">
-          <div className="min-w-0">
-          {/* WO-46 §E.1 — os critérios do método, no momento em que a estrutura ainda pode mudar. */}
-          {chain && metrics && legs.length > 0 && (
-            <SemaforoCriterios
-              legs={legs}
-              r={selic}
-              netDebit={metrics.netDebit}
-              maxProfit={metrics.maxProfit}
-              maxLoss={metrics.maxLoss}
-              spot={chain.spot}
-            />
+          {/* Matriz what-if | critérios do método */}
+          {chain && legs.length > 0 && (
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+              <div className="min-w-0 [&>.panel]:h-full">
+                <SensitivityMatrix legs={legs} spot={chain.spot} r={selic} dayOffset={tnDay} betaEstimado={betaEstimado} />
+              </div>
+              <div className="min-w-0">
+                {/* WO-46 §E.1 — os critérios do método, no momento em que a estrutura ainda pode mudar. */}
+                {metrics && (
+                  <SemaforoCriterios
+                    legs={legs}
+                    r={selic}
+                    netDebit={metrics.netDebit}
+                    maxProfit={metrics.maxProfit}
+                    maxLoss={metrics.maxLoss}
+                    spot={chain.spot}
+                  />
+                )}
+              </div>
+            </div>
           )}
 
-          </div>
-          <div className="min-w-0 space-y-2">
+          {/* Cards: métricas da operação e gregas, na largura toda */}
+          <div className="space-y-2">
           {/* Métricas da operação */}
           {chain && metrics && dec && (
             <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
@@ -864,10 +859,8 @@ function Workbench() {
               não sustentam o p/b assumido pela PoP.
             </div>
           )}
-
           </div>
         </div>
-
       </div>
         </>
       )}
