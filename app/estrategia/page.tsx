@@ -576,7 +576,9 @@ function Workbench() {
           )}
         </div>
 
-        {/* 2. Pernas + Diagrama */}
+        {/* 2. Pernas (editor) | vol realizada. 11/09/2026: a tela foi reorganizada em pares —
+            o que se edita ao lado do contexto de vol; os dois gráficos da operação juntos
+            (mapa de strikes | payoff); o passado ao lado do futuro (histórico | projeções). */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 items-start">
           <div className="space-y-3 min-w-0">
           {/* Editor de pernas */}
@@ -669,9 +671,7 @@ function Workbench() {
             )}
           </div>
           <div className="min-w-0">
-          {/* Diagrama visual das pernas */}
-          {chain && legs.length > 0 && <LegDiagram legs={legs} spot={chain.spot} breakevens={metrics?.breakevens ?? []} />}
-
+            {chain && <GraficoVolHistorica ticker={chain.ticker} chain={chain} altura={240} comRodape={false} />}
           </div>
         </div>
 
@@ -693,43 +693,42 @@ function Workbench() {
             />
           )}
 
-
-        {/* 3. Preço histórico (WO-47 §2), logo abaixo das pernas, na largura toda.
-            11/09/2026: a vol realizada desceu para o lado do payoff (seção 4). */}
-        {chain && (
-          <PriceHistoryPanel
-            ticker={chain.ticker}
-            chain={chain}
-            selectedExpiry={selectedExpiry}
-            legs={legs}
-            breakevens={metrics?.breakevens ?? []}
-          />
-        )}
-
-        {/* 3.5 WO-60 — Projeções: onde o preço pode estar no vencimento, por três caminhos (mercado,
-            bootstrap histórico, reversão à média). Entre o passado e o payoff, com os breakevens no lugar. */}
-        {chain && (
-          <PainelProjecoes
-            ticker={chain.ticker}
-            chain={chain}
-            selectedExpiry={selectedExpiry}
-            legs={legs}
-            breakevens={metrics?.breakevens ?? []}
-            r={selic}
-            onPrecosNoVencimento={setPrecosProjetados}
-          />
-        )}
-
-        {/* 4. Payoff | vol realizada. 11/09/2026: o payoff vem logo depois do histórico e das
-            projeções (passado → futuro → resultado) e divide a linha com a vol realizada; o
-            controle T+n mora no cabeçalho do payoff e alimenta também a matriz what-if abaixo. */}
+        {/* 3. Os gráficos da operação, juntos: mapa de strikes | payoff (T+n no cabeçalho do
+            payoff; alimenta também a matriz what-if, no quadro da decisão). */}
         {chain && (
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+            <div className="min-w-0 [&>.panel]:h-full">
+              <LegDiagram legs={legs} spot={chain.spot} breakevens={metrics?.breakevens ?? []} />
+            </div>
             <div id="payoff" className="min-w-0 flex flex-col">
               <PayoffChart legs={legs} spot={chain.spot} r={selic} tnDay={tnDay} breakevens={metrics?.breakevens ?? []} onTnDay={setTnDay} />
             </div>
+          </div>
+        )}
+
+        {/* 4. Passado | futuro: histórico de preço (WO-47 §2) ao lado das projeções (WO-60),
+            com os breakevens nos dois. */}
+        {chain && (
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 items-start">
             <div className="min-w-0">
-              <GraficoVolHistorica ticker={chain.ticker} chain={chain} altura={240} comRodape={false} />
+              <PriceHistoryPanel
+                ticker={chain.ticker}
+                chain={chain}
+                selectedExpiry={selectedExpiry}
+                legs={legs}
+                breakevens={metrics?.breakevens ?? []}
+              />
+            </div>
+            <div className="min-w-0">
+              <PainelProjecoes
+                ticker={chain.ticker}
+                chain={chain}
+                selectedExpiry={selectedExpiry}
+                legs={legs}
+                breakevens={metrics?.breakevens ?? []}
+                r={selic}
+                onPrecosNoVencimento={setPrecosProjetados}
+              />
             </div>
           </div>
         )}

@@ -2451,13 +2451,14 @@ async function testesAjustes0209() {
     const pixels = !/viewBox=/.test(srcLeg) && /ResizeObserver/.test(srcLeg) && /<svg width=\{W\} height=\{H\}/.test(srcLeg) && /fontSize=\{12\}/.test(srcLeg) && /<title>\{c\.dica\}<\/title>/.test(srcLeg) && /\$\{l\.qty\} × \$\{fmtNum\(l\.price\)\}/.test(srcLeg);
     // O payoff cresce na coluna e hospeda o controle T+n; a sensibilidade fica logo abaixo, na mesma coluna; a linha não é items-start.
     const payoffCresce = /className="panel h-full flex flex-col"/.test(srcPay) && /onTnDay\?: \(n: number\) => void/.test(srcPay) && /Curva T\+n:/.test(srcPay) && !/h-72/.test(srcPay) && /flex-1 min-h-\[18rem\]/.test(srcPay);
-    // Ordem da Montagem (11/09/2026): pernas + mapa → histórico (largura toda) → projeções → payoff | vol realizada → P&L (largura toda) → what-if | critérios → cards.
+    // Ordem da Montagem (11/09/2026, em pares): editor | vol realizada → 3 perguntas → mapa de strikes | payoff → histórico | projeções → P&L (largura toda) → what-if | critérios → cards.
     const idx = (m: string) => srcEst.indexOf(m);
-    const iLeg = idx("<LegDiagram"), iHist = idx("<PriceHistoryPanel"), iProj = idx("<PainelProjecoes"), iPay = idx("<PayoffChart"), iVol = idx("<GraficoVolHistorica"), iPnl = idx("<PainelPnl"), iSens = idx("<SensitivityMatrix"), iSem = idx("<SemaforoCriterios"), iKpi = idx("Métricas da operação */");
-    const ordem = iLeg > 0 && iHist > iLeg && iProj > iHist && iPay > iProj && iVol > iPay && iPnl > iVol && iSens > iPnl && iSem > iSens && iKpi > iSem;
-    const histSozinho = !/grid-cols-2[^\n]*\n[^\n]*\n[^\n]*<PriceHistoryPanel/.test(srcEst) && /grid grid-cols-1 lg:grid-cols-2 gap-3">\s*<div id="payoff"/.test(srcEst);
-    const colunaOk = ordem && histSozinho && /onTnDay=\{setTnDay\}/.test(srcEst) && !/Curva T\+n:/.test(srcEst) && srcEst.split("<SensitivityMatrix").length === 2 && srcEst.split("<GraficoVolHistorica").length === 2;
-    if (pixels && payoffCresce && colunaOk) console.log("✔ AJ Teste 14: o mapa de strikes desenha em pixels (ResizeObserver, texto 12 px, ficha qtd × prêmio com dica); Montagem na ordem pernas → histórico → projeções → payoff | vol realizada → P&L → what-if | critérios → cards, com o T+n no cabeçalho do payoff");
+    const iEd = idx("Editor de pernas"), iVol = idx("<GraficoVolHistorica"), iForm = idx("<FormularioAbertura"), iLeg = idx("<LegDiagram"), iPay = idx("<PayoffChart"), iHist = idx("<PriceHistoryPanel"), iProj = idx("<PainelProjecoes"), iPnl = idx("<PainelPnl"), iSens = idx("<SensitivityMatrix"), iSem = idx("<SemaforoCriterios"), iKpi = idx("Métricas da operação */");
+    const ordem = iEd > 0 && iVol > iEd && iForm > iVol && iLeg > iForm && iPay > iLeg && iHist > iPay && iProj > iHist && iPnl > iProj && iSens > iPnl && iSem > iSens && iKpi > iSem;
+    const mesmaLinha = (a: number, b: number) => !/grid grid-cols/.test(srcEst.slice(a, b));
+    const pares = mesmaLinha(iEd, iVol) && mesmaLinha(iLeg, iPay) && mesmaLinha(iHist, iProj) && mesmaLinha(iSens, iSem);
+    const colunaOk = ordem && pares && /onTnDay=\{setTnDay\}/.test(srcEst) && !/Curva T\+n:/.test(srcEst) && ["<SensitivityMatrix", "<GraficoVolHistorica", "<LegDiagram", "<PayoffChart", "<PriceHistoryPanel", "<PainelProjecoes"].every((m) => srcEst.split(m).length === 2);
+    if (pixels && payoffCresce && colunaOk) console.log("✔ AJ Teste 14: o mapa de strikes desenha em pixels (ResizeObserver, texto 12 px, ficha qtd × prêmio com dica); Montagem em pares — editor | vol, mapa de strikes | payoff, histórico | projeções, what-if | critérios — e o P&L na largura toda, com o T+n no cabeçalho do payoff");
     else { console.log(`✘ AJ Teste 14 falhou: pixels=${pixels} payoff=${payoffCresce} coluna=${colunaOk}`); failures++; }
   }
 
@@ -6129,17 +6130,18 @@ Líquido para 04/09/2026 5.134,69 D`;
     const path60 = await import("node:path");
     const ler60 = (rel: string) => fs60.readFileSync(path60.join(process.cwd(), rel), "utf8");
     const pagE = ler60("app/estrategia/page.tsx");
-    const iHist = pagE.indexOf("3. Preço histórico");
+    const iHist = pagE.indexOf("<PriceHistoryPanel"); // 11/09/2026: histórico | projeções lado a lado
     const iProj = pagE.indexOf("<PainelProjecoes");
-    const iPay = pagE.indexOf("<PayoffChart"); // 11/09/2026: o payoff divide a linha com a vol realizada
-    const ordemOk = iHist > 0 && iProj > iHist && iPay > iProj && /import \{ PainelProjecoes \} from "@\/components\/PainelProjecoes"/.test(pagE) && /selectedExpiry=\{selectedExpiry\}/.test(pagE.slice(iProj, iPay));
+    const iPay = pagE.indexOf("<PayoffChart");
+    // 11/09/2026: as projeções ficam AO LADO do histórico (mesma grade, nada de payoff/P&L entre os dois); o payoff vem antes, junto do mapa de strikes.
+    const ordemOk = iHist > 0 && iProj > iHist && iPay > 0 && iPay < iHist && !/grid grid-cols|<PayoffChart|<PainelPnl/.test(pagE.slice(iHist, iProj)) && /import \{ PainelProjecoes \} from "@\/components\/PainelProjecoes"/.test(pagE) && /selectedExpiry=\{selectedExpiry\}/.test(pagE.slice(iProj, iProj + 600));
     const comp = ler60("components/PainelProjecoes.tsx");
     const compOk = /^"use client";/.test(comp) && !/from "fs"|from "node:fs"|from "pg"|cache-disco|historico-fonte"/.test(comp)
       && /atmIvNearest\(chain, selectedExpiry\)/.test(comp) && /adjustedSpot\(spot, divs, r, selectedExpiry\)/.test(comp) && /sessionsBetween\(ultimaData, selectedExpiry\)/.test(comp)
       && /diasUteisSeguintes\(ultimaData, duVencimento \+ FOLGA_DU\)/.test(comp) && /ReferenceLine x=\{calc\.xVencimento\}/.test(comp) && /dataKey="banda"/.test(comp)
       && /calc\.reversao\.motivo/.test(comp) && /nenhuma recomendação/.test(comp) && !/sugest|recomendamos|recomendo/i.test(comp) && /range=1y/.test(comp);
     const libOk = !/from "react"|next\//.test(ler60("lib/projecoes.ts"));
-    if (ordemOk && compOk && libOk) console.log("✔ WO-60 Teste 2: o painel de projeções entra entre o Histórico e o Payoff com o vencimento selecionado; é cliente puro; usa IV ATM do vencimento, spot ajustado por proventos, dias úteis até o vencimento + folga, banda do mercado e linha do vencimento; escreve o motivo quando a reversão não existe e não recomenda; a lib não importa React");
+    if (ordemOk && compOk && libOk) console.log("✔ WO-60 Teste 2: o painel de projeções fica ao lado do Histórico com o vencimento selecionado; é cliente puro; usa IV ATM do vencimento, spot ajustado por proventos, dias úteis até o vencimento + folga, banda do mercado e linha do vencimento; escreve o motivo quando a reversão não existe e não recomenda; a lib não importa React");
     else { console.log(`✘ WO-60 Teste 2 falhou: ordem=${ordemOk} comp=${compOk} lib=${libOk}`); failures++; }
     // ---- Teste 3: a aritmética da ordem — prêmio-alvo exato, datas da regra, spread como piso, caixa depois, cenários projetados, frase EV × PoP
     const PO = await import("../pnl-operacao");
