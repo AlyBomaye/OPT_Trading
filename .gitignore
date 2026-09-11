@@ -11,3 +11,4 @@ data/backup/
 tsconfig.tsbuildinfo
 *.tsbuildinfo
 graphify-out/.graphify_root
+data/export/
