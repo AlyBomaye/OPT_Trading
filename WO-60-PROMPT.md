@@ -96,3 +96,60 @@ sem IV mostra o motivo; ao final `prod:build` + `prod:stop` + `prod:start`.
   (decisão 1 a deixou fora: o regime é marcação do operador).
 - Mais de três linhas, bandas para bootstrap e reversão (decisão 4), seletor de horizonte.
 - Dependência nova.
+
+---
+
+## Executado — 11/09/2026
+
+Cinco commits, `fbc5720` a `3c1dd60`, mais este de encerramento. Suíte verde com os Testes WO-60 · 1 a 5
+(514 linhas, "TODOS OS TESTES PASSARAM"). Verificado ao vivo no dev (3000) e publicado na produção (3100).
+
+### O que ficou de pé
+
+- **A — `lib/projecoes.ts`.** `diasUteisSeguintes`, `projecaoMercado` (forward + banda lognormal),
+  `projecaoBootstrap` (blocos de 5, 2 000 caminhos, `mulberry32` com semente fixa, percentis por
+  pregão), `projecaoReversao` (OU no log-preço: regressão de Δx em x, κ, μ, meia-vida; recusa com
+  motivo quando a janela é curta, κ ≤ 0 ou a média cai fora de 0,5×–2× do spot), `serieParaGrafico`.
+- **B — `PainelProjecoes`** entre o Histórico e o Payoff: fechamento de 63 pregões, as três
+  linhas a partir do spot da cadeia, banda só do mercado, linha do vencimento, strikes e
+  breakevens; três cartões com os números no vencimento e os motivos das linhas ausentes.
+- **E — `PainelPnl`** (aprovado em perguntas): régua de preço em SVG (eixo pintado pelo sinal do
+  P&L no vencimento, banda ±1σ, spot, BE, alvo 70%); "A ordem no Profit — prêmio da estrutura"
+  (entrada + lucro-alvo + custos; vender no débito, recomprar no crédito; 70% e 100%); "As datas da
+  regra" (rolar 10 DU e zerar 5 DU em dias úteis, P&L com preço parado e custo de esperar); linha
+  1b com EV ÷ risco, spread pelo ask/bid contra o mid (piso quando falta oferta; aviso quando engole
+  o EV), caixa depois da ordem e exposição contra 5–20%; frase EV × PoP quando discordam; segunda
+  tabela de cenários nos preços projetados (rótulo do método). Tudo em `lib/pnl-operacao.ts`.
+- **C — memória.** Manual (Estratégia; glossário: "Projeções" e "Prêmio-alvo"), skill de vol §7,
+  skill de engenharia (§5.1), ANTIGRAVITY §9.3.
+
+### Verificado ao vivo (PETR4, venc. 18/09, Trava de Alta com Call pelo preset)
+
+Projeções: mercado 48,90 (±1σ 46,34–51,59, IV ATM 38,1%, forward do spot ajustado a r 15%);
+bootstrap 48,89 (p10–p90 46,89–52,07, 249 retornos); reversão recusada — "sem reversão mensurável
+nos últimos 63 pregões (κ ≤ 0)" — correto para um papel em tendência forte. Box: régua com BE 50,07,
+70% em 50,71 e spot 48,75; "Entrou por R$ 176,00 (débito, bruto). Para realizar 70% do máximo,
+venda a estrutura por R$ 324,37; o máximo sai a R$ 350,00" (conferido: 176 + 0,7×85,44 + 88,56);
+rolar 04/09 "já passou", zerar 11/09 "em 0 DU"; spread R$ 88,50 em 2 pernas (bid/ask do COTAHIST);
+caixa depois R$ 3.761 (5.000 − 220 − 1.018), exposição 24,8% "acima"; seis linhas projetadas na
+tabela (sem a reversão, recusada). PoP < 50% e EV < 0 concordam: sem frase.
+
+### O que a máquina ensinou desta vez
+
+- **A reversão recusar é informação.** Em PETR4 em alta, o OU dá κ ≤ 0; desenhar uma reta "para a
+  média" seria inventar um alvo. A recusa escrita vale mais que a linha.
+- **O prêmio-alvo é aritmética, não grade.** P&L líquido = V − entrada − custos, então o prêmio que
+  realiza é exato; o preço do ativo continua vindo de `precoParaLucro` (varredura), e os dois
+  aparecem lado a lado.
+- **`Area` do Recharts com par `[inf, sup]`** desenha a banda sem hack; `undefined` nas linhas do
+  passado corta a projeção no lugar certo.
+- **O navegador embutido não recebe clique nos presets quando a janela está atrás** — o preset foi
+  aplicado por `button.click()` via JS, e o box lido por `innerText`.
+
+### Limites declarados
+
+- Feriados não entram no calendário das projeções nem das datas da regra (dias úteis = seg–sex).
+- O bootstrap usa o preço nominal (sem ajustar proventos); só o forward do mercado é ajustado.
+- A reversão usa uma janela fixa de 63 pregões; a meia-vida vem dela, não é otimizada.
+- "Trocar de vencimento move o fim do eixo" foi verificado por dependência do `useMemo`, não por
+  clique na cadeia.
