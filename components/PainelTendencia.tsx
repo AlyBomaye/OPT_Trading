@@ -36,13 +36,16 @@ import { TrendingUp, TrendingDown, Minus, HelpCircle, Check } from "lucide-react
 import clsx from "clsx";
 import { fmtDateBR, fmtNum } from "@/lib/format";
 import { REGIMES, type Regime } from "@/lib/metodo";
+import { COR_FAIXA_REGIME } from "@/lib/chart-attack";
 import type { Candle } from "@/app/api/history/route";
 
+// WO-59: as cores das faixas vivem em lib/chart-attack.ts — o GraficoCandles usa as mesmas.
+const ICONE_REGIME: Record<Regime, typeof TrendingUp> = { alta: TrendingUp, baixa: TrendingDown, lateral: Minus, indefinido: HelpCircle };
 const COR_REGIME: Record<Regime, { faixa: string; texto: string; icone: typeof TrendingUp }> = {
-  alta: { faixa: "#00c805", texto: "text-term-up", icone: TrendingUp },
-  baixa: { faixa: "#ff3b30", texto: "text-term-down", icone: TrendingDown },
-  lateral: { faixa: "#fbbf24", texto: "text-term-gold", icone: Minus },
-  indefinido: { faixa: "#7a8499", texto: "text-term-dim", icone: HelpCircle },
+  alta: { ...COR_FAIXA_REGIME.alta, icone: ICONE_REGIME.alta },
+  baixa: { ...COR_FAIXA_REGIME.baixa, icone: ICONE_REGIME.baixa },
+  lateral: { ...COR_FAIXA_REGIME.lateral, icone: ICONE_REGIME.lateral },
+  indefinido: { ...COR_FAIXA_REGIME.indefinido, icone: ICONE_REGIME.indefinido },
 };
 
 interface Marcacao {

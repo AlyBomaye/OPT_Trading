@@ -5932,6 +5932,70 @@ Líquido para 04/09/2026 5.134,69 D`;
     else { console.log(`✘ WO-58 Teste 5 falhou: nove=${nove} manual=${manualFala} skills=${skillsOk} redirect=${redirectOk} semCarteira=${semCarteiraLink}`); failures++; }
   }
 
+  // =========================================================================
+  // WO-59 — Chart Attack: leitura das médias, divergência com a marcação, geometria do candle
+  // =========================================================================
+  {
+    const CA = await import("../chart-attack");
+    const { leituraMedias, mediaMovel, divergencia, geometriaCandles, marcadoresDoPeriodo, vencimentosMensaisEntre, filtrarUniverso, resumoSetor, janelaExibida, ticksBonitos, MEDIA_LONGA_PREGOES, JANELA_CHART_PREGOES } = CA;
+    const { UNIVERSE } = await import("../universe");
+
+    const diaUtil = (i: number) => { const d = new Date(Date.UTC(2025, 0, 1)); let k = 0; while (k < i) { d.setUTCDate(d.getUTCDate() + 1); if (d.getUTCDay() !== 0 && d.getUTCDay() !== 6) k++; } return d.toISOString().slice(0, 10); };
+    const serie = (n: number, f: (i: number) => number): Candle[] => Array.from({ length: n }, (_, i) => { const c = f(i); return { date: diaUtil(i), open: c * 0.995, high: c * 1.01, low: c * 0.99, close: c, volume: 1000 + i }; });
+    const alta = serie(300, (i) => 10 * Math.exp(i * 0.004));
+    const baixa = serie(300, (i) => 40 * Math.exp(-i * 0.004));
+    const lateral = serie(300, (i) => 20 + Math.sin(i / 2) * 0.3);
+    const curta = serie(62, (i) => 10 + i * 0.01);
+
+    // ---- Teste 1: leitura e divergência
+    const lA = leituraMedias(alta);
+    const lB = leituraMedias(baixa);
+    const lL = leituraMedias(lateral);
+    const lC = leituraMedias(curta);
+    const mm = mediaMovel([1, 2, 3, 4, 5], 3);
+    const mmOk = mm[0] === null && mm[1] === null && mm[2] === 2 && mm[3] === 3 && mm[4] === 4;
+    const leituraOk = lA.tendencia === "alta" && lA.media21! > lA.media63! && lA.inclinacao21Pct! > 0 && lA.desde != null && lA.dataUltimoCandle === alta[299].date && lA.variacaoJanelaPct != null && Math.abs(lA.variacaoJanelaPct - (Math.exp(62 * 0.004) - 1) * 100) < 1e-6
+      && lB.tendencia === "baixa" && lB.inclinacao21Pct! < 0 && lL.tendencia === "lateral"
+      && lC.tendencia === "indefinida" && lC.media63 === null && lC.media21 != null && /62 pregões; a média de 63 precisa de 63/.test(lC.motivo ?? "") && lC.preco === curta[61].close
+      && leituraMedias([]).tendencia === "indefinida" && leituraMedias([]).preco === null;
+    const dv = divergencia(lB, { regime: "alta", observadoEm: "2026-07-15" }, new Date(2026, 8, 11));
+    const divOk = dv != null && dv.marcacao === "alta" && dv.leituraMedias === "baixa" && /desde \d{4}-\d{2}-\d{2}/.test(dv.texto) && /de 2026-07-15 \(\d+ pregões\)/.test(dv.texto)
+      && divergencia(lB, { regime: "baixa", observadoEm: "2026-07-15" }) === null && divergencia(lB, { regime: "indefinido", observadoEm: "2026-07-15" }) === null
+      && divergencia(lC, { regime: "alta", observadoEm: "2026-07-15" }) === null && divergencia(lA, null) === null;
+    const rs = resumoSetor([lA, lB, lL, lC, lA]);
+    const rsOk = rs.alta === 2 && rs.baixa === 1 && rs.lateral === 1 && rs.indefinida === 1;
+    if (mmOk && leituraOk && divOk && rsOk) console.log("✔ WO-59 Teste 1: média móvel alinhada por índice (null antes de n); alta/baixa/lateral pelas médias 21/63 e inclinação; 62 candles → indefinida com motivo e m63 null (não zero); divergência só quando discordam, com as duas datas; marcação indefinida nunca diverge; resumo do setor conta");
+    else { console.log(`✘ WO-59 Teste 1 falhou: mm=${mmOk} leitura=${leituraOk} (A=${lA.tendencia} B=${lB.tendencia} L=${lL.tendencia} C=${lC.tendencia}/${lC.motivo}) div=${divOk} rs=${rsOk}`); failures++; }
+
+    // ---- Teste 2: geometria e marcadores
+    const janela = janelaExibida(alta);
+    const closesAll = alta.map((c) => c.close);
+    const m21 = mediaMovel(closesAll, 21).slice(-JANELA_CHART_PREGOES);
+    const m63 = mediaMovel(closesAll, MEDIA_LONGA_PREGOES).slice(-JANELA_CHART_PREGOES);
+    const opts = { largura: 640, altura: 260, alturaVolume: 50, margem: { topo: 14, direita: 52, base: 18, esquerda: 6 } };
+    const g = geometriaCandles(janela, { m21, m63 }, opts);
+    const semNaN = g.candles.every((c) => [c.x, c.yAbertura, c.yFechamento, c.yMaxima, c.yMinima, c.yVolume, c.alturaVolume].every(Number.isFinite)) && g.ticksPreco.every((t) => Number.isFinite(t.y));
+    const geomOk = janela.length === JANELA_CHART_PREGOES && g.candles.length === JANELA_CHART_PREGOES && g.descartados === 0 && semNaN
+      && g.candles.every((c) => c.alta === (c.candle.close >= c.candle.open)) && g.candles.filter((c) => c.alta).every((c) => c.yFechamento < c.yAbertura)
+      && g.candles.every((c) => c.yMaxima <= Math.min(c.yAbertura, c.yFechamento) + 1e-9 && c.yMinima >= Math.max(c.yAbertura, c.yFechamento) - 1e-9)
+      && g.media63.length === m63.filter((v) => v != null).length && g.media21.length === JANELA_CHART_PREGOES
+      && g.ticksPreco.length >= 3 && g.ticksPreco.length <= 7 && g.ticksData.length >= 2 && g.candles[0].x > g.area.x0 && g.candles[62].x < g.area.x1
+      && g.xDaData(janela[10].date) === g.candles[10].x && g.xDaData("2000-01-01") === null;
+    const comLixo: Candle[] = [...janela, { date: "2030-01-01", open: 10, high: 9, low: 11, close: 10, volume: 0 }, { date: "2030-01-02", open: 0, high: 0, low: 0, close: 0, volume: 0 }];
+    const g2 = geometriaCandles(comLixo, { m21: [...m21, null, null], m63: [...m63, null, null] }, opts);
+    const lixoOk = g2.descartados === 2 && g2.candles.length === JANELA_CHART_PREGOES && g2.candles.every((c) => Number.isFinite(c.yMaxima));
+    const ticksOk = ticksBonitos(9.7, 12.3).every((v) => v >= 9.7 && v <= 12.3) && ticksBonitos(5, 5).length === 1;
+    const venc = vencimentosMensaisEntre("2026-09-01", "2026-11-30");
+    const vencOk = venc.join(",") === "2026-09-18,2026-10-16,2026-11-20" && vencimentosMensaisEntre("2026-09-19", "2026-10-15").length === 0 && vencimentosMensaisEntre("2026-12-01", "2027-01-31").join(",") === "2026-12-18,2027-01-15";
+    const marc = marcadoresDoPeriodo({ de: "2026-09-01", ate: "2026-11-30", dividendos: [{ exDate: "2026-10-02", amount: 0.42, type: "DIV" }, { exDate: "2026-12-05", amount: 1, type: "JCP" }], vencimentos: venc });
+    const marcOk = marc.length === 4 && marc[0].tipo === "vencimento" && marc[1].tipo === "ex-dividendo" && /ex-div R\$ 0,42/.test(marc[1].rotulo) && /venc\. 18\/09/.test(marc[0].rotulo) && marc.every((m) => m.date >= "2026-09-01" && m.date <= "2026-11-30");
+    const soMetodo = filtrarUniverso(UNIVERSE, "metodo", new Set());
+    const comPos = filtrarUniverso(UNIVERSE, "posicao", new Set(["PETR4", "XXXX9"]));
+    const filtroOk = soMetodo.every((e) => e.origem !== "plataforma") && soMetodo.length < UNIVERSE.length && !soMetodo.some((e) => e.ticker === "BOVA11") && comPos.length === 1 && comPos[0].ticker === "PETR4" && filtrarUniverso(UNIVERSE, "todos", new Set()).length === UNIVERSE.length;
+    if (geomOk && lixoOk && ticksOk && vencOk && marcOk && filtroOk) console.log("✔ WO-59 Teste 2: geometria sem NaN, candle de alta com fechamento acima da abertura (y menor), pavios envolvem o corpo, médias só onde há valor, ticks bonitos e por mês; candle inválido descartado e contado; terceiras sextas certas; marcadores só dentro da janela; filtro método exclui plataforma e BOVA11");
+    else { console.log(`✘ WO-59 Teste 2 falhou: geom=${geomOk} lixo=${lixoOk} ticks=${ticksOk} venc=${vencOk} (${venc.join(",")}) marc=${marcOk} filtro=${filtroOk}`); failures++; }
+  }
+
 }
 
 testesAssincronos()
