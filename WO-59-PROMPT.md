@@ -34,6 +34,7 @@ registro continua na Boletagem. A Chart Attack fica **antes** de tudo isso: é a
 | 8 | Dados | **Pré-carga no `dados:sync`** (tarefa agendada 18:30, dias úteis) através de uma rota nova que grava os 31 históricos no **cache em disco** (`lib/cache-disco`). A aba lê do disco; ticker sem cache é buscado na hora (máx. 2 concorrentes) e gravado; sem rede, serve o vencido com a data e o chip `STALE`. |
 | 9 | Nome | **"Chart Attack"**, em inglês, como o operador batizou. Rota `/chart-attack`. |
 | 10 | Marcação de regime | A aba **mostra** a marcação vigente e sua idade (`precisaRevisar`, 20 pregões); **não** cria marcação. Marcar continua sendo na Estratégia (Contexto). |
+| 11 | Ir para a Estratégia | Pedido na execução: **um botão pequeno em cada card** ("Estratégia", ícone da aba) que faz `setTicker` e abre `/estrategia?modo=contexto` — a aba Contexto, onde a marcação se faz. |
 
 O princípio que resume tudo: **a Chart Attack olha; a Estratégia decide; a Boletagem registra.
 A máquina calcula médias; só o operador marca regime.**
@@ -368,3 +369,87 @@ os testes que mudaram de invariante, os limites declarados.
 - Electron, Tauri, instalador, automação do Profit.
 
 ---
+
+---
+
+## Executado — 11/09/2026
+
+Cinco commits, `6ff67b1` a `6c3b07e`, mais este de encerramento. Suíte verde com os Testes WO-59 · 1
+a 5 (509 linhas, "TODOS OS TESTES PASSARAM"). Verificado ao vivo no dev (3000, `npm run dev:aberto`)
+e publicado na produção (3100): build `6c3b07e`, `prod:stop` + `prod:start`, `/api/saude` ok, 307
+sem cookie na página e 401 na rota; `npm run dados:sync` contra a 3100 aqueceu o cache
+(31 papéis · 28 da rede · 3 falhas em 3,4 s).
+
+### O que ficou de pé
+
+- **Parte A — lib pura.** `lib/chart-attack.ts`: constantes declaradas (21/63 pregões, janela 63,
+  inclinação em 5, limiar 0,5%), `mediaMovel` alinhada por índice, `leituraMedias` (alta/baixa/
+  lateral/indefinida com motivo, `desde`, distâncias, variações), `divergencia` com as duas datas,
+  `janelaExibida`, `geometriaCandles` (escala, ticks bonitos, ticks por mês, volume, polilinhas só
+  onde há média, `xDaData` para datas sem pregão, descartados contados), `vencimentosMensaisEntre`
+  (terceiras sextas), `marcadoresDoPeriodo`, `resumoSetor`, `filtrarUniverso`, `COR_FAIXA_REGIME`.
+  `lib/regime-calculos.ts` recebeu o puro do regime (`MarcacaoRegime`, `idadeEmPregoes`,
+  `precisaRevisar`) e `lib/regime.ts` (pg) re-exporta; `PainelTendencia` passou a importar as cores
+  da fonte única.
+- **Parte B — dados.** `lib/historico-fonte.ts` (`fromYahoo`, `fromBrapi`, `baixarHistorico`) é a
+  única fonte de download; `/api/history` importa de lá. `/api/history/universo[?forcar=1]`: cache
+  em disco `historico-<T>-1y` (TTL 24 h), 2 workers, 10 s por papel e 90 s por rota, vencido servido
+  como `vencido: true`, ausente como `candles: []` + `erro` (e `vencido: false` — ausente não é
+  STALE). Passo novo no `dados:sync` entre as fontes e o IV. Hooks `useHistoricoUniverso` e
+  `useRegimesVigentes` (só tipos da rota; sem `fs`/`pg`).
+- **Parte C — tela.** `GraficoCandles` (SVG, 7 camadas na ordem do prompt, tooltip nativo),
+  `CardChartAttack` (chips "pelas médias" e "sua marcação · há N pregões · revisar", linha de
+  divergência em dourado, botão **Estratégia** — decisão 11 —, rodapé com m21/m63/inclinação/dado
+  de/fonte/STALE) e `app/chart-attack/page.tsx` (filtro todos/método/com posição lembrado, abas
+  verticais com contagem e resumo alta/baixa/lateral, grade `xl:grid-cols-2`, J/K, erro da rota
+  não zera a tela).
+- **Parte D — memória.** Nav com dez abas (Chart Attack 4, Boletagem 0, `B` inalterado, rodapé
+  "1–9 0 abas"); `GestorDock` com os rótulos das duas rotas; Manual: `RESUMO_TELAS` com dez módulos
+  ("0. Boletagem" no fim), `HOTKEYS_MANUAL` com `0` e `J / K`, seção 8 `CHART_ATTACK` (oito
+  cartões), rotina e textos com "Boletagem (0)"; skills `engenharia-da-plataforma` (§5.1 histórico
+  e cache em disco, hotkeys 1..9 e 0), `metodo-do-trader` (a fronteira leitura das médias ≠
+  regime), `volatilidade-e-smile`, README; ANTIGRAVITY com o estado da barra.
+- **Parte E — verificação.** Rota: primeira chamada 28 da rede, segunda 28 do cache, arquivos em
+  `data/cache/`. Tela: 13 setores com contagens; JHSF3 (única marcação no banco: alta, 01/09) com
+  faixa, "sua marcação: alta · há 8 pregões" e a divergência escrita ("As médias leem lateral desde
+  2026-08-31; sua marcação é alta, de 2026-09-01 (8 pregões)"); filtro Método esconde BOVA11/BPAC11
+  e os `plataforma` (31 → 20); filtro Com posição com o livro zerado mostra o motivo escrito; J
+  troca o setor; setor e filtro sobrevivem ao reload; tecla 4 → `/chart-attack`, 0 → `/boletagem`;
+  Manual com a seção 8 e sem "Boletagem (tecla 4)"; ex-dividendo cadastrado (teste, removido depois)
+  aparece como "ex-div R$ 0,42"; vencimentos 19/06, 17/07, 21/08 na janela; botão Estratégia abre
+  `/estrategia?modo=contexto` com o modo Contexto ativo; a 1100 px a grade vira uma coluna e o SVG
+  escala sem cortar rótulos. `recharts` ausente do candle. `sk-ant` ausente do repositório (só o
+  `.env.local`, gitignored, e os textos dos prompts que citam o critério).
+
+### O que a máquina ensinou desta vez
+
+- **AZUL4, GOLL4 e MRFG3 não têm histórico no Yahoo nem na brapi.** Os três ficam "sem dado" (e
+  contam como falha no `dados:sync`). Não é a rota: `/api/history?ticker=AZUL4` também volta vazio.
+  Provavelmente os tickers mudaram (reorganizações societárias de 2025); o universo merece revisão,
+  fora desta WO.
+- **Ausente não é STALE.** A primeira versão marcava papel sem dado como `vencido: true` e a tela
+  dizia "3 STALE" para papéis que nunca tiveram dado. Corrigido: STALE é dado velho; sem dado é erro
+  escrito.
+- **`prod:start` não troca o build.** Com a produção no ar ele responde "já responde, nada a fazer"
+  — a produção continuou com o build anterior até o `prod:stop` + `prod:start`.
+- **O navegador embutido não recebe tecla quando a janela está atrás.** `computer key` falha com
+  "tab not drawn"; hotkeys foram verificadas despachando `KeyboardEvent` na `window` e lendo
+  `location.pathname` na chamada seguinte.
+- **`grep -rn "sk-ant" .` imprime o `.env.local`.** O critério de aceite é sobre o repositório;
+  o grep precisa excluir o arquivo de segredos. Registrado na memória do agente.
+
+### Testes antigos que mudaram de invariante (intencional, dito nos commits)
+
+AJ 1, AJ 2, WO-36 6, WO-46 1, WO-49 6, WO-58 2, WO-58 5 (nove → dez abas; Chart Attack em 4,
+Boletagem em 0). WO-28 38 e WO-29 1 (as "9 abas" do `AgentContext`) não foram tocados: a Chart
+Attack não tem agente. Nenhum teste foi apagado.
+
+### Limites declarados
+
+- A queda de rede não foi simulada ao vivo (o caminho "servir o vencido com STALE" está na rota e
+  no Teste 3 por invariante de arquivo, não por execução).
+- Vencimentos são as terceiras sextas do calendário; a data real do papel continua na cadeia.
+- Ex-dividendo só aparece se estiver cadastrado no editor de dividendos (navegador) ou no seed do
+  universo — hoje o seed está vazio.
+- A leitura das médias usa a série filtrada de candles válidos; um papel com menos de 63 candles
+  fica "sem leitura" com o motivo.
