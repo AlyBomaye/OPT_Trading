@@ -4,7 +4,7 @@
  * WO-58 — o Portfolio: só gestão e análise. Nada é gravado aqui.
  *
  * A Carteira misturava registrar (boleta, vencimentos, nota, custos, migração) com avaliar (risco,
- * limites, gregas, VaR, performance). Registrar foi para a Boletagem (4). O que fica é a decisão:
+ * limites, gregas, VaR, performance). Registrar foi para a Boletagem (0). O que fica é a decisão:
  * o que exige ação hoje, o veredito de cada estrutura, as estruturas (Fechar e Rolar mandam um
  * rascunho para a Boletagem), capital e limites, onde o risco está concentrado e quanto dele é a
  * mesma aposta com nomes diferentes — e, por último, o registro do que já aconteceu.
@@ -322,7 +322,7 @@ export default function PortfolioPage() {
           {livroNoBanco ? (
             <div className="flex items-center justify-between gap-2">
               <span className="font-mono font-semibold text-sm" title="Aportes menos retiradas registrados na razão">{fmtBRL(capitalTotal, 0)}</span>
-              <Link href="/boletagem#boleta" className="btn text-xxs py-0.5 px-2 text-term-cyan whitespace-nowrap" title="Registrar aporte ou retirada na Boletagem (4)">
+              <Link href="/boletagem#boleta" className="btn text-xxs py-0.5 px-2 text-term-cyan whitespace-nowrap" title="Registrar aporte ou retirada na Boletagem (0)">
                 Aporte/Retirada →
               </Link>
             </div>
@@ -528,7 +528,7 @@ export default function PortfolioPage() {
               {!rows.length && (
                 <tr>
                   <td colSpan={14} className="td text-term-dim py-3">
-                    Sem posições — monte uma estrutura na Estratégia (8), clique em “Boletar” e confirme na Boletagem (4).
+                    Sem posições — monte uma estrutura na Estratégia (8), clique em “Boletar” e confirme na Boletagem (0).
                   </td>
                 </tr>
               )}

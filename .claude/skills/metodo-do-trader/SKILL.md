@@ -14,7 +14,12 @@ pergunta certa é: em qual camada do método isso entra, e o que o trader faz co
 
 1. **Regime** — o que o mercado está fazendo: tendência, lateral, estresse. Lido do Cockpit
    (GEX, choque, macro) e da tela de contexto (preço, HV). A pergunta é "que tipo de estrutura
-   este mercado paga?".
+   este mercado paga?". **A plataforma não calcula o regime**: o indicador do trader é
+   proprietário, e ele marca o regime na Estratégia (Contexto). A Chart Attack (4, WO-59) mostra
+   ao lado da marcação uma **leitura das médias** (21/63 pregões, constantes da plataforma) e
+   aponta a divergência com as duas datas — mas nunca chame a leitura das médias de "regime",
+   nem escreva texto que mande obedecer às médias. Divergência é aviso para olhar; quem decide
+   é o trader.
 2. **Vol** — cara ou barata, e em relação a quê (skill `volatilidade-e-smile`). Decide se a
    estrutura é vendida (recebe prêmio) ou comprada (paga prêmio).
 3. **Estrutura** — qual desenho de pernas expressa a tese com o risco definido. Os presets de

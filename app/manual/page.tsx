@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { BookOpen, Search, HelpCircle, Compass, List, Key, AlertTriangle, ArrowRight } from "lucide-react";
+import { BookOpen, Search, HelpCircle, Compass, List, Key, AlertTriangle, ArrowRight, CandlestickChart } from "lucide-react";
 import {
   SECTIONS,
   ROTINA_PRE_MARKET,
@@ -11,6 +11,7 @@ import {
   DADOS_LIMITACOES,
   PLATAFORMA_COMO_SERVICO,
   PORTFOLIO_E_BOLETAGEM,
+  CHART_ATTACK,
   MAPA_INFORMACOES,
   GLOSSARIO,
   type Termo,
@@ -258,6 +259,27 @@ export default function ManualPage() {
               </p>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs">
                 {PORTFOLIO_E_BOLETAGEM.map((item, idx) => (
+                  <div key={idx} className="p-3 rounded bg-term-panel2/40 border border-term-line/40 space-y-1">
+                    <div className="font-mono font-bold text-term-cyan">{item.titulo}</div>
+                    <p className="text-term-dim text-xxs leading-relaxed">{item.texto}</p>
+                  </div>
+                ))}
+              </div>
+            </section>
+          )}
+
+          {!isFiltering && (
+            <section id="guia-chart-attack" className="panel p-4">
+              <div className="panel-title flex items-center gap-2 mb-3 text-term-cyan border-b border-term-line pb-2">
+                <CandlestickChart size={16} />
+                <span>8. Chart Attack: olhar o universo antes de decidir (WO-59)</span>
+              </div>
+              <p className="text-xxs text-term-dim mb-3 leading-relaxed">
+                A camada 1 do método é o regime. A Chart Attack (tecla 4) mostra o universo inteiro em candles, setor a setor, com a leitura das médias da plataforma ao lado da
+                marcação de regime que você fez — e aponta onde as duas discordam. Ela olha; a Estratégia decide; a Boletagem registra.
+              </p>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs">
+                {CHART_ATTACK.map((item, idx) => (
                   <div key={idx} className="p-3 rounded bg-term-panel2/40 border border-term-line/40 space-y-1">
                     <div className="font-mono font-bold text-term-cyan">{item.titulo}</div>
                     <p className="text-term-dim text-xxs leading-relaxed">{item.texto}</p>

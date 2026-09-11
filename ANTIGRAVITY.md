@@ -37,17 +37,22 @@ Scanner (4) ─────────── descoberta de convexidade barata (
 Carteira (5) ─────────── book of record: posições multi-ticker, capital, journal, equity curve
 ```
 
-> **Estado atual da barra (WO-58, 04/09/2026) — a tecla é a posição:**
+> **Estado atual da barra (WO-59, 11/09/2026) — a tecla é a posição, e a décima é o 0:**
 > 1 Consultor `/consultor` · 2 Cockpit `/` · 3 **Portfolio** `/portfolio` (só gestão e análise:
-> fichas, estruturas, limites, alocação, correlação, VaR; nada é gravado) · 4 **Boletagem**
-> `/boletagem` (a única porta por onde uma transação entra no livro: rascunhos pendentes, boleta
-> manual, vencimentos, nota, custos, fita) · 5 Notícias · 6 Macro · 7 Scanner · 8 Estratégia ·
-> 9 Manual. `B` abre a Boletagem. `/carteira`, `/chain`, `/historico`, `/watchlist` redirecionam.
+> fichas, estruturas, limites, alocação, correlação, VaR; nada é gravado) · 4 **Chart Attack**
+> `/chart-attack` (o universo em candles diários de 3 meses, setor a setor, SVG próprio sem
+> Recharts; leitura das médias 21/63 da plataforma ao lado da marcação de regime do operador,
+> divergência escrita; dados de `/api/history/universo`, cache em disco enchido pelo `dados:sync`;
+> download de histórico só em `lib/historico-fonte.ts`) · 5 Notícias · 6 Macro · 7 Scanner ·
+> 8 Estratégia · 9 Manual · 0 **Boletagem** `/boletagem` (a única porta por onde uma transação
+> entra no livro: rascunhos pendentes, boleta manual, vencimentos, nota, custos, fita).
+> `B` abre a Boletagem; `J`/`K` trocam o setor na Chart Attack. `/carteira`, `/chain`,
+> `/historico`, `/watchlist` redirecionam.
 > A execução acontece no Profit (Nelogica): "Boletar" na Estratégia e Fechar/Rolar no Portfolio
 > criam um **rascunho** (`rascunho_boleta`, `lib/rascunhos.ts`, `/api/rascunhos`) com o preço da
 > montagem; a boleta nasce na Boletagem com o preço da execução, N pernas numa transação.
 > O diagrama acima e a seção 9 descrevem a plataforma como nasceu; o que mudou desde então está
-> nos `WO-NN-PROMPT.md` e no Manual (7. Portfolio e Boletagem).
+> nos `WO-NN-PROMPT.md` e no Manual (7. Portfolio e Boletagem; 8. Chart Attack).
 
 **Princípios de produto (herdados do dossiê de auditoria — não violar):**
 

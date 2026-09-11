@@ -29,6 +29,8 @@ const SUGGESTED_BY_ROUTE: Record<string, string[]> = {
 const ROUTE_LABELS: Record<string, string> = {
   "/": "Cockpit",
   "/portfolio": "Portfolio",
+  "/chart-attack": "Chart Attack",
+  "/boletagem": "Boletagem",
   "/noticias": "Notícias",
   "/macro": "Macro",
   "/scanner": "Scanner",

@@ -75,11 +75,28 @@ e diga no commit. Se a quebra não for intencional, o teste venceu.
 - Estado de UI por seção em `localStorage` via `usePersistedState` (chaves nomeadas pela seção,
   ex.: `wb-chain-open`, `nav-recolhida` — nunca por número de aba, porque abas mudam de
   posição). Leitura só depois de `useHidratado()` para não divergir do SSR.
-- Hotkeys seguem a **posição** na barra lateral (1..9: Consultor, Cockpit, Portfolio, Boletagem,
-  Notícias, Macro, Scanner, Estratégia, Manual), `B` abre a Boletagem, `[` recolher, `?` ajuda.
+- Hotkeys seguem a **posição** na barra lateral (1..9 e 0: Consultor, Cockpit, Portfolio,
+  Chart Attack, Notícias, Macro, Scanner, Estratégia, Manual, Boletagem — WO-59 pôs a Chart Attack
+  em 4 e a Boletagem no fim, com o 0), `B` abre a Boletagem, `[` recolher, `?` ajuda. Na Chart
+  Attack, `J`/`K` trocam o setor; chaves `chart-attack-filtro` e `chart-attack-setor`.
   `/carteira` redireciona para `/portfolio` (WO-58); as âncoras `#acao-do-dia`, `#capital`,
   `#journal`, `#greeks`, `#risk-profile` continuam, e `#fichas`, `#estruturas`, `#alocacao`,
   `#correlacao` são novas. Na Boletagem: `#rascunhos`, `#rascunho-{id}`, `#boleta`, `#ultimas-boletas`.
+
+## 5.1 Histórico diário e cache em disco (WO-59)
+
+- O download de OHLCV (Yahoo, brapi de reserva) vive **só** em `lib/historico-fonte.ts`
+  (`fromYahoo`, `fromBrapi`, `baixarHistorico`); `/api/history` (um papel, cache em memória de
+  10 min) e `/api/history/universo` (os 31, cache em disco) importam de lá. Não duplicar.
+- `/api/history/universo[?forcar=1]` grava `data/cache/historico-<TICKER>-1y.json` via
+  `lib/cache-disco` (TTL de um pregão), com **2 workers** no máximo e timeout de 90 s na rota;
+  sem rede serve o vencido (`vencido: true`); papel sem dado volta `candles: []` com `erro` e
+  `vencido: false` (ausente não é STALE). O `dados:sync` chama com `forcar=1` depois das fontes e
+  antes do IV.
+- A parte pura do regime (`MarcacaoRegime`, `idadeEmPregoes`, `precisaRevisar`) está em
+  `lib/regime-calculos.ts`; `lib/regime.ts` (pg) re-exporta. Cliente importa do `-calculos`.
+- `lib/chart-attack.ts` é puro (médias, leitura, divergência, geometria do candle, marcadores,
+  terceiras sextas); `components/GraficoCandles.tsx` é SVG sem Recharts.
 
 ## 6. Convenções numéricas (resumo; detalhe nas skills de domínio)
 

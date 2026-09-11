@@ -74,7 +74,9 @@ O que a forma diz para o método:
 - **Skew acentuado** (IV da put 25Δ muito acima da call 25Δ, `skewInfo`): puts caras. Estruturas
   que **vendem** put OTM (Trava de Alta com puts, Venda de Put Seca coberta por caixa) recebem
   prêmio de medo; estruturas que compram put pagam caro por proteção. Quando o skew achata,
-  o mercado deixou de temer a queda — leia junto com o regime da camada 1.
+  o mercado deixou de temer a queda — leia junto com o regime da camada 1 (a Chart Attack, aba 4,
+  mostra a camada 1 em lote: candles de 3 meses, setor a setor, com a marcação de regime do
+  trader e a leitura das médias da plataforma lado a lado).
 - **Estrutura a termo** (IV por vencimento, painel de term structure): normal é ascendente
   (vencimentos longos com IV maior). Invertida (curto > longo) sinaliza evento próximo ou
   estresse — favorece vender o curto e comprar o longo (calendário) **se** o evento for

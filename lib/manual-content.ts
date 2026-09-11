@@ -29,6 +29,7 @@ export const SECTIONS: Secao[] = [
   { id: "guia-dados", title: "5. Proveniência, Dados e Limitações" },
   { id: "guia-servico", title: "6. A Plataforma como Serviço" },
   { id: "guia-portfolio-boletagem", title: "7. Portfolio e Boletagem: decidir, executar, registrar" },
+  { id: "guia-chart-attack", title: "8. Chart Attack: olhar o universo antes de decidir" },
   { id: "mapa-info", title: "Mapa de Informações (Onde Encontro X)" },
   { id: "glossario", title: "Glossário do Trader de Opções" },
 ];
@@ -51,7 +52,7 @@ export const ROTINA_PRE_MARKET = [
     detalhe: "Cadeia recolhível no topo, pernas logo abaixo, preço e vol histórica, payoff e P&L da operação, critérios do método. O modo Contexto traz cone de vol, IV×HV e a marcação de tendência.",
   },
   {
-    passo: "5. Boletagem (tecla 4, B) — e o Portfolio (tecla 3) para gerir",
+    passo: "5. Boletagem (tecla 0, B) — e o Portfolio (tecla 3) para gerir",
     detalhe: "Bolete o que executou — abrir, aumentar, reduzir, fechar, caixa — e acompanhe por estrutura: % do lucro máximo, DU restantes, alvo, regime. Apuração mensal de DARF e exportação em Excel.",
   },
 ];
@@ -69,8 +70,8 @@ export const PASSO_A_PASSO_WORKBENCH = [
 ];
 
 export const RESUMO_TELAS = [
-  // WO-49/WO-58: as nove abas, na ordem da barra lateral — a tecla é a posição. O Teste WO-49 6 confere
-  // esta lista contra a Nav; se a barra mudar, o Manual tem de mudar junto.
+  // WO-49/WO-58/WO-59: as dez abas, na ordem da barra lateral — a tecla é a posição, e a décima é o 0.
+  // O Teste WO-49 6 confere esta lista contra a Nav; se a barra mudar, o Manual tem de mudar junto.
   {
     modulo: "1. Consultor",
     pergunta: "O que a mesa de agentes diz do meu book e do mercado hoje?",
@@ -87,9 +88,9 @@ export const RESUMO_TELAS = [
     resposta: "Só gestão e análise — nada é gravado aqui. Ação do dia, as fichas por estrutura (as três perguntas do método respondidas hoje, com veredito), estruturas (Fechar e Rolar mandam um rascunho para a Boletagem), capital e baldes, limites com vigência, alocação e concentração (por setor, vencimento, tipo de estrutura, comprado × vendido), correlação entre os papéis do book (VaR direcional somado × diversificado), gregas líquidas, pernas, stress, VaR da grade e VaR histórico, journal, apuração fiscal, curva de patrimônio, arquivo de IV e encerradas.",
   },
   {
-    modulo: "4. Boletagem",
-    pergunta: "Como registro o que executei no Profit, com o preço que saiu de verdade?",
-    resposta: "A única porta por onde uma transação entra no livro. Rascunhos pendentes (a estrutura esperando a execução: preço da montagem só leitura, preço de execução, quantidade, hora e custos por perna, slippage com sinal, Confirmar só quando nada impede), boleta manual (B), vencimentos que a B3 resolveu, reconciliação com a nota de corretagem, tabela de custos, migração do navegador e as últimas boletas da fita.",
+    modulo: "4. Chart Attack",
+    pergunta: "Como está a tendência de cada papel do universo — e onde a minha marcação envelheceu?",
+    resposta: "Os 31 ativos em candles diários de 3 meses, setor a setor (abas verticais; J/K trocam o setor), com médias de 21 e 63 pregões, volume, ex-dividendo e vencimentos mensais. Cada card traz duas leituras lado a lado: a leitura das médias (conta da plataforma) e a sua marcação de regime (feita na Estratégia), com a idade dela e o aviso de revisar aos 20 pregões; quando discordam, a divergência aparece escrita com as duas datas. Filtro: todos, só os do método, com posição. O botão Estratégia leva ao papel. Nada é gravado aqui e a plataforma não marca regime.",
   },
   {
     modulo: "5. Notícias",
@@ -116,18 +117,25 @@ export const RESUMO_TELAS = [
     pergunta: "Onde encontro cada informação e o que cada termo significa?",
     resposta: "Rotina pré-market, passo a passo da montagem, o que cada tela responde, atalhos, proveniência dos dados, mapa de informações e glossário.",
   },
+  {
+    modulo: "0. Boletagem",
+    pergunta: "Como registro o que executei no Profit, com o preço que saiu de verdade?",
+    resposta: "A única porta por onde uma transação entra no livro. Rascunhos pendentes (a estrutura esperando a execução: preço da montagem só leitura, preço de execução, quantidade, hora e custos por perna, slippage com sinal, Confirmar só quando nada impede), boleta manual (B), vencimentos que a B3 resolveu, reconciliação com a nota de corretagem, tabela de custos, migração do navegador e as últimas boletas da fita.",
+  },
 ];
 
 export const HOTKEYS_MANUAL = [
   { atalho: "1", descricao: "Consultor — relatório consolidado dos agentes" },
   { atalho: "2", descricao: "Cockpit — GEX, Foco do dia, Watchlist, choque do book, pozinhos" },
   { atalho: "3", descricao: "Portfolio — gestão e análise: fichas, estruturas, limites, alocação, correlação, VaR" },
-  { atalho: "4", descricao: "Boletagem — rascunhos pendentes, boleta manual, vencimentos, nota, custos, fita" },
+  { atalho: "4", descricao: "Chart Attack — o universo em candles, setor a setor, com a leitura das médias e a sua marcação" },
   { atalho: "5", descricao: "Notícias — setorial, Mapa de Oportunidades, radar de eventos, feed" },
   { atalho: "6", descricao: "Macro — sessões, painéis, Rates & FX, Focus, impacto no universo" },
   { atalho: "7", descricao: "Scanner — prateleira do método e pozinhos" },
   { atalho: "8", descricao: "Estratégia — montagem, cadeia completa e contexto de volatilidade" },
   { atalho: "9", descricao: "Manual — este guia" },
+  { atalho: "0", descricao: "Boletagem — rascunhos pendentes, boleta manual, vencimentos, nota, custos, fita" },
+  { atalho: "J / K", descricao: "Na Chart Attack, avança / volta o setor" },
   { atalho: "B", descricao: "Abre a Boletagem com a boleta manual focada, de qualquer aba" },
   { atalho: "[", descricao: "Recolhe / expande a barra lateral" },
   { atalho: "G", descricao: "Abre o Gestor (chat com o agente da aba)" },
@@ -150,7 +158,7 @@ export const PLATAFORMA_COMO_SERVICO = [
  * decide (Estratégia, Portfolio) e registra (Boletagem). Entre uma coisa e outra, o rascunho.
  */
 export const PORTFOLIO_E_BOLETAGEM = [
-  { titulo: "Uma porta só", texto: "Toda transação entra no livro pela Boletagem (4). A Estratégia e o Portfolio decidem e mandam a estrutura para lá como rascunho; o Profit executa; na Boletagem você digita o preço que saiu de verdade e confirma. Nenhuma boleta nasce em outra aba — nem o store do navegador grava." },
+  { titulo: "Uma porta só", texto: "Toda transação entra no livro pela Boletagem (0). A Estratégia e o Portfolio decidem e mandam a estrutura para lá como rascunho; o Profit executa; na Boletagem você digita o preço que saiu de verdade e confirma. Nenhuma boleta nasce em outra aba — nem o store do navegador grava." },
   { titulo: "O rascunho", texto: "A estrutura esperando a execução. Nasce com o preço da MONTAGEM (e a fonte: mid, último, marcação ou manual) e SEM preço de execução — esse só existe depois do Profit. Vive no banco (tabela rascunho_boleta): sobrevive a recarregar, reiniciar e esperar dias. Origens: Estratégia (abertura), Portfolio · fechar, Portfolio · rolar, manual." },
   { titulo: "Confirmar", texto: "Só habilita quando nada impede: toda perna com preço de execução e data/hora, quantidade positiva, vencimento não passado, e — no fechamento — a perna aberta ainda existe e a quantidade não excede a aberta. Os impedimentos ficam escritos ao lado do botão. Confirmar grava as N boletas e marca o rascunho confirmado no MESMO commit: ou tudo, ou nada." },
   { titulo: "Slippage", texto: "Execução contra montagem, perna a perna e no total, do seu ponto de vista: pagar mais numa compra é negativo; receber mais numa venda é positivo. Em R$ e em % do prêmio de montagem. É o custo invisível que a tabela de custos não mostra." },
@@ -159,6 +167,21 @@ export const PORTFOLIO_E_BOLETAGEM = [
   { titulo: "O que fica na Boletagem", texto: "Rascunhos pendentes, a boleta manual (B), os vencimentos que a B3 resolveu sozinha (exercício/pó — evento, não execução), a reconciliação com a nota de corretagem, a tabela de custos, a migração do navegador e as últimas boletas da fita (registrei? está lá)." },
   { titulo: "O que fica no Portfolio", texto: "Ação do dia, as fichas por estrutura com o veredito, as estruturas, capital e baldes, limites, alocação e concentração (prêmio em risco por setor, vencimento, tipo de estrutura e comprado × vendido; regra declarada: mais da metade num só corte = concentração), correlação entre os papéis (séries de 6 meses alinhadas, mínimo 40 observações, VaR direcional somado × diversificado — só o delta), gregas, pernas, stress, VaR da grade e histórico, e por último o registro: journal, apuração fiscal, curva de patrimônio, gráficos, arquivo de IV, encerradas." },
   { titulo: "Fora de escopo (por decisão)", texto: "Importar arquivo ou colar relatório do Profit; lançar execuções parciais uma a uma (o preço médio é digitado por perna); automação da tela da corretora." },
+];
+
+/**
+ * WO-59 — a Chart Attack: olhar o universo antes de decidir. Duas leituras convivem na tela e o
+ * texto nunca as confunde: a das médias é conta da plataforma; o regime é marcação do operador.
+ */
+export const CHART_ATTACK = [
+  { titulo: "O que a tela mostra", texto: "Os 31 ativos do universo agrupados por setor — abas verticais à esquerda, cards à direita. Cada card é um candle diário de 3 meses (63 pregões) com as médias de 21 e 63 pregões, o volume na base, os vencimentos mensais de opções e as datas ex-dividendo cadastradas. É a varredura visual: onde a tendência está clara, onde virou, onde a sua marcação envelheceu." },
+  { titulo: "Leitura das médias não é regime", texto: "O chip 'alta / baixa / lateral pelas médias' é uma conta da plataforma, igual para todo papel: preço acima da média de 21, que está acima da de 63 e inclinada para cima (mais de 0,5% em 5 pregões) lê alta; o espelho lê baixa; o resto, lateral. O regime do método é outra coisa — o indicador do operador, com parâmetros próprios — e só ele o marca, na Estratégia (Contexto). A tela nunca chama a leitura das médias de regime, e não marca regime por você." },
+  { titulo: "A sua marcação", texto: "O segundo chip mostra o regime que você marcou e há quantos pregões. A faixa translúcida ao fundo do gráfico começa no pregão da marcação. Aos 20 pregões aparece 'revisar': o método pede recalibrar, e uma marcação velha é uma decisão velha." },
+  { titulo: "A divergência", texto: "Quando a leitura das médias e a sua marcação discordam, o card escreve, em dourado: o que as médias leem e desde quando, o que você marcou e quando. É um aviso para olhar de novo — não uma ordem para obedecer às médias. Marcação 'indefinido' nunca diverge: é você dizendo que não sabe, e o método diz para não operar." },
+  { titulo: "De onde vêm os dados", texto: "Histórico diário de 1 ano por papel (Yahoo, com brapi de reserva), guardado em disco pela rota /api/history/universo. Quem enche o cache é o dados:sync das 18:30 (tarefa agendada): a aba abre com o cache quente sem bater na rede. Um papel sem cache é buscado na hora, dois de cada vez. 'Atualizar' renova os 31." },
+  { titulo: "STALE e sem dado", texto: "Se a rede falha, o card mostra o último dado guardado com o chip STALE e a data dele — dado velho rotulado como velho é melhor que tela vazia. Papel que a fonte não tem (sem histórico no Yahoo nem na brapi) fica com o erro escrito, sem gráfico e sem leitura; ele conta como 'sem dado', nunca como STALE." },
+  { titulo: "Filtros e teclas", texto: "Todos (31), Método (só os da lista do manual — origem método ou ambos) e Com posição (só os com perna aberta no livro; sem banco, o filtro fica desabilitado). J e K trocam o setor. Filtro e setor ficam lembrados no navegador. O botão Estratégia de cada card abre o papel na aba Contexto, onde a marcação se faz e a estrutura nasce." },
+  { titulo: "O que ela não faz", texto: "Não monta estrutura, não grava boleta, não sugere operação, não marca regime. Sem zoom, sem seletor de janela, sem posições do livro desenhadas no gráfico — por decisão, para a tela continuar sendo uma olhada de dois minutos." },
 ];
 
 export const DADOS_LIMITACOES = [

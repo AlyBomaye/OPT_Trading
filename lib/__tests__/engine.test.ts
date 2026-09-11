@@ -2255,10 +2255,11 @@ async function testesAjustes0209() {
   // ---- Teste 1: as teclas seguem a posicao da barra, 1..8
   const srcNav = ler("components/Nav.tsx");
   const itens = Array.from(srcNav.matchAll(/\{ href: "([^"]+)", label: "([^"]+)", key: "([^"]+)"/g)).map((m) => ({ href: m[1], label: m[2], key: m[3] }));
-  const porPosicao = itens.length === 9 && itens.every((i, idx) => i.key === String(idx + 1));
-  const rodape = /<kbd>1<\/kbd>–<kbd>9<\/kbd> abas/.test(srcNav);
+  // WO-59: dez abas; a tecla segue a posição e a décima é o 0.
+  const porPosicao = itens.length === 10 && itens.every((i, idx) => i.key === String((idx + 1) % 10));
+  const rodape = /<kbd>1<\/kbd>–<kbd>9<\/kbd> <kbd>0<\/kbd> abas/.test(srcNav);
   if (porPosicao && rodape) {
-    console.log("✔ AJ Teste 1: teclas 1..9 seguem a ordem da barra (Consultor 1 … Manual 9)");
+    console.log("✔ AJ Teste 1: teclas 1..9 e 0 seguem a ordem da barra (Consultor 1 … Manual 9, Boletagem 0)");
   } else {
     console.log(`✘ AJ Teste 1 falhou: ${itens.map((i) => `${i.label}=${i.key}`).join(" ")}, rodape=${rodape}`);
     failures++;
@@ -2269,9 +2270,10 @@ async function testesAjustes0209() {
   const hotkeys = Array.from(srcManual.matchAll(/\{ atalho: "([^"]+)", descricao: "([^"]+)"/g)).map((m) => [m[1], m[2]] as const);
   const mapa = new Map(hotkeys);
   const manualOk =
-    /Consultor/.test(mapa.get("1") ?? "") && /Cockpit/.test(mapa.get("2") ?? "") && /Portfolio/.test(mapa.get("3") ?? "") && /Boletagem/.test(mapa.get("4") ?? "") &&
+    // WO-59: a tecla 4 passou a ser a Chart Attack; a Boletagem foi para o 0.
+    /Consultor/.test(mapa.get("1") ?? "") && /Cockpit/.test(mapa.get("2") ?? "") && /Portfolio/.test(mapa.get("3") ?? "") && /Chart Attack/.test(mapa.get("4") ?? "") &&
     /Notícias/.test(mapa.get("5") ?? "") && /Macro/.test(mapa.get("6") ?? "") && /Scanner/.test(mapa.get("7") ?? "") &&
-    /Estratégia/.test(mapa.get("8") ?? "") && /Manual/.test(mapa.get("9") ?? "") && mapa.has("B") && mapa.has("[");
+    /Estratégia/.test(mapa.get("8") ?? "") && /Manual/.test(mapa.get("9") ?? "") && /Boletagem/.test(mapa.get("0") ?? "") && mapa.has("B") && mapa.has("[");
   const semTeclaVelha = !/Hotkey [0-9]\)/.test(srcManual.replace(/tecla 8\)/g, "")) && !/Watchlist & Skew \(Hotkey/.test(srcManual);
   const cockpitOk = /montar na Estratégia \(8\)/.test(ler("app/page.tsx"));
   if (manualOk && semTeclaVelha && cockpitOk) {
@@ -2924,10 +2926,10 @@ async function testesWo46() {
 
   // ---- Teste 1: oito abas, na ordem acordada
   const abas = Array.from(srcNav.matchAll(/href: "([^"]*)", label: "([^"]*)"/g)).map((m) => m[2]);
-  // WO-58: Carteira -> Portfolio, e a Boletagem ao lado dela.
-  const esperada = ["Consultor", "Cockpit", "Portfolio", "Boletagem", "Notícias", "Macro", "Scanner", "Estratégia", "Manual"];
-  if (abas.length === 9 && abas.every((a, i) => a === esperada[i])) {
-    console.log("✔ WO-46 Teste 1: 9 abas na ordem Consultor > Cockpit > Portfolio > Boletagem > Noticias > Macro > Scanner > Estrategia > Manual");
+  // WO-58: Carteira -> Portfolio, e a Boletagem ao lado dela. WO-59: Chart Attack em 4, Boletagem no fim.
+  const esperada = ["Consultor", "Cockpit", "Portfolio", "Chart Attack", "Notícias", "Macro", "Scanner", "Estratégia", "Manual", "Boletagem"];
+  if (abas.length === 10 && abas.every((a, i) => a === esperada[i])) {
+    console.log("✔ WO-46 Teste 1: 10 abas na ordem Consultor > Cockpit > Portfolio > Chart Attack > Noticias > Macro > Scanner > Estrategia > Manual > Boletagem");
   } else {
     console.log(`✘ WO-46 Teste 1 falhou: ${abas.join(" > ")}`);
     failures++;
@@ -4579,12 +4581,12 @@ async function testesWo36() {
     .map((m) => ({ href: m[1], label: m[2], key: m[3] }));
   const primeiro = itens[0];
   // 02/09/2026: as teclas passaram a seguir a posicao (1..8). O invariante agora e "tecla = posicao".
-  const consultorKeepsC = itens.every((i, idx) => i.key === String(idx + 1));
-  // WO-58: a Carteira virou Portfolio (3) e a Boletagem entrou em 4; o Manual foi para 9.
-  const carteiraKeeps1 = itens.find((i) => i.href === "/portfolio")?.key === "3" && itens.find((i) => i.href === "/boletagem")?.key === "4";
+  const consultorKeepsC = itens.every((i, idx) => i.key === String((idx + 1) % 10));
+  // WO-58: a Carteira virou Portfolio (3) e a Boletagem entrou em 4; WO-59: Chart Attack em 4, Boletagem em 0.
+  const carteiraKeeps1 = itens.find((i) => i.href === "/portfolio")?.key === "3" && itens.find((i) => i.href === "/chart-attack")?.key === "4" && itens.find((i) => i.href === "/boletagem")?.key === "0";
   const manualKeeps0 = itens.find((i) => i.href === "/manual")?.key === "9";
-  // WO-46: 11 abas viraram 8; WO-58: 8 viraram 9. Tecla = posicao continua sendo o invariante.
-  if (primeiro?.href === "/consultor" && consultorKeepsC && carteiraKeeps1 && manualKeeps0 && itens.length === 9) {
+  // WO-46: 11 abas viraram 8; WO-58: 8 viraram 9; WO-59: 9 viraram 10. Tecla = posicao continua sendo o invariante.
+  if (primeiro?.href === "/consultor" && consultorKeepsC && carteiraKeeps1 && manualKeeps0 && itens.length === 10) {
     console.log("✔ WO-36 Teste 6: Consultor abre a barra; atalhos preservados (C, 1–0)");
   } else {
     console.log(`✘ WO-36 Teste 6 falhou: primeiro=${primeiro?.href}, C=${consultorKeepsC}, 1=${carteiraKeeps1}, 0=${manualKeeps0}, n=${itens.length}`);
@@ -5175,7 +5177,7 @@ async function testesWo28Restaurados() {
     // ---- Teste 6: Manual e Nav concordam; textos com atalhos antigos sumiram; Consultor usa netGreeks
     const srcNav = lerSrc("components/Nav.tsx");
     const itens = Array.from(srcNav.matchAll(/label: "([^"]+)", key: "(\d)"/g)).map((m) => ({ label: m[1], key: m[2] }));
-    const manualOk = itens.length === 9 && itens.every((it, i) => {
+    const manualOk = itens.length === 10 && itens.every((it, i) => {
       const hk = HOTKEYS_MANUAL.find((h) => h.atalho === it.key);
       return hk != null && hk.descricao.startsWith(it.label) && RESUMO_TELAS[i]?.modulo === `${it.key}. ${it.label}`;
     });
@@ -5846,11 +5848,12 @@ Líquido para 04/09/2026 5.134,69 D`;
       && /PainelRascunhos/.test(srcBol) && /FormularioBoleta/.test(srcBol) && /PainelVencimentos/.test(srcBol) && /ReconciliacaoNota/.test(srcBol) && /PainelCustos/.test(srcBol) && /MigracaoLivro/.test(srcBol) && /UltimasBoletas/.test(srcBol);
     const srcNav2 = ler2("components/Nav.tsx");
     const ordem = Array.from(srcNav2.matchAll(/href: "([^"]+)", label: "([^"]+)", key: "(\d)"/g)).map((m) => `${m[3]}:${m[1]}`).join(" ");
-    const navOk = ordem === "1:/consultor 2:/ 3:/portfolio 4:/boletagem 5:/noticias 6:/macro 7:/scanner 8:/estrategia 9:/manual" && /router\.push\("\/boletagem#boleta"\)/.test(srcNav2) && !/\/carteira/.test(srcNav2);
+    // WO-59: Chart Attack em 4, Boletagem no fim com o 0.
+    const navOk = ordem === "1:/consultor 2:/ 3:/portfolio 4:/chart-attack 5:/noticias 6:/macro 7:/scanner 8:/estrategia 9:/manual 0:/boletagem" && /router\.push\("\/boletagem#boleta"\)/.test(srcNav2) && !/\/carteira/.test(srcNav2);
     const srcPR = ler2("components/PainelRascunhos.tsx");
     const fichaOk = /validarParaConfirmar\(/.test(srcPR) && /slippageDoRascunho\(/.test(srcPR) && /disabled=\{impedimentos\.length > 0/.test(srcPR) && /acao=confirmar|confirmar\(r\.id\)/.test(srcPR) && /rascunho-\$\{r\.id\}/.test(srcPR);
     const rotasOk = /export async function (GET|PATCH|POST)/.test(ler2("app/api/rascunhos/[id]/route.ts")) && /acao === "confirmar"/.test(ler2("app/api/rascunhos/[id]/route.ts")) && /executarBoletasJuntas\(c, paraEntradasBoleta\(r\)\)/.test(ler2("lib/rascunhos.ts")) && /FOR UPDATE/.test(ler2("lib/rascunhos.ts"));
-    if (semAnalise && navOk && fichaOk && rotasOk) console.log("✔ WO-58 Teste 2: a Boletagem só registra (sem análise); Nav com nove abas — Portfolio 3, Boletagem 4 — e B abre a Boletagem; a ficha valida com a lib e a confirmação grava boletas e rascunho no mesmo COMMIT");
+    if (semAnalise && navOk && fichaOk && rotasOk) console.log("✔ WO-58 Teste 2: a Boletagem só registra (sem análise); Nav com dez abas — Portfolio 3, Chart Attack 4, Boletagem 0 — e B abre a Boletagem; a ficha valida com a lib e a confirmação grava boletas e rascunho no mesmo COMMIT");
     else { console.log(`✘ WO-58 Teste 2 falhou: semAnalise=${semAnalise} nav=${navOk} (${ordem}) ficha=${fichaOk} rotas=${rotasOk}`); failures++; }
 
     // ---- Teste 3: nenhuma tela grava boleta fora da Boletagem — Estratégia, Portfolio, estruturas e rolagem só criam rascunho
@@ -5919,7 +5922,8 @@ Líquido para 04/09/2026 5.134,69 D`;
 
     // ---- Teste 5: Manual, skills e a memória da plataforma acompanham a mudança
     const { RESUMO_TELAS: RT58, HOTKEYS_MANUAL: HK58, PORTFOLIO_E_BOLETAGEM } = await import("../manual-content");
-    const nove = RT58.length === 9 && RT58.map((r) => r.modulo).join("|") === "1. Consultor|2. Cockpit|3. Portfolio|4. Boletagem|5. Notícias|6. Macro|7. Scanner|8. Estratégia|9. Manual";
+    // WO-59: dez módulos, Chart Attack em 4 e Boletagem em 0.
+    const nove = RT58.length === 10 && RT58.map((r) => r.modulo).join("|") === "1. Consultor|2. Cockpit|3. Portfolio|4. Chart Attack|5. Notícias|6. Macro|7. Scanner|8. Estratégia|9. Manual|0. Boletagem";
     const textoManual = JSON.stringify(PORTFOLIO_E_BOLETAGEM) + JSON.stringify(RT58);
     const manualFala = /rascunho/i.test(textoManual) && /Profit/.test(textoManual) && /slippage/i.test(textoManual) && HK58.find((h) => h.atalho === "B")?.descricao.includes("Boletagem") === true
       && /PORTFOLIO_E_BOLETAGEM/.test(ler2("app/manual/page.tsx")) && /guia-portfolio-boletagem/.test(ler2("lib/manual-content.ts"));
@@ -5928,7 +5932,7 @@ Líquido para 04/09/2026 5.134,69 D`;
       && /rascunho/.test(ler2(".claude/skills/README.md")) && /WO-58/.test(ler2("ANTIGRAVITY.md")) && /\/boletagem/.test(ler2("ANTIGRAVITY.md"));
     const redirectOk = /source: "\/carteira", destination: "\/portfolio"/.test(ler2("next.config.mjs"));
     const semCarteiraLink = !/["'`(]\/carteira(?:[#?"'`)]|$)/m.test(["lib/agents/deeplinks.ts", "lib/agents/registry.ts", "lib/alertas.ts", "components/agents/GestorDock.tsx", "app/page.tsx", "app/consultor/page.tsx", "components/Nav.tsx"].map(ler2).join("\n"));
-    if (nove && manualFala && skillsOk && redirectOk && semCarteiraLink) console.log("✔ WO-58 Teste 5: Manual com nove abas e a seção 7 (rascunho, Profit, slippage); skills e README atualizados; ANTIGRAVITY com o estado atual; /carteira redireciona e nenhum link do código aponta para ela");
+    if (nove && manualFala && skillsOk && redirectOk && semCarteiraLink) console.log("✔ WO-58 Teste 5: Manual com dez abas (WO-59) e a seção 7 (rascunho, Profit, slippage); skills e README atualizados; ANTIGRAVITY com o estado atual; /carteira redireciona e nenhum link do código aponta para ela");
     else { console.log(`✘ WO-58 Teste 5 falhou: nove=${nove} manual=${manualFala} skills=${skillsOk} redirect=${redirectOk} semCarteira=${semCarteiraLink}`); failures++; }
   }
 
@@ -6025,6 +6029,22 @@ Líquido para 04/09/2026 5.134,69 D`;
     const semDepNova = deps.length === 9 && !deps.some((d) => /chart|d3|plotly|echarts/i.test(d) && d !== "recharts");
     if (clientePuro && paginaOk && cardOk && grafOk && coresOk && semDepNova) console.log("✔ WO-59 Teste 4: página, card e candle são cliente puro (sem fs/pg/disco); a página agrupa por setor com filtro e setor lembrados e J/K; o card diz \"pelas médias\", nunca sugere, aponta a divergência e leva à Estratégia (Contexto) pelo setTicker; o candle é SVG sem Recharts; as cores das faixas vêm de uma fonte só; nenhuma dependência nova");
     else { console.log(`✘ WO-59 Teste 4 falhou: cliente=${clientePuro} pagina=${paginaOk} card=${cardOk} graf=${grafOk} cores=${coresOk} deps=${semDepNova}`); failures++; }
+    // ---- Teste 5: dez abas (tecla = posição, décima é 0), Manual e skills acompanham; a leitura das médias nunca vira "regime"
+    const navCA = ler59("components/Nav.tsx");
+    const itensCA = Array.from(navCA.matchAll(/\{ href: "([^"]+)", label: "([^"]+)", key: "([^"]+)"/g)).map((m) => ({ href: m[1], label: m[2], key: m[3] }));
+    const dezOk = itensCA.length === 10 && itensCA.every((i, idx) => i.key === String((idx + 1) % 10)) && itensCA[3].href === "/chart-attack" && itensCA[9].href === "/boletagem" && itensCA[9].key === "0" && /router\.push\("\/boletagem#boleta"\)/.test(navCA);
+    const { RESUMO_TELAS: RT59, HOTKEYS_MANUAL: HK59, SECTIONS: SEC59, CHART_ATTACK: CA59 } = await import("../manual-content");
+    const manualCA = RT59.length === 10 && RT59.every((r, i) => r.modulo === `${itensCA[i].key}. ${itensCA[i].label}`)
+      && HK59.find((h) => h.atalho === "0")?.descricao.startsWith("Boletagem") === true && HK59.find((h) => h.atalho === "4")?.descricao.startsWith("Chart Attack") === true && HK59.some((h) => /J \/ K/.test(h.atalho))
+      && SEC59.some((s) => s.id === "guia-chart-attack") && CA59.length >= 6 && /guia-chart-attack/.test(ler59("app/manual/page.tsx")) && /CHART_ATTACK\.map/.test(ler59("app/manual/page.tsx"));
+    const textoCA = JSON.stringify(CA59) + JSON.stringify(RT59.find((r) => r.modulo.includes("Chart Attack")));
+    const semRegimeNasMedias = /leitura das médias/.test(textoCA) && !/regime pelas médias|médias leem o regime|regime das médias/i.test(textoCA);
+    const semTeclaVelha = !/Boletagem \(tecla 4|Boletagem \(4\)/.test(JSON.stringify(RT59) + JSON.stringify(HK59) + ler59("lib/manual-content.ts") + ler59("app/portfolio/page.tsx"));
+    const skillsCA = /\/api\/history\/universo/.test(ler59(".claude/skills/engenharia-da-plataforma/SKILL.md")) && /historico-fonte/.test(ler59(".claude/skills/engenharia-da-plataforma/SKILL.md")) && /1\.\.9 e 0/.test(ler59(".claude/skills/engenharia-da-plataforma/SKILL.md"))
+      && /leitura das médias/.test(ler59(".claude/skills/metodo-do-trader/SKILL.md")) && /Chart Attack/.test(ler59(".claude/skills/volatilidade-e-smile/SKILL.md")) && /Chart Attack/.test(ler59(".claude/skills/README.md"))
+      && /chart-attack/.test(ler59("ANTIGRAVITY.md")) && /WO-59/.test(ler59("ANTIGRAVITY.md"));
+    if (dezOk && manualCA && semRegimeNasMedias && semTeclaVelha && skillsCA) console.log("✔ WO-59 Teste 5: dez abas com tecla = posição (Chart Attack 4, Boletagem 0, B inalterado); Manual com dez módulos na ordem da Nav, atalhos 0 e J/K e a seção 8; nenhum texto diz \"Boletagem (tecla 4)\"; a leitura das médias nunca é chamada de regime; skills e ANTIGRAVITY citam a rota, a fonte única e a WO");
+    else { console.log(`✘ WO-59 Teste 5 falhou: dez=${dezOk} manual=${manualCA} semRegime=${semRegimeNasMedias} semTeclaVelha=${semTeclaVelha} skills=${skillsCA}`); failures++; }
   }
 
 }
