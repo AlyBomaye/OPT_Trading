@@ -5994,6 +5994,22 @@ Líquido para 04/09/2026 5.134,69 D`;
     const filtroOk = soMetodo.every((e) => e.origem !== "plataforma") && soMetodo.length < UNIVERSE.length && !soMetodo.some((e) => e.ticker === "BOVA11") && comPos.length === 1 && comPos[0].ticker === "PETR4" && filtrarUniverso(UNIVERSE, "todos", new Set()).length === UNIVERSE.length;
     if (geomOk && lixoOk && ticksOk && vencOk && marcOk && filtroOk) console.log("✔ WO-59 Teste 2: geometria sem NaN, candle de alta com fechamento acima da abertura (y menor), pavios envolvem o corpo, médias só onde há valor, ticks bonitos e por mês; candle inválido descartado e contado; terceiras sextas certas; marcadores só dentro da janela; filtro método exclui plataforma e BOVA11");
     else { console.log(`✘ WO-59 Teste 2 falhou: geom=${geomOk} lixo=${lixoOk} ticks=${ticksOk} venc=${vencOk} (${venc.join(",")}) marc=${marcOk} filtro=${filtroOk}`); failures++; }
+    // ---- Teste 3: a fonte de histórico é uma só; a rota do universo lê/grava o disco com 2 workers; nada do cliente toca fs/pg
+    const fs59 = await import("node:fs");
+    const path59 = await import("node:path");
+    const ler59 = (rel: string) => fs59.readFileSync(path59.join(process.cwd(), rel), "utf8");
+    const rotaUni = ler59("app/api/history/universo/route.ts");
+    const rotaHist = ler59("app/api/history/route.ts");
+    const fonte = ler59("lib/historico-fonte.ts");
+    const hook = ler59("lib/hooks/useHistoricoUniverso.ts");
+    const sync = ler59("scripts/dados-sync.mjs");
+    const fonteUnica = /export async function fromYahoo/.test(fonte) && /export async function fromBrapi/.test(fonte) && /export async function baixarHistorico/.test(fonte)
+      && !/async function fromYahoo/.test(rotaHist) && !/async function fromYahoo/.test(rotaUni) && /from "@\/lib\/historico-fonte"/.test(rotaHist) && /from "@\/lib\/historico-fonte"/.test(rotaUni) && !/next\/server/.test(fonte);
+    const discoOk = /lerCache</.test(rotaUni) && /gravarCache\(/.test(rotaUni) && /const CONCORRENTES = 2/.test(rotaUni) && /const worker = async/.test(rotaUni) && !/from "pg"|@\/lib\/db"/.test(rotaUni) && /candles: \[\]/.test(rotaUni) && /vencido: true/.test(rotaUni);
+    const clienteOk = /"use client"/.test(hook) && !/from "fs"|from "node:fs"|from "pg"|cache-disco|historico-fonte"/.test(hook) && /\/api\/history\/universo/.test(hook) && /\/api\/regime/.test(hook);
+    const syncOk = /\/api\/history\/universo\?forcar=1/.test(sync) && sync.indexOf("history/universo") < sync.indexOf("api/iv-sync");
+    if (fonteUnica && discoOk && clienteOk && syncOk) console.log("✔ WO-59 Teste 3: fromYahoo/fromBrapi vivem só em lib/historico-fonte.ts e as duas rotas importam de lá; /api/history/universo lê e grava o cache em disco com 2 workers, sem pg, e devolve candles vazios com erro em vez de inventar; o hook do cliente não toca fs/pg; o dados:sync chama a rota com forcar=1 antes do IV");
+    else { console.log(`✘ WO-59 Teste 3 falhou: fonte=${fonteUnica} disco=${discoOk} cliente=${clienteOk} sync=${syncOk}`); failures++; }
   }
 
 }

@@ -12,6 +12,9 @@
  * Requer o servidor no ar: as rotas é que sabem parsear, cachear e rotular a proveniência de cada
  * fonte. Duplicar essa lógica aqui criaria duas verdades sobre o mesmo dado.
  *
+ * WO-59: depois das fontes, o histórico diário de 1 ano dos 31 ativos do universo vai para o cache
+ * em disco (`/api/history/universo?forcar=1`) — a Chart Attack abre sem bater na rede.
+ *
  * Para agendar no Windows (Agendador de Tarefas), aponte para:
  *   cmd /c "cd /d C:\dev\opcoes-terminal && npm run dados:sync"
  * Sugestão de horário: 08:30, depois da atualização matinal do Tesouro (Last-Modified ~10:20 UTC)
@@ -103,6 +106,43 @@ for (const f of FONTES) {
     houveFalha = true;
     console.log(`  ✘ ${err?.message ?? err} (após ${fmtMs(Date.now() - t0)})\n`);
   }
+}
+
+// ---------------------------------------------------------------------------
+// WO-59 — Histórico diário do universo (Chart Attack).
+//
+// A rota lê o cache em disco e só busca o que venceu; com `forcar=1` renova os 31 — é o que a
+// tarefa das 18:30 quer, porque o pregão do dia acabou de fechar. Falha aqui não é fatal: a rota
+// serve o último cache válido, rotulado como vencido.
+// ---------------------------------------------------------------------------
+console.log("→ Histórico diário do universo (Chart Attack)");
+const tHist = Date.now();
+try {
+  const res = await fetchAutenticado(`${BASE}/api/history/universo?forcar=1`, { signal: AbortSignal.timeout(180_000) });
+  const ms = Date.now() - tHist;
+  if (!res.ok) {
+    houveFalha = true;
+    console.log(`  ✘ HTTP ${res.status} em ${fmtMs(ms)}\n`);
+  } else {
+    const j = await res.json();
+    const ativos = Array.isArray(j?.ativos) ? j.ativos : [];
+    const datas = ativos.map((a) => a.dadoEm).filter(Boolean).sort();
+    console.log(`  dado de : ${datas.length ? datas[datas.length - 1] : "— (nenhum papel veio)"}`);
+    console.log(`  conteúdo: ${ativos.length} papéis · ${j.daRede ?? 0} da rede · ${j.deCache ?? 0} do cache · ${j.falhas ?? 0} falhas em ${fmtMs(ms)}`);
+    const comErro = ativos.filter((a) => a.erro);
+    if (ativos.length === 0 || (j.falhas ?? 0) === ativos.length) {
+      houveFalha = true;
+      console.log("  ✘ sem conteúdo utilizável");
+    } else {
+      console.log(comErro.length === 0 ? "  ✔ cache quente" : `  ⚠ ${comErro.length} papel(is) com aviso:`);
+      for (const a of comErro.slice(0, 6)) console.log(`      ${a.ticker}: ${a.erro}`);
+      if (comErro.length > 6) console.log(`      … e mais ${comErro.length - 6}`);
+    }
+    console.log();
+  }
+} catch (err) {
+  houveFalha = true;
+  console.log(`  ✘ ${err?.message ?? err} (após ${fmtMs(Date.now() - tHist)})\n`);
 }
 
 // ---------------------------------------------------------------------------
