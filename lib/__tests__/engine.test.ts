@@ -6010,6 +6010,21 @@ Líquido para 04/09/2026 5.134,69 D`;
     const syncOk = /\/api\/history\/universo\?forcar=1/.test(sync) && sync.indexOf("history/universo") < sync.indexOf("api/iv-sync");
     if (fonteUnica && discoOk && clienteOk && syncOk) console.log("✔ WO-59 Teste 3: fromYahoo/fromBrapi vivem só em lib/historico-fonte.ts e as duas rotas importam de lá; /api/history/universo lê e grava o cache em disco com 2 workers, sem pg, e devolve candles vazios com erro em vez de inventar; o hook do cliente não toca fs/pg; o dados:sync chama a rota com forcar=1 antes do IV");
     else { console.log(`✘ WO-59 Teste 3 falhou: fonte=${fonteUnica} disco=${discoOk} cliente=${clienteOk} sync=${syncOk}`); failures++; }
+    // ---- Teste 4: a tela é cliente puro (sem fs/pg/disco), sem Recharts no candle, sem sugerir, sem dependência nova; cores numa fonte só
+    const pagCA = ler59("app/chart-attack/page.tsx");
+    const cardCA = ler59("components/CardChartAttack.tsx");
+    const grafCA = ler59("components/GraficoCandles.tsx");
+    const tendCA = ler59("components/PainelTendencia.tsx");
+    const proibido = /from "fs"|from "node:fs"|from "pg"|cache-disco|historico-fonte"|@\/lib\/db"|@\/lib\/regime"/;
+    const clientePuro = [pagCA, cardCA, grafCA].every((src) => /^"use client";/.test(src) && !proibido.test(src));
+    const paginaOk = /bySector\(\)/.test(pagCA) && /"chart-attack-filtro"/.test(pagCA) && /"chart-attack-setor"/.test(pagCA) && /useHistoricoUniverso\(\)/.test(pagCA) && /useRegimesVigentes\(\)/.test(pagCA) && /xl:grid-cols-2/.test(pagCA) && /e\.key === "j"/.test(pagCA) && /e\.key === "k"/.test(pagCA);
+    const cardOk = /pelas médias/.test(cardCA) && !/sugest|recomend/i.test(cardCA) && /divergencia\(/.test(cardCA) && /precisaRevisar\(/.test(cardCA) && /router\.push\("\/estrategia\?modo=contexto"\)/.test(cardCA) && /setTicker\(entrada\.ticker\)/.test(cardCA) && /STALE/.test(cardCA);
+    const grafOk = !/recharts/.test(grafCA) && /geometriaCandles\(/.test(grafCA) && /<svg/.test(grafCA) && /faixaRegime/.test(grafCA) && /marcadores\.map/.test(grafCA);
+    const coresOk = /COR_FAIXA_REGIME/.test(tendCA) && /COR_FAIXA_REGIME/.test(grafCA) && !/faixa: "#00c805"/.test(tendCA) && /export const COR_FAIXA_REGIME/.test(ler59("lib/chart-attack.ts"));
+    const deps = Object.keys(JSON.parse(ler59("package.json")).dependencies ?? {});
+    const semDepNova = deps.length === 9 && !deps.some((d) => /chart|d3|plotly|echarts/i.test(d) && d !== "recharts");
+    if (clientePuro && paginaOk && cardOk && grafOk && coresOk && semDepNova) console.log("✔ WO-59 Teste 4: página, card e candle são cliente puro (sem fs/pg/disco); a página agrupa por setor com filtro e setor lembrados e J/K; o card diz \"pelas médias\", nunca sugere, aponta a divergência e leva à Estratégia (Contexto) pelo setTicker; o candle é SVG sem Recharts; as cores das faixas vêm de uma fonte só; nenhuma dependência nova");
+    else { console.log(`✘ WO-59 Teste 4 falhou: cliente=${clientePuro} pagina=${paginaOk} card=${cardOk} graf=${grafOk} cores=${coresOk} deps=${semDepNova}`); failures++; }
   }
 
 }

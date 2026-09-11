@@ -55,7 +55,7 @@ async function resolver(ticker: string, forcar: boolean, prazo: number): Promise
   const restante = prazo - Date.now();
   if (restante <= 500) {
     if (cache?.payload?.candles?.length) return { ativo: { ...doCache(ticker, cache), erro: "sem tempo para renovar; servindo o cache" }, origem: "cache" };
-    return { ativo: { ticker, candles: [], fonte: null, dadoEm: null, vencido: true, buscadoEm: null, erro: "a rota esgotou o tempo antes deste papel" }, origem: "falha" };
+    return { ativo: { ticker, candles: [], fonte: null, dadoEm: null, vencido: false, buscadoEm: null, erro: "a rota esgotou o tempo antes deste papel" }, origem: "falha" };
   }
 
   const body = await baixarHistorico(ticker, RANGE, Math.min(TIMEOUT_TICKER_MS, restante));
@@ -67,7 +67,8 @@ async function resolver(ticker: string, forcar: boolean, prazo: number): Promise
   if (cache?.payload?.candles?.length) {
     return { ativo: { ...doCache(ticker, cache), vencido: true, erro: "Yahoo e brapi indisponíveis; servindo o último cache" }, origem: "cache" };
   }
-  return { ativo: { ticker, candles: [], fonte: null, dadoEm: null, vencido: true, buscadoEm: null, erro: "Yahoo e brapi indisponíveis e sem cache em disco" }, origem: "falha" };
+  // Sem dado nenhum não é "vencido" — é ausente. STALE é para dado velho, não para dado que não existe.
+  return { ativo: { ticker, candles: [], fonte: null, dadoEm: null, vencido: false, buscadoEm: null, erro: "Yahoo e brapi indisponíveis e sem cache em disco" }, origem: "falha" };
 }
 
 export async function GET(req: NextRequest) {
