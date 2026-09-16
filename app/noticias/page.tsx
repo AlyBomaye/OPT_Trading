@@ -32,7 +32,6 @@ import { fmtBRL, fmtDateBR, fmtNum, fmtPct, pnlColor } from "@/lib/format";
 import { UNIVERSE, companyNames, type Sector } from "@/lib/universe";
 import { buildSectorRows, type SectorRow } from "@/lib/sector-analytics";
 import { useWatchlist, scanTicker } from "@/lib/sector-dashboard";
-import { MapaOportunidades } from "@/components/agents/MapaOportunidades";
 import { buildExpiryRisk, type ExpiryRisk } from "@/lib/event-radar";
 import { useEarnings } from "@/lib/earnings";
 import { EarningsEditor } from "@/components/EarningsEditor";
@@ -75,7 +74,6 @@ export default function NoticiasPage() {
 
   // Estados de layout colapsável (persistidos em localStorage)
   const [setorialOpen, setSetorialOpen] = useState(true);
-  const [mapaOpen, setMapaOpen] = useState(true);
   const [radarOpen, setRadarOpen] = useState(true);
   const [coberturaOpen, setCoberturaOpen] = useState(true);
 
@@ -102,11 +100,9 @@ export default function NoticiasPage() {
       const sOpen = localStorage.getItem("noticias-setorial-open");
       const rOpen = localStorage.getItem("noticias-radar-open");
       const cOpen = localStorage.getItem("noticias-cobertura-open");
-      const mOpen = localStorage.getItem("noticias-mapa-open");
       if (sOpen !== null) setSetorialOpen(sOpen === "true");
       if (rOpen !== null) setRadarOpen(rOpen === "true");
       if (cOpen !== null) setCoberturaOpen(cOpen === "true");
-      if (mOpen !== null) setMapaOpen(mOpen === "true");
     } catch {}
   }, []);
 
@@ -120,21 +116,6 @@ export default function NoticiasPage() {
     const next = !radarOpen;
     setRadarOpen(next);
     localStorage.setItem("noticias-radar-open", String(next));
-  };
-
-  const toggleMapa = () => {
-    const next = !mapaOpen;
-    setMapaOpen(next);
-    localStorage.setItem("noticias-mapa-open", String(next));
-  };
-
-  // WO-47 §4: clicar num ponto do Mapa seleciona o ativo e leva à Cobertura por Ação. A seleção
-  // já propagava (Cobertura e Radar leem o mesmo ticker do store); o que atrapalhava era a
-  // navegação para fora da aba.
-  const selecionarPeloMapa = (t: string) => {
-    setSelectedTicker(t);
-    setPainelTickerAberto(true);
-    document.getElementById("cobertura-acoes")?.scrollIntoView({ behavior: "smooth", block: "start" });
   };
 
   const toggleCobertura = () => {
@@ -484,31 +465,10 @@ export default function NoticiasPage() {
         )}
       </div>
 
-      {/* 2. MAPA DE OPORTUNIDADES DO UNIVERSO (WO-46 §2, vindo do Consultor)
-          Largura inteira de propósito: é uma dispersão com quadrantes, legenda de 9 setores e
-          tabela — dividir a linha comprime o scatter e a leitura se perde. */}
-      <div id="mapa-info" className="panel">
-        <div
-          onClick={toggleMapa}
-          className="panel-title flex items-center justify-between cursor-pointer select-none"
-        >
-          <div className="flex items-center gap-2">
-            {mapaOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-            <Layers size={14} className="text-term-cyan" />
-            <span className="font-bold">[2] Mapa de Oportunidades do Universo</span>
-            {selectedTicker && (
-              <span className="tag bg-term-cyan/20 text-term-cyan">Selecionado: {selectedTicker}</span>
-            )}
-          </div>
-        </div>
-        {mapaOpen && (
-          <div className="p-2">
-            <MapaOportunidades aoSelecionar={selecionarPeloMapa} />
-          </div>
-        )}
-      </div>
+      {/* O Mapa de Oportunidades (WO-46 §2) saiu daqui para o Cockpit (11/09/2026), abaixo da
+          Watchlist — os dois leem a mesma varredura. */}
 
-      {/* 3. RADAR DE EVENTOS POR VENCIMENTO */}
+      {/* 2. RADAR DE EVENTOS POR VENCIMENTO */}
       <div id="radar-eventos" className="panel">
         <div
           onClick={toggleRadar}
@@ -517,7 +477,7 @@ export default function NoticiasPage() {
           <div className="flex items-center gap-2">
             {radarOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
             <CalendarDays size={14} className="text-term-gold" />
-            <span className="font-bold">[3] Radar de Eventos por Vencimento — Risco por Prazo</span>
+            <span className="font-bold">[2] Radar de Eventos por Vencimento — Risco por Prazo</span>
             {chain && (
               <span className="tag bg-term-gold/15 text-term-gold">
                 {chain.ticker} (Spot: {fmtBRL(chain.spot)})
@@ -710,7 +670,7 @@ export default function NoticiasPage() {
           <div className="flex items-center gap-2">
             {coberturaOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
             <Newspaper size={14} className="text-term-up" />
-            <span className="font-bold">[4] Cobertura por Ação — Notícias sob Demanda do Universo</span>
+            <span className="font-bold">[3] Cobertura por Ação — Notícias sob Demanda do Universo</span>
             {selectedTicker && (
               <span className="tag bg-term-up/20 text-term-up">
                 Ativo: {selectedTicker}
@@ -888,7 +848,7 @@ export default function NoticiasPage() {
             <div className="flex flex-wrap items-center justify-between gap-2 border-b border-term-line pb-2">
               <div className="flex items-center gap-2">
                 <Newspaper size={14} className="text-term-cyan" />
-                <span className="font-bold text-xs">[5] Feed Noticioso Agregado</span>
+                <span className="font-bold text-xs">[4] Feed Noticioso Agregado</span>
                 <span className="tag bg-term-line text-term-dim text-xxs">
                   {filteredItems.length} manchetes
                 </span>

@@ -20,6 +20,7 @@ import { useIvRank } from "@/lib/hooks/useIvRank";
 import { AgentPanel } from "@/components/AgentPanel";
 import { TruthBar } from "@/components/TruthBar";
 import { PainelWatchlist } from "@/components/PainelWatchlist";
+import { MapaOportunidades } from "@/components/agents/MapaOportunidades";
 import { PainelAlertas } from "@/components/PainelAlertas";
 import { ChecklistPreMarket } from "@/components/ChecklistPreMarket";
 import { useSkewAtm } from "@/lib/hooks/useSkewAtm";
@@ -318,6 +319,7 @@ export default function CockpitPage() {
       <ChecklistPreMarket />
       {/* WO-47 §3 — ordem do panorama para o específico:
           Pré-Abertura > GEX por strike > Foco do dia > Watchlist (largura inteira) >
+          Mapa de Oportunidades (11/09/2026, vindo da Notícias; mesma varredura da Watchlist) >
           Choque | Skew > Pozinhos. A Watchlist fica FORA de qualquer grade: no WO-46 ela
           entrou dentro da grade de três colunas e uma tabela de 11 colunas ficou com a
           largura de uma. Os rótulos [1]/[2]/[3] não mudam: há textos e deep links que os citam. */}
@@ -348,6 +350,17 @@ export default function CockpitPage() {
       {/* Watchlist — o mapa de onde o trader escolhe o papel. Clicar SELECIONA; os blocos
           acima e abaixo já seguem o ticker, então navegar para fora seria o oposto do Cockpit. */}
       <PainelWatchlist aoSelecionar={setTicker} />
+
+      {/* Mapa de Oportunidades — veio da Notícias (11/09/2026). Lê a MESMA varredura da Watchlist
+          (store useWatchlist): "Varrer universo" acima enche os dois, ponto a ponto enquanto roda.
+          Por isso ele não tem botão próprio aqui. Clicar SELECIONA, como na Watchlist. */}
+      <div id="mapa-oportunidades">
+        <MapaOportunidades
+          aoSelecionar={setTicker}
+          botaoVarrer={false}
+          dicaSelecao="Clique no ponto para selecionar o ativo — GEX, Foco, Skew e Choque seguem a seleção. A varredura é a da Watchlist acima."
+        />
+      </div>
 
       <div className="grid md:grid-cols-2 gap-3">
         {/* [1] Choque do portfólio */}

@@ -45,7 +45,7 @@ export const ROTINA_PRE_MARKET = [
   },
   {
     passo: "3. Notícias e Macro (teclas 4 e 5)",
-    detalhe: "Dashboard setorial, Mapa de Oportunidades, radar de eventos por vencimento e calendário macro (Copom/Fed, IPCA/CPI, payroll) — o que pode disparar volatilidade na sessão.",
+    detalhe: "Dashboard setorial, radar de eventos por vencimento e calendário macro (Copom/Fed, IPCA/CPI, payroll) — o que pode disparar volatilidade na sessão.",
   },
   {
     passo: "4. Estratégia (tecla 8)",
@@ -80,7 +80,7 @@ export const RESUMO_TELAS = [
   {
     modulo: "2. Cockpit",
     pergunta: "Qual o diagnóstico de pré-abertura e onde está o risco do dia?",
-    resposta: "Leitura de pré-abertura, alertas do dia (walls, flip, skew e flags do book, com aviso do navegador — e pelo vigia, com tudo fechado; o vigia usa os walls calculados da B3, não o override manual), checklist pré-market por pregão, perfil de GEX por strike (posições em aberto da B3, com override manual e a variação desde ontem), Foco do dia, Watchlist do universo, choque do portfólio e pozinhos.",
+    resposta: "Leitura de pré-abertura, alertas do dia (walls, flip, skew e flags do book, com aviso do navegador — e pelo vigia, com tudo fechado; o vigia usa os walls calculados da B3, não o override manual), checklist pré-market por pregão, perfil de GEX por strike (posições em aberto da B3, com override manual e a variação desde ontem), Foco do dia, Watchlist do universo e, logo abaixo, o Mapa de Oportunidades (dispersão skew × IV−HV dos 31 papéis, alimentado pela mesma varredura da Watchlist — um botão enche os dois), choque do portfólio e pozinhos.",
   },
   {
     modulo: "3. Portfolio",
@@ -95,7 +95,7 @@ export const RESUMO_TELAS = [
   {
     modulo: "5. Notícias",
     pergunta: "Onde está o calor do dia e quais eventos vão mexer na vol?",
-    resposta: "Dashboard setorial, Mapa de Oportunidades do universo, radar de eventos por vencimento (macro, balanços, ex-dividendo), cobertura por ação e feed agregado com agenda de 45 dias.",
+    resposta: "Dashboard setorial, radar de eventos por vencimento (macro, balanços, ex-dividendo), cobertura por ação e feed agregado com agenda de 45 dias.",
   },
   {
     modulo: "6. Macro",
@@ -126,10 +126,10 @@ export const RESUMO_TELAS = [
 
 export const HOTKEYS_MANUAL = [
   { atalho: "1", descricao: "Consultor — relatório consolidado dos agentes" },
-  { atalho: "2", descricao: "Cockpit — GEX, Foco do dia, Watchlist, choque do book, pozinhos" },
+  { atalho: "2", descricao: "Cockpit — GEX, Foco do dia, Watchlist e Mapa de Oportunidades, choque do book, pozinhos" },
   { atalho: "3", descricao: "Portfolio — gestão e análise: fichas, estruturas, limites, alocação, correlação, VaR" },
   { atalho: "4", descricao: "Chart Attack — o universo em candles, setor a setor, com a leitura das médias e a sua marcação" },
-  { atalho: "5", descricao: "Notícias — setorial, Mapa de Oportunidades, radar de eventos, feed" },
+  { atalho: "5", descricao: "Notícias — setorial, radar de eventos, cobertura por ação, feed" },
   { atalho: "6", descricao: "Macro — sessões, painéis, Rates & FX, Focus, impacto no universo" },
   { atalho: "7", descricao: "Scanner — prateleira do método e pozinhos" },
   { atalho: "8", descricao: "Estratégia — montagem, cadeia completa e contexto de volatilidade" },

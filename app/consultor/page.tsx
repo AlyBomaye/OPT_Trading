@@ -620,9 +620,9 @@ export default function ConsultorPage() {
           </div>
 
           {/* ALOCAÇÃO E AÇÕES */}
-          {/* WO-46 §2: o Mapa de Oportunidades saiu daqui para a aba Notícias, ao lado do
-              Dashboard Setorial — as duas são leituras transversais do universo no mesmo
-              instante. O RiskMixBar fica: ele fala da carteira, não do universo. */}
+          {/* WO-46 §2: o Mapa de Oportunidades saiu daqui para a aba Notícias e, em 11/09/2026,
+              para o Cockpit, abaixo da Watchlist (os dois leem a mesma varredura). O RiskMixBar
+              fica: ele fala da carteira, não do universo. */}
           <RiskMixBar {...alocacao.mix} utilizacaoPct={alocacao.utilizacaoCapitalPct} desvio={alocacao.desvio} />
 
           {/* RISCOS E LEITURA DE MERCADO */}

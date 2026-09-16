@@ -28,11 +28,19 @@ const SECTOR_COLORS: Record<Sector, string> = {
 };
 
 interface PropsMapa {
-  /** WO-47 §4: dentro da Notícias, clicar seleciona o ativo para a Cobertura e o Radar — não navega. */
+  /** WO-47 §4: dentro de uma aba, clicar seleciona o ativo — não navega. */
   aoSelecionar?: (ticker: string) => void;
+  /**
+   * 11/09/2026: no Cockpit o Mapa vive logo abaixo da Watchlist e lê a MESMA varredura
+   * (store `useWatchlist`): "Varrer universo" de lá enche os dois. Com `false`, o Mapa não mostra
+   * botão próprio — dois botões para a mesma varredura seria confusão.
+   */
+  botaoVarrer?: boolean;
+  /** Frase abaixo do título: o que a seleção faz nesta tela. */
+  dicaSelecao?: string;
 }
 
-export function MapaOportunidades({ aoSelecionar }: PropsMapa = {}) {
+export function MapaOportunidades({ aoSelecionar, botaoVarrer = true, dicaSelecao }: PropsMapa = {}) {
   const router = useRouter();
   const setTicker = useMarket((st) => st.setTicker);
   const watchRows = useWatchlist((st) => st.rows);
@@ -116,17 +124,19 @@ export function MapaOportunidades({ aoSelecionar }: PropsMapa = {}) {
             <span>Mapa de Oportunidades do Universo ({UNIVERSE.length} ativos B3)</span>
           </h4>
           <p className="text-xs text-neutral-500">
-            Dispersão Skew P/C vs Spread IV-HV21 · Clique no ponto para selecionar o ativo — a Cobertura e o Radar abaixo seguem a seleção.
+            Dispersão Skew P/C vs Spread IV-HV21 · {dicaSelecao ?? "Clique no ponto para selecionar o ativo — os blocos da tela seguem a seleção."}
           </p>
         </div>
-        <button
-          onClick={handleScanAll}
-          disabled={scanning}
-          className="btn bg-cyan-600 hover:bg-cyan-500 disabled:opacity-50 text-white text-xs px-3 py-1.5 font-mono rounded flex items-center shrink-0 self-start sm:self-auto"
-        >
-          <RefreshCw size={12} className={clsx("mr-1.5", scanning && "animate-spin")} />
-          {scanning ? "Varrendo 20 ativos..." : "Varrer Universo"}
-        </button>
+        {botaoVarrer && (
+          <button
+            onClick={handleScanAll}
+            disabled={scanning}
+            className="btn bg-cyan-600 hover:bg-cyan-500 disabled:opacity-50 text-white text-xs px-3 py-1.5 font-mono rounded flex items-center shrink-0 self-start sm:self-auto"
+          >
+            <RefreshCw size={12} className={clsx("mr-1.5", scanning && "animate-spin")} />
+            {scanning ? `Varrendo ${UNIVERSE.length} ativos...` : "Varrer Universo"}
+          </button>
+        )}
       </div>
 
       {/* Gráfico de Dispersão */}
@@ -135,14 +145,18 @@ export function MapaOportunidades({ aoSelecionar }: PropsMapa = {}) {
           <div className="text-xs text-neutral-400 font-mono">
             Nenhuma varredura do universo registrada recentemente.
           </div>
-          <button
-            onClick={handleScanAll}
-            disabled={scanning}
-            className="btn bg-cyan-600 hover:bg-cyan-500 text-white text-xs px-4 py-2 font-mono rounded flex items-center"
-          >
-            <RefreshCw size={14} className={clsx("mr-2", scanning && "animate-spin")} />
-            Varrer Universo Agora ({UNIVERSE.length} ativos B3)
-          </button>
+          {botaoVarrer ? (
+            <button
+              onClick={handleScanAll}
+              disabled={scanning}
+              className="btn bg-cyan-600 hover:bg-cyan-500 text-white text-xs px-4 py-2 font-mono rounded flex items-center"
+            >
+              <RefreshCw size={14} className={clsx("mr-2", scanning && "animate-spin")} />
+              Varrer Universo Agora ({UNIVERSE.length} ativos B3)
+            </button>
+          ) : (
+            <div className="text-xxs text-neutral-500 font-mono">Use «Varrer universo» na Watchlist, logo acima — a varredura é a mesma e enche os dois blocos.</div>
+          )}
         </div>
       ) : (
         <div className="relative">

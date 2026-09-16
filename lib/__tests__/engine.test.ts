@@ -2462,6 +2462,22 @@ async function testesAjustes0209() {
     else { console.log(`✘ AJ Teste 14 falhou: pixels=${pixels} payoff=${payoffCresce} coluna=${colunaOk}`); failures++; }
   }
 
+  // ---- Teste 15 (11/09/2026): um "Varrer universo" enche Watchlist e Mapa — os dois leem o mesmo store; no Cockpit o Mapa não tem botão próprio
+  {
+    const srcW = ler("components/PainelWatchlist.tsx");
+    const srcM = ler("components/agents/MapaOportunidades.tsx");
+    const srcCk = ler("app/page.tsx");
+    const mesmoStore = /useWatchlist\(\)/.test(srcW) && /setRow\(row\)/.test(srcW) && /useWatchlist\(\(st\) => st\.rows\)/.test(srcM);
+    const semBotaoNoCockpit = /botaoVarrer=\{false\}/.test(srcCk) && /botaoVarrer = true/.test(srcM) && /\{botaoVarrer && \(/.test(srcM) && /Varrer universo» na Watchlist/.test(srcM);
+    const selecionaSemNavegar = /<MapaOportunidades[\s\S]*?aoSelecionar=\{setTicker\}/.test(srcCk) && /id="mapa-oportunidades"/.test(srcCk);
+    const noticiasLimpa = !/mapaOpen|toggleMapa|selecionarPeloMapa|noticias-mapa-open/.test(ler("app/noticias/page.tsx")) && /\[2\] Radar de Eventos/.test(ler("app/noticias/page.tsx")) && /\[3\] Cobertura/.test(ler("app/noticias/page.tsx")) && /\[4\] Feed/.test(ler("app/noticias/page.tsx"));
+    const { RESUMO_TELAS: RT, HOTKEYS_MANUAL: HK } = await import("../manual-content");
+    const manualOk = /Mapa de Oportunidades/.test(RT.find((r) => r.modulo === "2. Cockpit")?.resposta ?? "") && !/Mapa de Oportunidades/.test(RT.find((r) => r.modulo === "5. Notícias")?.resposta ?? "")
+      && /Mapa de Oportunidades/.test(HK.find((h) => h.atalho === "2")?.descricao ?? "") && !/Mapa de Oportunidades/.test(HK.find((h) => h.atalho === "5")?.descricao ?? "");
+    if (mesmoStore && semBotaoNoCockpit && selecionaSemNavegar && noticiasLimpa && manualOk) console.log("✔ AJ Teste 15: Watchlist e Mapa leem o mesmo store (um Varrer universo enche os dois); no Cockpit o Mapa não tem botão próprio, seleciona sem navegar e tem âncora; a Notícias ficou sem o Mapa e renumerada; o Manual acompanha");
+    else { console.log(`✘ AJ Teste 15 falhou: store=${mesmoStore} botao=${semBotaoNoCockpit} seleciona=${selecionaSemNavegar} noticias=${noticiasLimpa} manual=${manualOk}`); failures++; }
+  }
+
   // ---- Teste 9: apuracao fiscal cita opcoes SEM isencao e IRRF 0,005% (regras vigentes)
   const { IRRF_SWING_SOBRE_VENDA, ALIQUOTA_SWING } = await import("../fiscal");
   const semIsencaoOpcao = /NÃO vale para opções/.test(ler("lib/fiscal.ts"));
@@ -2776,9 +2792,9 @@ async function testesWo47() {
     failures++;
   }
 
-  // ---- Teste 7: o Mapa e recolhivel na Noticias, chave por secao
-  if (/"noticias-mapa-open"/.test(srcNot) && /mapaOpen && \(/.test(srcNot)) {
-    console.log("✔ WO-47 Teste 7: o Mapa e recolhivel na Noticias com a chave noticias-mapa-open");
+  // ---- Teste 7: o Mapa saiu da Noticias (11/09/2026, para o Cockpit); a chave noticias-mapa-open e o bloco recolhivel foram embora com ele
+  if (!/"noticias-mapa-open"/.test(srcNot) && !/mapaOpen && \(/.test(srcNot) && !/<MapaOportunidades/.test(srcNot)) {
+    console.log("✔ WO-47 Teste 7: a Noticias nao tem mais o Mapa nem a chave noticias-mapa-open (o Mapa vive no Cockpit)");
   } else {
     console.log("✘ WO-47 Teste 7 falhou: Mapa nao e recolhivel ou a chave nao e por secao");
     failures++;
@@ -2905,9 +2921,10 @@ async function testesWo47() {
   }
 
   // ---- Teste 17: nenhum novo localStorage e nomeado por numero
-  const novasChaves = ["wb-chain-open", "noticias-mapa-open"];
+  // 11/09/2026: noticias-mapa-open saiu junto com o Mapa (que hoje vive no Cockpit, sem bloco recolhivel).
+  const novasChaves = ["wb-chain-open"];
   const porNumero = novasChaves.filter((k) => /\d/.test(k));
-  if (porNumero.length === 0 && /"wb-chain-open"/.test(srcEstr) && /"noticias-mapa-open"/.test(srcNot)) {
+  if (porNumero.length === 0 && /"wb-chain-open"/.test(srcEstr) && !/"noticias-mapa-open"/.test(srcNot)) {
     console.log("✔ WO-47 Teste 17: as chaves novas de localStorage sao nomeadas por secao");
   } else {
     console.log(`✘ WO-47 Teste 17 falhou: ${porNumero.join(",")}`);
@@ -3092,19 +3109,20 @@ async function testesWo46() {
     failures++;
   }
 
-  // ---- Teste 10: o Mapa saiu do Consultor e esta na Noticias, ainda derivado do UNIVERSE
-  const noConsultor = /MapaOportunidades/.test(ler("app/consultor/page.tsx"));
+  // ---- Teste 10: o Mapa saiu do Consultor (WO-46) e da Noticias (11/09/2026) e vive no Cockpit, logo abaixo da Watchlist, derivado do UNIVERSE
+  const noConsultor = /<MapaOportunidades\b/.test(ler("app/consultor/page.tsx"));
   const srcNot = ler("app/noticias/page.tsx");
-  const naNoticias = /<MapaOportunidades\b/.test(srcNot); // WO-47: agora recebe aoSelecionar
-  const posMapa = srcNot.indexOf("MAPA DE OPORTUNIDADES");
-  const posSetorial = srcNot.indexOf("Dashboard Setorial");
-  const posRadar = srcNot.indexOf("RADAR DE EVENTOS");
-  const noMeio = posSetorial > 0 && posMapa > posSetorial && posRadar > posMapa;
+  const naNoticias = /<MapaOportunidades\b/.test(srcNot);
+  const srcCk = ler("app/page.tsx");
+  const posWatch = srcCk.indexOf("<PainelWatchlist");
+  const posMapa = srcCk.indexOf("<MapaOportunidades");
+  const posChoque = srcCk.indexOf("Choque do Portf");
+  const abaixoDaWatchlist = posWatch > 0 && posMapa > posWatch && posChoque > posMapa && !/<PainelWatchlist|grid/.test(srcCk.slice(posWatch + 20, posMapa));
   const derivaUniverse = /UNIVERSE\.map\(/.test(ler("components/agents/MapaOportunidades.tsx"));
-  if (!noConsultor && naNoticias && noMeio && derivaUniverse) {
-    console.log("✔ WO-46 Teste 10: o Mapa esta na Noticias entre o Setorial e o Radar, derivado do UNIVERSE");
+  if (!noConsultor && !naNoticias && abaixoDaWatchlist && derivaUniverse) {
+    console.log("✔ WO-46 Teste 10: o Mapa vive no Cockpit, logo abaixo da Watchlist (fora do Consultor e da Noticias), derivado do UNIVERSE");
   } else {
-    console.log(`✘ WO-46 Teste 10 falhou: consultor=${noConsultor}, noticias=${naNoticias}, meio=${noMeio}, universe=${derivaUniverse}`);
+    console.log(`✘ WO-46 Teste 10 falhou: consultor=${noConsultor}, noticias=${naNoticias}, abaixoDaWatchlist=${abaixoDaWatchlist}, universe=${derivaUniverse}`);
     failures++;
   }
 
