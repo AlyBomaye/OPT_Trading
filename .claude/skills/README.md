@@ -13,7 +13,7 @@ nenhum trecho de livro é reproduzido.
 | `risco-do-book` | Portfolio, VaR, stress, hedge, vencimento, atribuição, alocação, correlação | leitura das gregas do book; VaR por grade vs simulação histórica; economia do hedge com custos XP; limites em R$ |
 | `boletagem-e-custos` | Boletar, rascunho, Boletagem, slippage, boleta, estorno, caixa, custos, IR, Excel | porta única (WO-58: Estratégia e Portfolio só criam rascunho; a boleta nasce na Boletagem com o preço da execução); livro append-only no Postgres; tabela oficial XP/B3; zeragem a custo zero; regras fiscais |
 | `metodo-do-trader` | textos de tela, Consultor, critérios, nomes de estruturas | 4 camadas, três perguntas, 70%/10 DU/5 DU/1%, língua do método, proveniência; leitura das médias (Chart Attack, WO-59) nunca é chamada de regime |
-| `engenharia-da-plataforma` | editar, testar, build, servidor, banco, segredos, WOs | ciclo de WO, dev vs build, Postgres 5433, segredos só em `.env.local`, armadilhas de ferramenta, histórico em disco (`/api/history/universo`, `lib/historico-fonte.ts`) |
+| `engenharia-da-plataforma` | editar, testar, build, servidor, banco, segredos, WOs | ciclo de WO, dev vs build, Postgres 5433, segredos só em `.env.local`, armadilhas de ferramenta, histórico em disco (`/api/history/universo`, `lib/historico-fonte.ts`); ponte MT5 (`scripts/mt5-ponte.py`, `lib/fonte-mt5.ts`, WO-61) |
 
 Teste estático: `lib/__tests__/engine.test.ts` (Teste 45) confere que cada skill tem frontmatter
 válido, `name` igual à pasta, descrição substantiva e referências existentes.

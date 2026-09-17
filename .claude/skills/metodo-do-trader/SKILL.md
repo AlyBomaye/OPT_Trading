@@ -118,6 +118,23 @@ zero que parece medido é o erro mais caro que a plataforma pode cometer.
 Ao criar qualquer campo numérico novo: tipo `number | null`, data de origem ao lado, fonte, e a
 tela renderiza o `null` como ausência explicada.
 
+### 6.1 O book ao vivo e a ordem limitada (WO-61)
+
+Com a ponte MT5, a cadeia traz bid e ask ao vivo. O que isso muda para o operador — e o que não
+muda:
+
+- A **marca** de uma série passa a ser o **mid ao vivo** quando as duas ofertas existem e o spread
+  relativo ao mid é de até 50%; senão, o último negócio. Na Boletagem o rascunho registra a fonte
+  (`mid`, `ultimo`, `marcacao`, `manual`) — e o chip diz. Texto de tela: "mid" e "último negócio",
+  nunca "preço justo".
+- O **custo de execução pelo spread** (P&L da operação) deixa de ser estimado pelo fechamento de
+  ontem: é (ask − mid) nas compras e (mid − bid) nas vendas, agora. É o piso do que a ordem a
+  mercado paga; a ordem limitada no prêmio-alvo continua sendo a regra.
+- **Nada disso é sinal.** Book largo é aviso de liquidez, não de direção. Sem book (ponte fora), a
+  tela volta ao fechamento do COTAHIST e diz; nunca inventa um mid.
+- A fonte aparece com hora: "MT5 · Genial · tick 16:54:57". Fora do pregão o book pode estar
+  vazio — bid e ask zerados viram `null`, e o mid não existe.
+
 ## 7. Ao mudar texto ou lógica de decisão
 
 1. Localize a camada do método que o pedido toca; se não toca nenhuma, pergunte-se se a

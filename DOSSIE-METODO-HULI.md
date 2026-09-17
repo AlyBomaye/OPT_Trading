@@ -69,6 +69,9 @@ Este é o achado mais concreto do cruzamento.
 | **Só no manual (11)** | BRAP4 · BRAV3 · BRKM5 · CASH3 · JHSF3 · LREN3 · MRFG3 · MRVE3 · RENT3 · SUZB3 · VBBR3 |
 | **Só na plataforma (11)** | AZUL4 · BBSE3 · BHIA3 · BOVA11 · BPAC11 · CMIG4 · CSAN3 · CVCB3 · GOLL4 · RECV3 · WEGE3 |
 
+> Atualização WO-61 (17/09/2026): MRFG3 virou **MBRF3** (Marfrig + BRF) e AZUL4 e GOLL4 saíram do
+> universo — sem negócios desde dez/2025 e jun/2025 e sem opções vigentes no MetaTrader 5.
+
 Metade da varredura diária da Watchlist gasta tempo em papéis que o método não opera, e **metade
 dos papéis do método não é varrida**. O manual ainda dá o critério de inclusão explícito —
 liquidez acima de R$ 500 mil/dia — que a plataforma não verifica.

@@ -90,7 +90,7 @@ export const RESUMO_TELAS = [
   {
     modulo: "4. Chart Attack",
     pergunta: "Como está a tendência de cada papel do universo — e onde a minha marcação envelheceu?",
-    resposta: "Os 31 ativos em candles diários de 3 meses, setor a setor (abas verticais; J/K trocam o setor), com médias de 21 e 63 pregões, volume, ex-dividendo e vencimentos mensais. Cada card traz duas leituras lado a lado: a leitura das médias (conta da plataforma) e a sua marcação de regime (feita na Estratégia), com a idade dela e o aviso de revisar aos 20 pregões; quando discordam, a divergência aparece escrita com as duas datas. Filtro: todos, só os do método, com posição. O botão Estratégia leva ao papel. Nada é gravado aqui e a plataforma não marca regime.",
+    resposta: "Os ativos do universo em candles diários de 3 meses, setor a setor (abas verticais; J/K trocam o setor), com médias de 21 e 63 pregões, volume, ex-dividendo e vencimentos mensais. Cada card traz duas leituras lado a lado: a leitura das médias (conta da plataforma) e a sua marcação de regime (feita na Estratégia), com a idade dela e o aviso de revisar aos 20 pregões; quando discordam, a divergência aparece escrita com as duas datas. Filtro: todos, só os do método, com posição. O botão Estratégia leva ao papel. Nada é gravado aqui e a plataforma não marca regime.",
   },
   {
     modulo: "5. Notícias",
@@ -110,7 +110,7 @@ export const RESUMO_TELAS = [
   {
     modulo: "8. Estratégia",
     pergunta: "Como montar, medir líquido de custos e Boletar uma estrutura?",
-    resposta: "Três modos: Montagem (cadeia recolhível, pernas, Histórico, Projeções — onde o preço pode estar no vencimento por três caminhos: mercado com a banda da IV, bootstrap histórico e reversão à média —, payoff, P&L da operação líquido de custos e já como ordem: régua de preço, prêmio-alvo da estrutura, datas de rolar e zerar, spread, caixa depois, cenários nos preços projetados; semáforo do método, sensibilidade e a porta das 3 perguntas — Boletar cria um rascunho na Boletagem, com o preço da montagem; a boleta só nasce lá, com o preço da execução), Cadeia (grade completa, paridade put-call como qualidade, smile e estrutura a termo) e Contexto (tendência, vol realizada, IV×HV e cone).",
+    resposta: "Três modos: Montagem (cadeia recolhível com bid/ask ao vivo pela ponte MT5 e a marca pelo mid quando o spread é razoável, pernas, Histórico, Projeções — onde o preço pode estar no vencimento por três caminhos: mercado com a banda da IV, bootstrap histórico e reversão à média —, payoff, P&L da operação líquido de custos e já como ordem: régua de preço, prêmio-alvo da estrutura, datas de rolar e zerar, spread, caixa depois, cenários nos preços projetados; semáforo do método, sensibilidade e a porta das 3 perguntas — Boletar cria um rascunho na Boletagem, com o preço da montagem; a boleta só nasce lá, com o preço da execução), Cadeia (grade completa, paridade put-call como qualidade, smile e estrutura a termo) e Contexto (tendência, vol realizada, IV×HV e cone).",
   },
   {
     modulo: "9. Manual",
@@ -150,7 +150,8 @@ export const PLATAFORMA_COMO_SERVICO = [
   { titulo: "Comandos", texto: "npm run prod:build (build em .next-prod, sem parar o dev), prod:start, prod:stop, prod:status, prod:logs. npm run vigia:uma-vez testa um ciclo do vigia. npm run backup:db faz o dump agora." },
   { titulo: "Tarefas agendadas (prefixo OpcoesTerminal-)", texto: "Plataforma no logon; Sync dias úteis 18:30 (histórico de IV e GEX diário); Vigia no logon (residente); Backup dias úteis 19:00 (pg_dump no OneDrive, 30 últimos). npm run agendar instala; agendar:listar mostra a última execução de cada uma." },
   { titulo: "O vigia", texto: "Pergunta a GET /api/alertas de 5 em 5 minutos no pregão (15 na pré-abertura, 60 fechado, 6 h no fim de semana) e dispara notificação nativa do Windows para alertas urgentes e de atenção novos no dia. O servidor avalia com as mesmas funções da tela; o vigia não tem regra. Limite: usa os walls calculados do OI da B3 — o override manual do Cockpit e os dividendos cadastrados ficam no navegador." },
-  { titulo: "Logs e estado", texto: "data/logs/ (producao-, vigia-, sync.log, backup.log) e data/run/ (PID, build, avisados do dia). Tudo fora do git." },
+  { titulo: "Logs e estado", texto: "data/logs/ (producao-, ponte-mt5-, vigia-, sync.log, backup.log) e data/run/ (PID da plataforma e da ponte, build, avisados do dia). Tudo fora do git." },
+  { titulo: "O terminal MetaTrader 5", texto: "É a fonte primária de mercado (WO-61). Precisa estar aberto e logado nesta máquina; a ponte (scripts/mt5-ponte.py, Python, 127.0.0.1:3200) sobe com o prod:start e cai com o prod:stop, e nunca recebe login ou senha. npm run prod:status diz 'ponte MT5: ok - terminal logado' ou o motivo; o vigia avisa por notificação quando o terminal desloga durante o pregão. Sem o terminal, a plataforma cai para opcoes.net.br e Yahoo, rotulado na barra de veracidade. Em desenvolvimento: npm run ponte." },
 ];
 
 /**
@@ -174,20 +175,28 @@ export const PORTFOLIO_E_BOLETAGEM = [
  * texto nunca as confunde: a das médias é conta da plataforma; o regime é marcação do operador.
  */
 export const CHART_ATTACK = [
-  { titulo: "O que a tela mostra", texto: "Os 31 ativos do universo agrupados por setor — abas verticais à esquerda, cards à direita. Cada card é um candle diário de 3 meses (63 pregões) com as médias de 21 e 63 pregões, o volume na base, os vencimentos mensais de opções e as datas ex-dividendo cadastradas. É a varredura visual: onde a tendência está clara, onde virou, onde a sua marcação envelheceu." },
+  { titulo: "O que a tela mostra", texto: "Os ativos do universo agrupados por setor — abas verticais à esquerda, cards à direita. Cada card é um candle diário de 3 meses (63 pregões) com as médias de 21 e 63 pregões, o volume na base, os vencimentos mensais de opções e as datas ex-dividendo cadastradas. É a varredura visual: onde a tendência está clara, onde virou, onde a sua marcação envelheceu." },
   { titulo: "Leitura das médias não é regime", texto: "O chip 'alta / baixa / lateral pelas médias' é uma conta da plataforma, igual para todo papel: preço acima da média de 21, que está acima da de 63 e inclinada para cima (mais de 0,5% em 5 pregões) lê alta; o espelho lê baixa; o resto, lateral. O regime do método é outra coisa — o indicador do operador, com parâmetros próprios — e só ele o marca, na Estratégia (Contexto). A tela nunca chama a leitura das médias de regime, e não marca regime por você." },
   { titulo: "A sua marcação", texto: "O segundo chip mostra o regime que você marcou e há quantos pregões. A faixa translúcida ao fundo do gráfico começa no pregão da marcação. Aos 20 pregões aparece 'revisar': o método pede recalibrar, e uma marcação velha é uma decisão velha." },
   { titulo: "A divergência", texto: "Quando a leitura das médias e a sua marcação discordam, o card escreve, em dourado: o que as médias leem e desde quando, o que você marcou e quando. É um aviso para olhar de novo — não uma ordem para obedecer às médias. Marcação 'indefinido' nunca diverge: é você dizendo que não sabe, e o método diz para não operar." },
-  { titulo: "De onde vêm os dados", texto: "Histórico diário de 1 ano por papel (Yahoo, com brapi de reserva), guardado em disco pela rota /api/history/universo. Quem enche o cache é o dados:sync das 18:30 (tarefa agendada): a aba abre com o cache quente sem bater na rede. Um papel sem cache é buscado na hora, dois de cada vez. 'Atualizar' renova os 31." },
-  { titulo: "STALE e sem dado", texto: "Se a rede falha, o card mostra o último dado guardado com o chip STALE e a data dele — dado velho rotulado como velho é melhor que tela vazia. Papel que a fonte não tem (sem histórico no Yahoo nem na brapi) fica com o erro escrito, sem gráfico e sem leitura; ele conta como 'sem dado', nunca como STALE." },
-  { titulo: "Filtros e teclas", texto: "Todos (31), Método (só os da lista do manual — origem método ou ambos) e Com posição (só os com perna aberta no livro; sem banco, o filtro fica desabilitado). J e K trocam o setor. Filtro e setor ficam lembrados no navegador. O botão Estratégia de cada card abre o papel na aba Contexto, onde a marcação se faz e a estrutura nasce." },
+  { titulo: "De onde vêm os dados", texto: "Histórico diário de 1 ano por papel — pela ponte MT5 (terminal da corretora, local), com Yahoo e brapi de reserva —, guardado em disco pela rota /api/history/universo. Quem enche o cache é o dados:sync das 18:30 (tarefa agendada): a aba abre com o cache quente sem bater na rede. Um papel sem cache é buscado na hora, dois de cada vez. 'Atualizar' renova o universo inteiro." },
+  { titulo: "STALE e sem dado", texto: "Se a rede falha, o card mostra o último dado guardado com o chip STALE e a data dele — dado velho rotulado como velho é melhor que tela vazia. Papel que nenhuma fonte tem (sem histórico no MT5, no Yahoo nem na brapi) fica com o erro escrito, sem gráfico e sem leitura; ele conta como 'sem dado', nunca como STALE." },
+  { titulo: "Filtros e teclas", texto: "Todos, Método (só os da lista do manual — origem método ou ambos) e Com posição (só os com perna aberta no livro; sem banco, o filtro fica desabilitado). J e K trocam o setor. Filtro e setor ficam lembrados no navegador. O botão Estratégia de cada card abre o papel na aba Contexto, onde a marcação se faz e a estrutura nasce." },
   { titulo: "O que ela não faz", texto: "Não monta estrutura, não grava boleta, não sugere operação, não marca regime. Sem zoom, sem seletor de janela, sem posições do livro desenhadas no gráfico — por decisão, para a tela continuar sendo uma olhada de dois minutos." },
 ];
 
 export const DADOS_LIMITACOES = [
   {
-    titulo: "Fonte Anônima de Dados & Delay",
-    texto: "As cotações da B3 são obtidas via proxy server-side do opcoes.net.br. Os dados refletem o último negócio (last-trade) com atraso de minutos e não possuem livro de ofertas (bid/ask) nem contratos em aberto (Open Interest).",
+    titulo: "A fonte primária: MetaTrader 5 da corretora, em tempo real",
+    texto: "A cadeia de opções, o tick do papel e o histórico diário vêm do terminal MetaTrader 5 (Genial), aberto e logado nesta máquina, lido por uma ponte local (scripts/mt5-ponte.py, só 127.0.0.1). Cada série traz bid, ask, último negócio e a hora do tick; o spot é o tick do papel na sessão corrente. A ponte não recebe credencial nenhuma: quem loga é o operador, no terminal. A barra de veracidade mostra a fonte e a hora ('MT5 · Genial · tick 16:54:57') e o chip BOOK conta as séries com bid e ask.",
+  },
+  {
+    titulo: "As reservas: opcoes.net.br e COTAHIST",
+    texto: "Com o terminal fechado ou deslogado, a cadeia volta a vir do proxy anônimo do opcoes.net.br (último negócio com atraso de minutos, sem book) e as ofertas passam a ser as de fechamento do arquivo COTAHIST da B3; o histórico cai para Yahoo e brapi. Nada zera: a barra de veracidade diz de onde cada número veio, e a última grade boa fica guardada em disco para o caso de todas as fontes falharem (STALE, com a data).",
+  },
+  {
+    titulo: "O que o MT5 não entrega (e como a plataforma preenche)",
+    texto: "IV e gregas: não vêm da fonte — o engine local calcula (regra abaixo). Negócios do dia e data do último negócio de cada série: vêm do candle diário da série, que a ponte completa em segundo plano; enquanto uma série ainda não tem esse candle, a Chain a mostra como provisória ('~1/—': houve tick na sessão) em vez de escondê-la, e o próximo pedido traz o número certo. Volume financeiro por série: aproximação (quantidade negociada × fechamento do dia), declarada como tal. Posições em aberto: continuam vindo do arquivo diário da B3.",
   },
   {
     titulo: "Recálculo Local de IV (Sem Volblur)",
@@ -234,6 +243,22 @@ export const MAPA_INFORMACOES: LinhaMapa[] = [
 ];
 
 export const GLOSSARIO: Termo[] = [
+  /* --- WO-61: a fonte de mercado ------------------------------------------- */
+  {
+    termo: "Ponte MT5",
+    definicao: "O serviço local (scripts/mt5-ponte.py) que lê o terminal MetaTrader 5 da corretora, aberto e logado nesta máquina, e entrega à plataforma a cadeia com bid/ask/último/hora do tick, o tick do papel e o histórico diário. Escuta só em 127.0.0.1 e não recebe credencial. Com ela fora, a plataforma cai para opcoes.net.br, COTAHIST e Yahoo — e a barra de veracidade diz.",
+    ondeAparece: "Barra de veracidade (CHAIN/SPOT/BOOK), Manual §5 e §6, npm run prod:status",
+  },
+  {
+    termo: "Book (bid / ask / mid)",
+    definicao: "Bid é a melhor oferta de compra; ask, a melhor de venda; mid é a média das duas — só existe quando as duas estão presentes e ask ≥ bid. Pela ponte MT5 o book é ao vivo (verde, com a hora do tick); sem ela, é o de fechamento do COTAHIST da B3 (ciano, com a data). A marca de uma posição usa o mid quando o spread relativo ao mid é de até 50%; acima disso, o último negócio.",
+    ondeAparece: "Chain e MiniChain (coluna Bid/Ask), Portfolio (chip MID), P&L da operação (custo pelo spread), Boletagem (fonte do preço)",
+  },
+  {
+    termo: "Tick",
+    definicao: "A última atualização de preço recebida do terminal para um símbolo (negócio ou oferta), com hora. Os horários do MT5 vêm no fuso de Brasília. 'Tick da sessão corrente' é o que a barra de veracidade chama de AO VIVO.",
+    ondeAparece: "Barra de veracidade (SPOT com a hora), tooltip do Bid/Ask na Chain",
+  },
   /* --- WO-45: vocabulário do método ---------------------------------------
    * Termos que o material usa o tempo todo e a plataforma não definia em lugar nenhum. Ficam no
    * topo porque são a linguagem de decisão: quem não sabe o que é titular e lançador não consegue

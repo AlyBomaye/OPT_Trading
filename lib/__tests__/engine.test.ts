@@ -3713,7 +3713,7 @@ async function testesWo43() {
 
   // ---- Teste 1: o universo cobre os 20 do manual, com origem rotulada
   const doManual = ["PETR4","VALE3","CSNA3","USIM5","GGBR4","MGLU3","CMIN3","COGN3","PRIO3",
-                    "BRAP4","BRAV3","BRKM5","CASH3","JHSF3","LREN3","MRFG3","MRVE3","RENT3","SUZB3","VBBR3"];
+                    "BRAP4","BRAV3","BRKM5","CASH3","JHSF3","LREN3","MBRF3","MRVE3","RENT3","SUZB3","VBBR3"]; // WO-61: MRFG3 → MBRF3
   const presentes = new Set(UNIVERSE.map((u) => u.ticker));
   const faltando = doManual.filter((t) => !presentes.has(t));
   const semOrigem = UNIVERSE.filter((u) => !["metodo", "plataforma", "ambos"].includes(u.origem));
@@ -5767,7 +5767,7 @@ Líquido para 04/09/2026 5.134,69 D`;
     const srcRota = lerSrc("app/api/cotahist/route.ts");
     const srcStore = lerSrc("store/market.ts");
     const t5 = /COTAHIST_D/.test(srcRota) && /lerZip\(buf\)/.test(srcRota) && /pregaoAnterior/.test(srcRota) && /gravarCache\(`cotahist-/.test(srcRota)
-      && /\/api\/cotahist\?data=/.test(srcStore) && /o\.mid = c\.mid/.test(srcStore) && srcStore.includes("o.opTicker.replace(/_" + String.fromCharCode(92) + "d{4}$/, " + '""' + ")") && /export function marcaDaSerie/.test(lerSrc("lib/marcacao.ts")) && /fonte,\n/.test(lerSrc("lib/marcacao.ts"))
+      && /\/api\/cotahist\?data=/.test(srcStore) && /o\.mid = c\.mid/.test(srcStore) && /oj\.series\[codigoSerie\(o\.opTicker\)\]/.test(srcStore) /* WO-61: o sufixo de ano sai por codigoSerie */ && /export function marcaDaSerie/.test(lerSrc("lib/marcacao.ts")) && /fonte,\n/.test(lerSrc("lib/marcacao.ts"))
       && /mark\.fonte === "mid"/.test(lerSrc("app/portfolio/page.tsx")) && /<ReconciliacaoNota \/>/.test(lerSrc("app/boletagem/page.tsx"))
       && /ofertas de fechamento/.test(lerSrc("components/OptionChain.tsx")) && /bid\?: number \| null/.test(lerSrc("lib/types.ts"));
     if (t5) console.log("✔ WO-56 Teste 5: /api/cotahist com cache e recuo de datas; o store junta bid/ask/mid à cadeia; Carteira marca MID e tem a reconciliação; a cadeia mostra a cobertura de ofertas");
@@ -6253,6 +6253,135 @@ Líquido para 04/09/2026 5.134,69 D`;
       && /WO-60 Projeções/.test(ler60("ANTIGRAVITY.md")) && /lib\/projecoes\.ts/.test(ler60("ANTIGRAVITY.md"));
     if (manual60 && skills60) console.log("✔ WO-60 Teste 5: Manual (Estratégia cita projeções e prêmio-alvo; glossário com os três caminhos e a recusa da reversão), skill de vol com a seção 7, skill de engenharia com a lib e a ligação, ANTIGRAVITY com a WO");
     else { console.log(`✘ WO-60 Teste 5 falhou: manual=${manual60} skills=${skills60}`); failures++; }
+  }
+
+  // =========================================================================
+  // WO-61 — Ponte MetaTrader 5: a plataforma lê o mercado da corretora
+  // =========================================================================
+  {
+    const fs61 = await import("node:fs");
+    const path61 = await import("node:path");
+    const ler61 = (rel: string) => fs61.readFileSync(path61.join(process.cwd(), rel), "utf8");
+    const FM = await import("../fonte-mt5");
+    const { terceiraSexta, ehMensal, montarExpiries, midDe, linhaDaSerie, detalheFonteMt5 } = FM;
+
+    // ---- Teste 1: a ponte é local, sem credencial, só leitura; a conversão pura acerta mensal/semanal, du, mid e a linha
+    const ponte = ler61("scripts/mt5-ponte.py");
+    const ponteOk = /HOST = "127\.0\.0\.1"/.test(ponte) && /def dentro_da_banda/.test(ponte) && /ARQUIVO_PAPEIS/.test(ponte) && /def aquecer_papel/.test(ponte) && !/0\.0\.0\.0/.test(ponte) && /ThreadingHTTPServer\(\(HOST, PORTA\)/.test(ponte)
+      && /mt5\.initialize\(\)/.test(ponte) && !/initialize\([^)]+\)/.test(ponte) && !/password\s*=|login\s*=|order_send|order_check|mt5\.login/.test(ponte)
+      && /s\.basis == ticker/.test(ponte) && /s\.expiration_time >= agora/.test(ponte) && /tick_volume/.test(ponte) && /real_volume/.test(ponte)
+      && /LOCK = threading\.Lock\(\)/.test(ponte) && /with LOCK:/.test(ponte) && /LIMITE_MARKET_WATCH = 4800/.test(ponte) && /FUSO_SERVIDOR_S = 3 \* 3600/.test(ponte)
+      && /def rota_ticks/.test(ponte) && /copy_ticks_range\(serie, d0, d1/.test(ponte) && /def refresco_de_fundo/.test(ponte) && /"logado": logado/.test(ponte) && !/ai\.login/.test(ponte);
+    const sonda = ler61("scripts/mt5-sonda.py");
+    const sondaOk = /mt5\.initialize\(\)/.test(sonda) && !/password\s*=|login\s*=|ai\.login/.test(sonda);
+    // mensal: terceira sexta; 19/11/2026 é quinta e mensal porque 20/11 é feriado e não há série nele
+    const datas61 = ["2026-09-18", "2026-09-25", "2026-10-02", "2026-10-09", "2026-10-16", "2026-10-23", "2026-11-19", "2026-12-18"];
+    const mensalOk = terceiraSexta(2026, 9) === "2026-09-18" && terceiraSexta(2026, 11) === "2026-11-20" && terceiraSexta(2027, 1) === "2027-01-15"
+      && ehMensal("2026-09-18", datas61) && ehMensal("2026-10-16", datas61) && ehMensal("2026-11-19", datas61) && !ehMensal("2026-09-25", datas61) && !ehMensal("2026-10-09", datas61)
+      && !ehMensal("2026-11-19", [...datas61, "2026-11-20"]) && !ehMensal("2026-11-13", datas61);
+    const exps = montarExpiries(datas61, "2026-09-17", new Date("2026-09-17T15:00:00-03:00"));
+    const expOk = exps.length === 8 && exps[0].du === 1 && exps[0].dte === 1 && exps[0].isMonthly && exps[0].weekCode === "" && exps[0].label === "18/09"
+      && !exps[1].isMonthly && exps[1].weekCode === "W4" && exps[1].du === 6 && exps[4].isMonthly && exps[4].date === "2026-10-16" && exps[6].isMonthly && exps[6].date === "2026-11-19";
+    const midOk = midDe(1.07, 1.45) === 1.26 && midDe(3.3, 0) === null && midDe(null, 1) === null && midDe(2, 1.5) === null && midDe(0, 0) === null;
+    const serie = { name: "PETRI499", type: "CALL" as const, model: "A" as const, strike: 48.86, expiry: "2026-09-18", last: 1.23, bid: 1.07, ask: 1.45, tickAt: "2026-09-17T16:55:00-03:00", ultimoNegocioEm: "2026-09-17", negociosNoDia: 298, quantidadeNoDia: 673200, closeNoDia: 1.23, diarioPendente: false };
+    const l1 = linhaDaSerie(serie, 48.8, "2026-09-17", exps[0]);
+    const l2 = linhaDaSerie({ ...serie, ultimoNegocioEm: "2026-09-15", negociosNoDia: 5, quantidadeNoDia: 100, closeNoDia: 2 }, 48.8, "2026-09-17", exps[0]);
+    const l3 = linhaDaSerie({ ...serie, diarioPendente: true, ultimoNegocioEm: null, negociosNoDia: null, quantidadeNoDia: null, closeNoDia: null, ask: null }, 48.8, "2026-09-17", exps[0]);
+    const l3b = linhaDaSerie({ ...serie, diarioPendente: true, ultimoNegocioEm: null, negociosNoDia: null, quantidadeNoDia: null, closeNoDia: null, tickAt: "2026-09-11T11:23:47-03:00" }, 48.8, "2026-09-17", exps[0]);
+    const l3c = linhaDaSerie({ ...serie, diarioPendente: true, ultimoNegocioEm: null, negociosNoDia: null, quantidadeNoDia: null, closeNoDia: null, last: null }, 48.8, "2026-09-17", exps[0]);
+    const l4 = linhaDaSerie({ ...serie, type: "PUT", strike: 52, last: null }, 48.8, "2026-09-17", exps[0]);
+    const linhaOk = l1.opTicker === "PETRI499" && l1.trades === 298 && Math.abs(l1.volumeFin! - 673200 * 1.23) < 1e-6 && l1.lastTradeAt === "2026-09-17" && l1.mid === 1.26 && l1.model === "A" && l1.moneyness === "ATM"
+      && Math.abs(l1.distStrikePct! - (48.86 / 48.8 - 1)) < 1e-12 && Math.abs(l1.premioPctCot! - 1.23 / 48.8) < 1e-12 && l1.du === 1 && l1.sourceIv === null && l1.tickAt === serie.tickAt
+      && l2.trades === 0 && l2.volumeFin === 0 && l2.lastTradeAt === "2026-09-15"
+      && l3.trades === 1 && l3.volumeFin === null && l3.lastTradeAt === "2026-09-17" && l3.diarioProvisorio === true && l3.mid === null && l3.bid === 1.07
+      && l3b.trades === 0 && l3b.lastTradeAt === "2026-09-11" && l3b.diarioProvisorio === true && l3c.trades === 0 && l3c.lastTradeAt === null && !l3c.diarioProvisorio && !l1.diarioProvisorio
+      && l4.moneyness === "ITM" && l4.premioPctCot === null && l4.last === null;
+    const detOk = detalheFonteMt5("2026-09-17T16:54:57-03:00", "GenialInvestimentos-PRD") === "MT5 · Genial · tick 16:54:57" && detalheFonteMt5(null, null) === "MT5 · corretora";
+    if (ponteOk && sondaOk && mensalOk && expOk && midOk && linhaOk && detOk) console.log("✔ WO-61 Teste 1: a ponte escuta só em 127.0.0.1, liga-se ao terminal sem credencial (initialize() vazio; sem login/password/order_send), filtra base == papel e vencimento ≥ agora, tira negócios do candle D1 sob lock, administra o Market Watch (4.800) e lê os horários como Brasília; ehMensal acerta a terceira sexta e a véspera de feriado (19/11/2026); montarExpiries dá du/dte/W4; mid só com ask ≥ bid > 0; a linha traz negócios do dia (0 quando o último negócio é de outra data; provisória pelo tick — ~1 na sessão, 0 com data do tick — quando o cache diário está pendente)");
+    else { console.log(`✘ WO-61 Teste 1 falhou: ponte=${ponteOk} sonda=${sondaOk} mensal=${mensalOk} exp=${expOk} mid=${midOk} linha=${linhaOk} det=${detOk}`); failures++; }
+
+    // ---- Teste 2: /api/opcoes tenta a ponte antes do opcoes.net.br (intacto); enrich repassa o book; codigoSerie em toda comparação
+    const rotaO = ler61("app/api/opcoes/route.ts");
+    const fm = ler61("lib/fonte-mt5.ts");
+    const iMt5 = rotaO.indexOf("await cadeiaMt5(");
+    const iRodada = rotaO.indexOf("for (let rodada = 1");
+    const rotaOk = /from "@\/lib\/fonte-mt5"/.test(rotaO) && iMt5 > 0 && iRodada > iMt5 && /varredura \? BANDA_VARREDURA_PCT : undefined/.test(rotaO) && /BANDA_VARREDURA_PCT = 12/.test(fm) && /fonte: "mt5" as const/.test(rotaO) && /fonte: "opcoes\.net\.br" as const/.test(rotaO) && /"x-fonte": "mt5"/.test(rotaO)
+      && /class ErroPausa extends Error/.test(rotaO) && /PAUSA_INLINE_MAX_S = 15/.test(rotaO) && /PAUSA_CURTA_MAX_S = 180/.test(rotaO) && /cotacoes: "true" \},\s*CATALOGO_TIMEOUT_MS/.test(rotaO) && /diagnostico: "layout-mudou"/.test(rotaO)
+      && /CACHE_TTL_MT5_MS = 15_000/.test(rotaO) && /CACHE_TTL_MT5_PENDENTE_MS = 5_000/.test(rotaO) && /gravarCache\(CHAVE_DISCO\(ticker\), body, viaMt5\.sessao\)/.test(rotaO) && /gravarCache\(CHAVE_DISCO\(ticker\), body, dataEfetiva\)/.test(rotaO);
+    const enrichSrc = ler61("lib/enrich-chain.ts");
+    const enrichOk = /bid: o\.bid \?\? null/.test(enrichSrc) && /tickAt: o\.tickAt \?\? null/.test(enrichSrc) && /fonte: body\.fonte/.test(enrichSrc) && /fonteDetalhe\?: string/.test(enrichSrc);
+    const { codigoSerie, mesmaSerie } = await import("../marcacao");
+    const marc = ler61("lib/marcacao.ts");
+    const codOk = codigoSerie("PETRI482_2026") === "PETRI482" && codigoSerie("PETRI482") === "PETRI482" && codigoSerie("PETRI482_2026_2027") === "PETRI482_2026" && mesmaSerie("PETRI482_2026", "PETRI482") && !mesmaSerie("PETRI482", "PETRI483") && !mesmaSerie(null, "PETRI482")
+      && /mesmaSerie\(x\.opTicker, pos\.opTicker\)/.test(marc) && /mesmaSerie\(o\.opTicker, pos\.opTicker\)/.test(marc)
+      && ["lib/pnl-operacao.ts", "lib/portfolio.ts", "lib/position-flags.ts", "lib/prateleira.ts", "app/estrategia/page.tsx", "components/PerformanceCharts.tsx", "store/market.ts"].every((f) => /mesmaSerie\(/.test(ler61(f)) && !/\.opTicker === (p|l|pos)\.opTicker/.test(ler61(f)))
+      && /oj\.series\[codigoSerie\(o\.opTicker\)\]/.test(ler61("store/market.ts")) && /const semOferta = chain\.options\.filter\(\(o\) => o\.bid == null \|\| o\.ask == null\)/.test(ler61("store/market.ts"));
+    const fmOk = /PONTE_MT5_URL = process\.env\.PONTE_MT5_URL \?\? "http:\/\/127\.0\.0\.1:3200"/.test(fm) && !/password|senha|login/i.test(fm.replace(/nunca recebe credenciais|sem credencial/gi, "")) && /export async function saudePonte/.test(fm) && /TTL_SAUDE_MS = 10_000/.test(fm);
+    if (rotaOk && enrichOk && codOk && fmOk) console.log("✔ WO-61 Teste 2: /api/opcoes chama a ponte antes do laço do opcoes.net.br (fila, 429, ErroPausa, catálogo com cotações e detector de layout intactos), rotula fonte e x-fonte, grava a grade boa em disco nas duas fontes e encurta o cache com MT5; enrich repassa bid/ask/mid/tickAt e a fonte; codigoSerie tira o sufixo de ano e mesmaSerie é usada em toda comparação (marcação, P&L, portfolio, flags, prateleira, Estratégia, gráficos, store); o COTAHIST só preenche onde falta oferta");
+    else { console.log(`✘ WO-61 Teste 2 falhou: rota=${rotaOk} enrich=${enrichOk} codigo=${codOk} fonte=${fmOk}`); failures++; }
+
+    // ---- Teste 3: histórico pela ponte primeiro; universo com MBRF3 e sem AZUL4/GOLL4/MRFG3; Notícias coerente
+    const hf = ler61("lib/historico-fonte.ts");
+    const histOk = /export async function fromMt5/.test(hf) && /await fromMt5\(ticker, range, Math\.min\(timeoutMs, 6_000\)\)\) \?\? \(await fromYahoo/.test(hf) && /source: "mt5" \| "yahoo" \| "brapi"/.test(hf)
+      && !/fromMt5|fromYahoo/.test(ler61("app/api/history/route.ts").replace(/import[^;]+;/g, "")) && !/async function from/.test(ler61("app/api/history/universo/route.ts")) && /fonte: "mt5" \| "yahoo" \| "brapi" \| null/.test(ler61("app/api/history/universo/route.ts"));
+    const { UNIVERSE: U61, RETIRADOS_DO_UNIVERSO } = await import("../universe");
+    const tk61 = new Set(U61.map((u) => u.ticker));
+    const univOk = U61.length === 29 && tk61.has("MBRF3") && !tk61.has("AZUL4") && !tk61.has("GOLL4") && !tk61.has("MRFG3") && RETIRADOS_DO_UNIVERSO.map((r) => r.ticker).sort().join() === "AZUL4,GOLL4,MRFG3"
+      && U61.filter((u) => u.origem === "metodo" || u.origem === "ambos").length === 20;
+    const news = ler61("app/api/news/route.ts");
+    const bloco = news.slice(news.indexOf("const TICKER_KEYWORDS"), news.indexOf("};", news.indexOf("const TICKER_KEYWORDS")));
+    const chaves = Array.from(bloco.matchAll(/^\s{2}([A-Z0-9]+): \[/gm)).map((m) => m[1]).sort();
+    const newsOk = chaves.join() === Array.from(tk61).sort().join();
+    if (histOk && univOk && newsOk) console.log(`✔ WO-61 Teste 3: fromMt5 vive só em lib/historico-fonte.ts e vem antes do Yahoo; o universo tem ${U61.length} papéis (MBRF3 no lugar de MRFG3; AZUL4 e GOLL4 retirados com o motivo), os 20 do método continuam; TICKER_KEYWORDS das Notícias cobre exatamente o universo`);
+    else { console.log(`✘ WO-61 Teste 3 falhou: hist=${histOk} universo=${univOk} news=${newsOk} (chaves=${chaves.length}/${tk61.size})`); failures++; }
+
+    // ---- Teste 4: spot ao vivo, barra de veracidade sem fonte fixa, book na Chain/MiniChain, Portfolio
+    const st = ler61("store/market.ts");
+    const iTick = st.indexOf('body.fonte === "mt5" && body.spot != null');
+    const iOff = st.indexOf("useOfficialSpot && officialSpot != null");
+    const iOver = st.indexOf("isActive && spotOverride != null");
+    const spotOk = iOver > 0 && iTick > iOver && iOff > iTick;
+    const tb = ler61("components/TruthBar.tsx");
+    const tbOk = !/construirProvenance\("opcoes\.net\.br"/.test(tb) && !/Yahoo Finance \(fechamento\)/.test(tb) && /chain\.fonteDetalhe/.test(tb) && /BOOK/.test(tb) && /bookAoVivo/.test(tb) && /chain\.stale/.test(tb) && /horaDoDado: horaTick/.test(tb);
+    const oc = ler61("components/OptionChain.tsx");
+    const ocOk = /"Bid\/Ask"/.test(oc) && /function BidAsk/.test(oc) && /function NegVol/.test(oc) && /o\.diarioProvisorio/.test(oc) && /<BidAsk o=\{o\} align="right" \/>/.test(oc) && /<BidAsk o=\{o\} align="left" \/>/.test(oc) && /colSpan=\{8\}/.test(oc) && /book ao vivo \(MT5\)/.test(oc) && /ofertas de fechamento/.test(oc);
+    const mc = ler61("components/MiniChain.tsx");
+    const mcOk = /bid\/ask/.test(mc) && /o\.tickAt/.test(mc) && /colSpan=\{4\}/.test(mc) && /colSpan=\{9\}/.test(mc);
+    const pfOk = /ao vivo pela ponte MT5/.test(ler61("app/portfolio/page.tsx")) && /q\?\.tickAt \? q\.tickAt\.slice\(0, 10\)/.test(marc);
+    const tpOk = /fonte\?: "mt5" \| "opcoes\.net\.br"/.test(ler61("lib/types.ts")) && /tickAt\?: string \| null/.test(ler61("lib/types.ts"));
+    if (spotOk && tbOk && ocOk && mcOk && pfOk && tpOk) console.log("✔ WO-61 Teste 4: o store prioriza spotOverride > tick MT5 > fechamento oficial; a barra de veracidade lê a fonte da cadeia (sem string fixa), mostra a hora do tick, STALE e o chip BOOK (ao vivo × fechamento); Chain e MiniChain ganham bid/ask com a origem no tooltip; o chip MID do Portfolio explica as duas origens e a data da marca é a do tick");
+    else { console.log(`✘ WO-61 Teste 4 falhou: spot=${spotOk} truthbar=${tbOk} chain=${ocOk} mini=${mcOk} portfolio=${pfOk} types=${tpOk}`); failures++; }
+
+    // ---- Teste 5: operação — produção sobe/derruba a ponte, status e /api/saude dizem se o terminal está logado, o vigia avisa, npm run ponte
+    const prod = ler61("scripts/producao.ps1");
+    const iIni = prod.indexOf("Iniciar-Ponte\n");
+    const iNext = prod.indexOf("npx next start");
+    const prodOk = /ponte-mt5\.pid/.test(prod) && /function Iniciar-Ponte/.test(prod) && /function Parar-Ponte/.test(prod) && iIni > 0 && iNext > iIni && /Parar-Ponte\n/.test(prod.slice(prod.indexOf('"stop" {')))
+      && /ponte MT5 \(\{0\}\)/.test(prod) && /127\.0\.0\.1:\$portaPonte\/saude/.test(prod) && !/password|senha=/i.test(prod.replace(/APP_PASSWORD|sua senha|Senha em|senha do/g, ""));
+    const vg = ler61("scripts/vigia.mjs");
+    const vgOk = /ponteMt5/.test(vg) && /PONTE_FORA_ATE_AVISAR = 3/.test(vg) && /CHAVE_AVISO_PONTE = "mt5-deslogado"/.test(vg) && /estado !== "PRE" && estado !== "ABERTO"/.test(vg) && /await vigiarPonte\(dia, resp\.sessao\)/.test(vg);
+    const sd = ler61("app/api/saude/route.ts");
+    const sdOk = /ponteMt5: \{ ok: ponte\.ok, logado: ponte\.logado \}/.test(sd) && !/servidor:|marketWatch:|simbolos:/.test(sd);
+    const pkg = JSON.parse(ler61("package.json"));
+    const pkgOk = pkg.scripts.ponte === "python scripts/mt5-ponte.py" && Object.keys(pkg.dependencies).length === 9;
+    if (prodOk && vgOk && sdOk && pkgOk) console.log("✔ WO-61 Teste 5: producao.ps1 sobe a ponte antes do next start e a derruba no stop, com PID próprio e status 'ponte MT5'; /api/saude devolve só ponteMt5 { ok, logado }; o vigia avisa 'MT5 deslogado' em PRE/ABERTO depois de 3 leituras, uma vez por dia; npm run ponte existe e as dependências npm continuam 9");
+    else { console.log(`✘ WO-61 Teste 5 falhou: prod=${prodOk} vigia=${vgOk} saude=${sdOk} pkg=${pkgOk}`); failures++; }
+
+    // ---- Teste 6: Manual, glossário, skills, ANTIGRAVITY, README e FONTES-DE-DADOS acompanham; nenhuma credencial no repositório
+    const { DADOS_LIMITACOES: DL61, GLOSSARIO: GL61, RESUMO_TELAS: RT61, PLATAFORMA_COMO_SERVICO: PS61 } = await import("../manual-content");
+    const manualOk = !DL61.some((d) => /não possuem livro de ofertas/.test(d.texto)) && DL61.some((d) => /MetaTrader 5/.test(d.titulo) && /não recebe credencial/.test(d.texto)) && DL61.some((d) => /aproximação/.test(d.texto) && /candle diário/.test(d.texto))
+      && GL61.some((t) => t.termo === "Ponte MT5" && /127\.0\.0\.1/.test(t.definicao)) && GL61.some((t) => /^Book/.test(t.termo) && /50%/.test(t.definicao)) && GL61.some((t) => t.termo === "Tick")
+      && /bid\/ask ao vivo pela ponte MT5/.test(RT61.find((r) => r.modulo === "8. Estratégia")?.resposta ?? "") && PS61.some((p) => /MetaTrader 5/.test(p.titulo) && /nunca recebe login ou senha/.test(p.texto));
+    const skEng = ler61(".claude/skills/engenharia-da-plataforma/SKILL.md");
+    const skMet = ler61(".claude/skills/metodo-do-trader/SKILL.md");
+    const skillsOk = /## 5\.2 Ponte MT5/.test(skEng) && /mt5-ponte\.py/.test(skEng) && /fonte-mt5/.test(skEng) && /codigoSerie/.test(skEng) && /### 6\.1 O book ao vivo/.test(skMet) && /Nada disso é sinal/.test(skMet) && /WO-61/.test(ler61(".claude/skills/README.md"));
+    const ag = ler61("ANTIGRAVITY.md");
+    const agOk = /WO-61/.test(ag) && /mt5-ponte\.py/.test(ag) && /fonte-mt5/.test(ag) && /A ponte MT5 nunca recebe credenciais/.test(ag) && /29 nomes/.test(ag) && !/AZUL4, GOLL4 \(⚠/.test(ag) && /WO-62/.test(ag);
+    const docsOk = /MetaTrader5/.test(ler61("README.md")) && /não recebe credencial nenhuma/.test(ler61("README.md")) && /MetaTrader 5 \(ponte local, WO-61\)/.test(ler61("FONTES-DE-DADOS.md")) && /MBRF3/.test(ler61("DOSSIE-METODO-HULI.md"))
+      && /MetaTrader 5 da corretora \(ao vivo\)/.test(ler61("app/layout.tsx"));
+    const semCredencial = ["scripts/mt5-ponte.py", "scripts/mt5-sonda.py", "lib/fonte-mt5.ts", "WO-61-PROMPT.md", "README.md", "ANTIGRAVITY.md"].every((f) => !/\b\d{7}\b/.test(ler61(f).replace(/\d{7,}\.\d|R\$ ?\d/g, "")) || f === "ANTIGRAVITY.md");
+    if (manualOk && skillsOk && agOk && docsOk && semCredencial) console.log("✔ WO-61 Teste 6: o Manual troca a frase antiga por MT5 (sem credencial, reservas, aproximação do volume), o glossário ganha Ponte MT5, Book e Tick, a Estratégia cita o book ao vivo, a operação cita o terminal; skills (5.2 e 6.1), ANTIGRAVITY (regra 14, universo 29, WO-62), README, FONTES-DE-DADOS, DOSSIE e rodapé acompanham; nenhum número de conta nos arquivos da ponte");
+    else { console.log(`✘ WO-61 Teste 6 falhou: manual=${manualOk} skills=${skillsOk} antigravity=${agOk} docs=${docsOk} credencial=${semCredencial}`); failures++; }
   }
 
 }

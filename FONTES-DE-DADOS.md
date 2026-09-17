@@ -11,6 +11,7 @@ demora.
 
 | Fonte | Rota | Tipo | Peso medido | Cadência | Fragilidade |
 |---|---|---|---|---|---|
+| **MetaTrader 5 (ponte local, WO-61)** | `/api/opcoes`, `/api/history` | JSON local (127.0.0.1:3200) | cadeia de PETR4: 1.811 séries em 2,6 s | **tempo real** | BAIXA (depende do terminal aberto e logado) |
 | Tesouro Transparente | `/api/curvas-br` | CSV | **13,7 MB · 174 mil linhas** | 1×/dia útil, manhã | **ALTA** |
 | B3 — posições em aberto | `/api/oi` | CSV via token | ~2.600 séries por ativo | 1×/dia útil (D-1) | **ALTA** |
 | opcoes.net.br | `/api/opcoes` | HTML | médio | intradiário | **ALTA** |
@@ -54,9 +55,14 @@ brasileiro. A rota varre até 5 dias para trás procurando o arquivo mais recent
 - **Rotina:** `npm run dados:sync`. O arquivo de um pregão passado nunca muda, então o cache de
   disco por data é permanente por construção.
 
-### 3. opcoes.net.br — `/api/opcoes`
+### 3. opcoes.net.br — `/api/opcoes` (reserva desde a WO-61)
 
-Alimenta a grade de opções inteira — é a fonte mais crítica da plataforma.
+Alimentava a grade de opções inteira. Desde 17/09/2026 a fonte primária é a **ponte MT5**
+(`scripts/mt5-ponte.py`): o terminal MetaTrader 5 da corretora, aberto e logado nesta máquina,
+entrega a cadeia com bid/ask/último/hora do tick em tempo real, sem limite de requisições. O
+opcoes.net.br só é chamado quando a ponte não responde ou o terminal está deslogado — e, nesse
+dia, tudo abaixo continua valendo. A ponte não recebe credencial nenhuma; `npm run prod:status`
+mostra se o terminal está logado.
 
 É **scraping de HTML**. Não há contrato: uma mudança de layout quebra tudo sem aviso e sem erro
 HTTP. Cache de apenas 60 s porque o dado é intradiário.

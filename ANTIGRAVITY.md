@@ -112,8 +112,10 @@ Carteira (5) ─────────── book of record: posições multi-
 
 ```
                     ┌────────────────────────────────────────────────┐
- opcoes.net.br ───▶ │ /api/opcoes    cache 60s, fetch paralelo/venc. │──┐
- Yahoo / brapi ───▶ │ /api/history   cache 10min por (ticker,range)  │  │
+ MT5 (ponte local, ─▶ │ /api/opcoes    MT5 → opcoes.net.br → disco    │──┐
+  127.0.0.1:3200)     │                cache 15 s (MT5) / 60 s         │  │
+ opcoes.net.br ───▶ │                (reserva; fila, 429, ErroPausa) │  │
+ MT5 → Yahoo/brapi ▶ │ /api/history   cache 10min por (ticker,range)  │  │
  RSS (3 fontes) ──▶ │ /api/news      cache 5min + strip macro BCB    │  │  JSON
  BCB SGS/Awesome ─▶ │ /api/calendar  determinístico (tabela 2026)    │  │
                     └────────────────────────────────────────────────┘  │
@@ -139,11 +141,20 @@ Carteira (5) ─────────── book of record: posições multi-
 ```
 
 Pontos críticos:
-- O **chain "borrado"**: o endpoint anônimo do opcoes.net.br entrega IV/gregas mascaradas →
-  o engine local **recalcula tudo** a partir do prêmio (last). `sourceGreeksAvailable=false`
+- **WO-61 — a ponte MT5 é a fonte primária.** `scripts/mt5-ponte.py` (Python, só biblioteca
+  padrão + `MetaTrader5`, preso a `127.0.0.1:3200`, **sem credencial nenhuma**: liga-se ao terminal
+  que o operador abriu e logou) entrega a cadeia com bid/ask/último/hora do tick em tempo real, o
+  tick do papel e candles diários. `lib/fonte-mt5.ts` é o cliente e a conversão. Com a ponte fora
+  ou o terminal deslogado, `/api/opcoes` cai no opcoes.net.br (código intacto) e depois na última
+  grade boa em disco; o corpo diz `fonte`/`fonteDetalhe` e a barra de veracidade mostra.
+- Nenhuma fonte entrega IV/gregas: o opcoes.net.br anônimo as borra e o MT5 não as tem → o
+  engine local **recalcula tudo** a partir do prêmio (last). `sourceGreeksAvailable=false`
   liga o chip "IV/gregas: engine local" na TickerBar.
-- O **spot é inferido** como mediana de `Strike/(1+DistStrikePct)` das linhas do chain
-  (feito na rota), com override manual na TickerBar.
+- O **spot** é o tick do papel (MT5) ou, na reserva, a mediana de `Strike/(1+DistStrikePct)` das
+  linhas do chain (feito na rota); override manual na TickerBar. Prioridade no store:
+  `spotOverride` > tick MT5 > fechamento oficial do histórico > spot derivado.
+- Códigos de série: o opcoes.net.br sufixa o ano quando o código se repete (`PETRI482_2026`), o
+  MT5 e o COTAHIST não. Toda comparação passa por `codigoSerie`/`mesmaSerie` (`lib/marcacao.ts`).
 - `chainCache` (em memória, não persistido) guarda o último chain enriquecido por ticker —
   é o que permite book multi-ticker com marcação viva (§9.5).
 
@@ -164,10 +175,15 @@ app/
   historico/page.tsx      [7] OHLCV, HV, cone de vol, IV vs HV, estatísticas
   watchlist/page.tsx      [8] Skew cross-sectional dos 20 nomes (+ store local)
   manual/page.tsx         [9] Manual (guia de uso, mapa de informações, glossário)
-  api/opcoes/route.ts     Proxy chain opcoes.net.br (cache 60 s)
+  api/opcoes/route.ts     Cadeia: ponte MT5 → opcoes.net.br → disco (WO-61)
   api/news/route.ts       Agregador RSS + macro BCB/AwesomeAPI (cache 5 min)
   api/calendar/route.ts   Agenda econômica curada 2026 (COPOM/FOMC/IPCA/CPI/NFP)
-  api/history/route.ts    OHLCV Yahoo→brapi fallback (cache 10 min)
+  api/history/route.ts    OHLCV MT5→Yahoo→brapi (cache 10 min)
+  api/saude/route.ts      Fora da senha: vivo, banco, ponteMt5 { ok, logado }
+
+lib/fonte-mt5.ts          Cliente da ponte MT5 + conversão pura (WO-61)
+scripts/mt5-ponte.py      A ponte (Python, 127.0.0.1:3200, sem credencial)
+scripts/mt5-sonda.py      Diagnóstico do terminal (catálogo, ticks, histórico)
 
 components/
   Nav.tsx                 Navegação lateral, hotkeys 1–9, overlay "?" de atalhos
@@ -225,7 +241,8 @@ store/
 
 | Finalidade | Endpoint | Notas |
 |---|---|---|
-| Chain de opções | `https://opcoes.net.br/listaopcoes/completa?idAcao={T}&listarVencimentos=true&cotacoes=true&vencimentos={V}` | anônimo; IV/gregas borradas → recomputadas localmente |
+| **Cadeia, tick e histórico (primário, WO-61)** | ponte local `http://127.0.0.1:3200/{saude,cotacao,cadeia,historico,ticks}` → terminal MetaTrader 5 da corretora | tempo real, bid/ask; sem IV/gregas; **a ponte nunca recebe credencial**; Market Watch de 5.000 símbolos administrado pela ponte |
+| Chain de opções (reserva) | `https://opcoes.net.br/listaopcoes/completa?idAcao={T}&listarVencimentos=true&cotacoes=true&vencimentos={V}` | anônimo; IV/gregas borradas → recomputadas localmente; HTTP 429 tratado (fila, pausas, bloqueio) |
 | OHLCV diário (primário) | `https://query1.finance.yahoo.com/v8/finance/chart/{T}.SA?range={3mo\|6mo\|1y\|2y}&interval=1d` | precisa User-Agent de browser |
 | OHLCV (fallback) | `https://brapi.dev/api/quote/{T}?range=1y&interval=1d` | `results[0].historicalDataPrice[]`, date unix |
 | Selic meta | `https://api.bcb.gov.br/dados/serie/bcdata.sgs.432/dados/ultimos/1?formato=json` | retorna % a.a. (ex.: `14.25`) |
@@ -774,19 +791,24 @@ O relatório de 9 seções cabe folgado em `medium` — é o padrão da classe `
 
 ## 11. Universo monitorado (fonte: planilha TradingOpt, Config!B5:B24)
 
-`lib/universe.ts` é a **única** definição. 20 nomes:
+`lib/universe.ts` é a **única** definição. 29 nomes (WO-43 trouxe os 11 do manual; WO-61 trocou
+MRFG3 por MBRF3 e retirou AZUL4 e GOLL4 — sem negócios desde dez/2025 e jun/2025 e sem opções
+vigentes no MT5; `RETIRADOS_DO_UNIVERSO` guarda o motivo):
 
 | Setor | Tickers | divPayer |
 |---|---|---|
-| Oil&Gas | PETR4*, PRIO3, RECV3, CSAN3* | * |
-| Mining/Steel | VALE3*, CSNA3, GGBR4*, USIM5, CMIN3 | * |
-| Retail | MGLU3, BHIA3, CVCB3 | — |
-| Airlines | AZUL4, GOLL4 (⚠ fonte pode não ter chain) | — |
+| Oil&Gas | PETR4*, PRIO3, RECV3, CSAN3*, BRAV3, VBBR3* | * |
+| Mining/Steel | VALE3*, CSNA3, GGBR4*, USIM5, CMIN3, BRAP4* | * |
+| Retail | MGLU3, BHIA3, CVCB3, CASH3, LREN3* | * |
 | Financials | BBSE3*, BPAC11* | * |
 | Utilities | CMIG4* | * |
-| Industrials | WEGE3 | — |
+| Industrials | WEGE3, RENT3* | * |
 | Education | COGN3 | — |
 | Index | BOVA11 | — |
+| Chemicals | BRKM5 | — |
+| Construction | JHSF3*, MRVE3 | * |
+| Pulp&Paper | SUZB3 | — |
+| Food | MBRF3 | — |
 
 Ao alterar o universo: atualizar também `TICKER_KEYWORDS` em `app/api/news/route.ts`.
 
@@ -858,9 +880,13 @@ calculado à mão ou de literatura (Hull).
    **delta-hedger helper** (ações para neutralizar, custo).
 5. **Checklist pré-market interativo** (8 passos da planilha, reset diário) no Cockpit.
 
-**P3 (depois):** bid/ask de fonte melhor; aproximação de margem B3 CORE; persistência
-server-side (SQLite/Postgres) mantendo export/import como ponte; SVI smile fit; comando
-palette (Ctrl+K).
+**P3 (depois):** ~~bid/ask de fonte melhor~~ **[CONCLUÍDO WO-61 — ponte MT5, book ao vivo]**;
+aproximação de margem B3 CORE; persistência server-side **[CONCLUÍDO WO-48 — Postgres]**; SVI
+smile fit; comando palette (Ctrl+K).
+
+**WO-62 (próxima):** Macro pelo MT5 — IBOV, WIN, DOL/WDO, ISP, BIT, T10, GLD existem no terminal
+(VIX, WTI e DAX estão mortos lá) — e a **curva DI pelos contratos `DI1F27…`**, a fonte que a
+plataforma nunca teve.
 
 **Fora de escopo permanente sem ordem explícita:** execução real de ordens em corretora.
 
@@ -890,6 +916,9 @@ palette (Ctrl+K).
 12. Em dúvida entre esperteza e clareza numérica auditável, escolha a clareza — o usuário
     é um PM que confere os números contra a planilha TradingOpt.xlsm.
 13. **Nunca zerar a tela em erro:** se o fetch de dados falhar, a plataforma DEVE manter os dados persistidos anteriores com um aviso explícito sobre a proveniência dos dados exibidos.
+14. **A ponte MT5 nunca recebe credenciais** (WO-61): `mt5.initialize()` sem argumentos, ligada ao
+    terminal que o operador abriu e logou; só `127.0.0.1`; o número da conta não entra em
+    resposta, log, teste ou documento. Nunca `order_send`, `order_check` ou `login` — a ponte lê.
 
 ---
 

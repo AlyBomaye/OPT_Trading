@@ -85,9 +85,10 @@ e diga no commit. Se a quebra não for intencional, o teste venceu.
 
 ## 5.1 Histórico diário e cache em disco (WO-59)
 
-- O download de OHLCV (Yahoo, brapi de reserva) vive **só** em `lib/historico-fonte.ts`
-  (`fromYahoo`, `fromBrapi`, `baixarHistorico`); `/api/history` (um papel, cache em memória de
-  10 min) e `/api/history/universo` (os 31, cache em disco) importam de lá. Não duplicar.
+- O download de OHLCV (ponte MT5 primeiro; Yahoo e brapi de reserva) vive **só** em
+  `lib/historico-fonte.ts` (`fromMt5`, `fromYahoo`, `fromBrapi`, `baixarHistorico`); `/api/history`
+  (um papel, cache em memória de 10 min) e `/api/history/universo` (o universo, cache em disco)
+  importam de lá. Não duplicar.
 - `/api/history/universo[?forcar=1]` grava `data/cache/historico-<TICKER>-1y.json` via
   `lib/cache-disco` (TTL de um pregão), com **2 workers** no máximo e timeout de 90 s na rota;
   sem rede serve o vencido (`vencido: true`); papel sem dado volta `candles: []` com `erro` e
@@ -103,6 +104,39 @@ e diga no commit. Se a quebra não for intencional, o teste venceu.
   `/api/history`); os preços no vencimento sobem por `onPrecosNoVencimento` para o `PainelPnl`.
   A aritmética da ordem (`premioAlvo`, `datasDasRegras`, `custoExecucaoSpread`,
   `caixaDepoisDaOrdem`, `cenariosProjetados`, `leituraEvPop`) vive em `lib/pnl-operacao.ts`.
+
+## 5.2 Ponte MT5 — a fonte primária de mercado (WO-61)
+
+- `scripts/mt5-ponte.py` é um servidor HTTP em Python (só biblioteca padrão + `MetaTrader5`),
+  preso a **`127.0.0.1:3200`**, que fala por IPC com o terminal MetaTrader 5 da corretora, aberto
+  e logado nesta máquina. **Nunca recebe login, senha ou servidor** (`mt5.initialize()` sem
+  argumentos) e não expõe a conta em resposta nem em log. Rotas: `/saude`, `/cotacao`, `/cadeia`,
+  `/historico`, `/ticks` (uma série por vez).
+- `lib/fonte-mt5.ts` (servidor) é o cliente: `saudePonte` (cache 10 s), `cadeiaMt5`,
+  `historicoMt5`, e a conversão pura (`montarExpiries`, `ehMensal`, `linhaDaSerie`, `midDe`,
+  `detalheFonteMt5`). `PONTE_MT5_URL` é opcional.
+- Ordem das fontes em `/api/opcoes`: **MT5 → opcoes.net.br (código intacto: fila, 429,
+  `ErroPausa`) → última grade boa em disco**. O corpo diz `fonte` e `fonteDetalhe`; o header
+  `x-fonte` também. Cache em memória de 15 s com MT5 (5 s enquanto a ponte completa o cache
+  diário). Histórico: `fromMt5` primeiro em `lib/historico-fonte.ts`.
+- Fatos medidos que o código respeita: horários do MT5 no fuso de **Brasília** embalados como epoch
+  "UTC" (lê-se sem converter); o catálogo tem séries vencidas e instrumentos de exercício (sufixo
+  `E`, base = a própria opção) → filtro `basis == papel` e `expiration_time ≥ agora`; só símbolos
+  **selecionados** no Market Watch recebem tick, e o Market Watch aceita **5.000** símbolos → a
+  ponte administra o orçamento (desseleciona vencidas e depois o papel pedido há mais tempo);
+  `session_deals` vem zerado para opções → negócios e último negócio saem do **candle D1 da série**
+  (15 ms cada), num cache diário completado por thread de fundo.
+- Códigos de série: o opcoes.net.br sufixa o ano (`PETRI482_2026`), o MT5 não. Toda comparação
+  passa por `codigoSerie`/`mesmaSerie` (`lib/marcacao.ts`).
+- Spot no store: `spotOverride` > tick do MT5 (`body.fonte === "mt5"`) > fechamento oficial >
+  spot derivado. A regra WO-30 §2.3 (IV com o spot da mesma data do prêmio) não muda.
+- Operação: `producao.ps1 start` sobe a ponte antes da plataforma (`data/run/ponte-mt5.pid`,
+  `data/logs/ponte-mt5-<data>.log`), `stop` derruba as duas, `status` mostra `ponte MT5: ok -
+  terminal logado`; `/api/saude` devolve `ponteMt5: { ok, logado }` (só isso — é a rota sem
+  senha); o vigia avisa "MT5 deslogado" em PRE/ABERTO, uma vez por dia. Em dev: `npm run ponte`.
+  Diagnóstico: `python scripts/mt5-sonda.py PETR4 +VALE3`.
+- Universo (WO-61): MRFG3 → MBRF3; AZUL4 e GOLL4 saíram (`RETIRADOS_DO_UNIVERSO`). Nada apagado
+  do banco.
 
 ## 6. Convenções numéricas (resumo; detalhe nas skills de domínio)
 
