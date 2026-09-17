@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { gravarCache, lerCache } from "@/lib/cache-disco";
 
 /**
  * Proxy do opcoes.net.br — mesma fonte do Power Query da planilha
@@ -26,6 +27,53 @@ const CACHE_TTL_MS = 60_000;
  */
 const CATALOGO_TIMEOUT_MS = 8_000;
 const VENCIMENTO_TIMEOUT_MS = 12_000;
+
+/**
+ * 17/09/2026 — a fonte passou a responder HTTP 429 ("Resource not allowed to your IP address or
+ * too many requests", Retry-After de ~76 min). Cada chamada desta rota são até 9 requisições
+ * (catálogo + 8 vencimentos, em paralelo); a Watchlist varre 31 papéis com 2 workers: ~280
+ * requisições em meio minuto. A fonte bloqueia o IP, e aí Chain, Estratégia, Scanner, Cockpit,
+ * vigia e iv-sync ficam sem grade por mais de uma hora. Três defesas, todas aqui, para valerem
+ * para todo chamador:
+ *
+ *   1. FILA COM ESPAÇAMENTO: toda requisição à fonte sai por uma fila única, com pelo menos
+ *      ESPACO_MIN_MS entre uma e outra, independentemente de quantos chamadores existam.
+ *   2. RESPEITO AO 429: ao receber 429, a rota lê o Retry-After e não toca na fonte até lá —
+ *      insistir só estende o bloqueio. Enquanto isso serve o último dado bom, rotulado.
+ *   3. ÚLTIMO DADO BOM EM DISCO por papel (`chain-<TICKER>`): quando a fonte falha ou está
+ *      bloqueada, a grade anterior volta com `stale: true`, `fetchedAt` e `dataEfetiva` originais
+ *      — a barra de veracidade mostra a defasagem em vez de a tela ficar vazia.
+ */
+const ESPACO_MIN_MS = 300;
+const BLOQUEIO_PADRAO_S = 900;
+const CHAVE_DISCO = (ticker: string) => `chain-${ticker}`;
+const TTL_DISCO_MS = 5 * 24 * 3_600_000;
+
+let filaUpstream: Promise<void> = Promise.resolve();
+let ultimoUpstreamEm = 0;
+let bloqueadoAte = 0;
+let motivoBloqueio = "";
+
+/** Libera a próxima requisição à fonte só depois de ESPACO_MIN_MS da anterior. */
+function agendarUpstream<T>(fn: () => Promise<T>): Promise<T> {
+  const vez = filaUpstream.then(async () => {
+    const espera = ultimoUpstreamEm + ESPACO_MIN_MS - Date.now();
+    if (espera > 0) await new Promise((r) => setTimeout(r, espera));
+    ultimoUpstreamEm = Date.now();
+  });
+  filaUpstream = vez.catch(() => undefined);
+  return vez.then(fn);
+}
+
+function horaLocal(ms: number): string {
+  return new Date(ms).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
+}
+
+/** Ainda bloqueado pela fonte? Devolve a mensagem para a tela, ou null. */
+function bloqueioVigente(): string | null {
+  if (Date.now() >= bloqueadoAte) return null;
+  return `opcoes.net.br bloqueou este IP (HTTP 429) até ~${horaLocal(bloqueadoAte)}${motivoBloqueio ? ` — ${motivoBloqueio}` : ""}. Nada é pedido à fonte até lá.`;
+}
 
 interface RawExpiry {
   value: string;
@@ -87,14 +135,44 @@ function parseTradeDate(val: unknown): string | null {
 }
 
 async function fetchJson(params: Record<string, string>, timeoutMs: number): Promise<any> {
+  const bloqueio = bloqueioVigente();
+  if (bloqueio) throw new Error(bloqueio);
   const url = `${BASE}?${new URLSearchParams(params)}`;
-  const res = await fetch(url, {
-    headers: HEADERS,
-    cache: "no-store",
-    signal: AbortSignal.timeout(timeoutMs),
+  return agendarUpstream(async () => {
+    const res = await fetch(url, {
+      headers: HEADERS,
+      cache: "no-store",
+      signal: AbortSignal.timeout(timeoutMs),
+    });
+    if (res.status === 429) {
+      const retry = Number(res.headers.get("retry-after"));
+      const segundos = Number.isFinite(retry) && retry > 0 ? retry : BLOQUEIO_PADRAO_S;
+      bloqueadoAte = Date.now() + segundos * 1000;
+      motivoBloqueio = (await res.text().catch(() => "")).trim().slice(0, 120);
+      console.warn(`[opcoes] 429 da fonte; Retry-After ${segundos}s — sem requisições até ${new Date(bloqueadoAte).toISOString()}`);
+      throw new Error(`opcoes.net.br HTTP 429 (bloqueado por ${Math.round(segundos / 60)} min)`);
+    }
+    if (!res.ok) throw new Error(`opcoes.net.br HTTP ${res.status}`);
+    return res.json();
   });
-  if (!res.ok) throw new Error(`opcoes.net.br HTTP ${res.status}`);
-  return res.json();
+}
+
+/** O último dado bom deste papel: memória (mesmo vencida) ou disco. */
+function ultimoBom(ticker: string): { body: any; origem: "memoria" | "disco" } | null {
+  const mem = cache.get(ticker);
+  if (mem?.body && (mem.body as any).options?.length) return { body: mem.body, origem: "memoria" };
+  const disco = lerCache<any>(CHAVE_DISCO(ticker), TTL_DISCO_MS);
+  if (disco?.payload?.options?.length) return { body: disco.payload, origem: "disco" };
+  return null;
+}
+
+function servirStale(ticker: string, aviso: string): NextResponse | null {
+  const anterior = ultimoBom(ticker);
+  if (!anterior) return null;
+  return NextResponse.json(
+    { ...anterior.body, stale: true, aviso: `${aviso} Servindo a última grade boa (${anterior.origem}), de ${anterior.body.dataEfetiva ?? "data desconhecida"}.` },
+    { headers: { "x-cache": `STALE-${anterior.origem.toUpperCase()}` } }
+  );
 }
 
 function calDays(iso: string): number {
@@ -109,6 +187,14 @@ export async function GET(req: NextRequest) {
   const hit = cache.get(ticker);
   if (hit && Date.now() - hit.at < CACHE_TTL_MS) {
     return NextResponse.json(hit.body, { headers: { "x-cache": "HIT" } });
+  }
+
+  // Bloqueado pela fonte: nem tenta. Última grade boa, rotulada — ou o motivo, com a hora.
+  const bloqueio = bloqueioVigente();
+  if (bloqueio) {
+    const stale = servirStale(ticker, bloqueio);
+    if (stale) return stale;
+    return NextResponse.json({ error: bloqueio, bloqueadoAte: new Date(bloqueadoAte).toISOString() }, { status: 503 });
   }
 
   try {
@@ -260,17 +346,16 @@ export async function GET(req: NextRequest) {
       falhas: falhasPorVencimento,
     };
     cache.set(ticker, { at: Date.now(), body });
+    if (options.length > 0) gravarCache(CHAVE_DISCO(ticker), body, dataEfetiva);
     return NextResponse.json(body, { headers: { "x-cache": "MISS" } });
   } catch (err: any) {
     const msg = String(err?.message ?? err);
     const foiTimeout = /timeout|abort/i.test(msg);
-    return NextResponse.json(
-      {
-        error: foiTimeout
-          ? `A fonte de opções não respondeu em ${CATALOGO_TIMEOUT_MS / 1000}s. Tente de novo; se persistir, opcoes.net.br está fora do ar ou bloqueando as requisições.`
-          : `Falha ao consultar opcoes.net.br: ${msg}`,
-      },
-      { status: 502 }
-    );
+    const erro = foiTimeout
+      ? `A fonte de opções não respondeu em ${CATALOGO_TIMEOUT_MS / 1000}s. Tente de novo; se persistir, opcoes.net.br está fora do ar ou bloqueando as requisições.`
+      : `Falha ao consultar opcoes.net.br: ${msg}`;
+    const stale = servirStale(ticker, erro);
+    if (stale) return stale;
+    return NextResponse.json({ error: erro, bloqueadoAte: bloqueadoAte > Date.now() ? new Date(bloqueadoAte).toISOString() : undefined }, { status: 502 });
   }
 }

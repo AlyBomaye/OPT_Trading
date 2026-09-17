@@ -55,7 +55,8 @@ export async function POST(req: Request) {
   for (const entrada of UNIVERSE) {
     const ticker = entrada.ticker;
     try {
-      const res = await fetch(`${base}/api/opcoes?ticker=${encodeURIComponent(ticker)}`, {
+      // 17/09/2026: o snapshot é do ATM do 1º mensal — 3 vencimentos bastam e poupam a fonte (429).
+      const res = await fetch(`${base}/api/opcoes?ticker=${encodeURIComponent(ticker)}&maxExpiries=3`, {
         headers: cookie ? { cookie } : {},
         cache: "no-store",
         signal: AbortSignal.timeout(30_000),

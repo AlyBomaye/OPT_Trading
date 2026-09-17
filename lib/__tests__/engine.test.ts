@@ -2491,6 +2491,18 @@ async function testesAjustes0209() {
     else { console.log(`✘ AJ Teste 16 falhou: retry=${retry} memoria=${memoria} cacheCurto=${cacheCurto} corpo=${corpo} tela=${tela}`); failures++; }
   }
 
+  // ---- Teste 17 (17/09/2026): a fonte de opções bloqueou o IP (429) — fila com espaçamento, respeito ao Retry-After, última grade boa em disco servida como stale, varreduras pedindo só 3 vencimentos
+  {
+    const srcO = ler("app/api/opcoes/route.ts");
+    const fila = /const ESPACO_MIN_MS = \d+/.test(srcO) && /function agendarUpstream</.test(srcO) && /return agendarUpstream\(async \(\) =>/.test(srcO);
+    const respeita429 = /res\.status === 429/.test(srcO) && /retry-after/.test(srcO) && /bloqueadoAte = Date\.now\(\) \+ segundos \* 1000/.test(srcO) && /const bloqueio = bloqueioVigente\(\);\s*if \(bloqueio\) throw/.test(srcO) && /status: 503/.test(srcO);
+    const disco = /gravarCache\(CHAVE_DISCO\(ticker\), body, dataEfetiva\)/.test(srcO) && /lerCache<any>\(CHAVE_DISCO\(ticker\)/.test(srcO) && /stale: true/.test(srcO) && /servirStale\(ticker, erro\)/.test(srcO) && /servirStale\(ticker, bloqueio\)/.test(srcO);
+    const poupa = ["components/PainelWatchlist.tsx", "lib/sector-dashboard.ts", "app/api/iv-sync/route.ts"].every((f) => /api\/opcoes\?ticker=\$\{encodeURIComponent\(ticker\)\}&maxExpiries=3/.test(ler(f)));
+    const antigos = /falhasPorVencimento/.test(srcO) && /diagnostico: "layout-mudou"/.test(srcO) && /CATALOGO_TIMEOUT_MS/.test(srcO) && /VENCIMENTO_TIMEOUT_MS/.test(srcO);
+    if (fila && respeita429 && disco && poupa && antigos) console.log("✔ AJ Teste 17: /api/opcoes passa toda requisição por uma fila com espaçamento, lê o Retry-After do 429 e não insiste até lá (503 com a hora, ou a última grade boa), guarda a grade boa em disco e a serve como stale; Watchlist, varredura setorial e iv-sync pedem só 3 vencimentos; os tetos e o detector de layout da WO-37 continuam");
+    else { console.log(`✘ AJ Teste 17 falhou: fila=${fila} respeita429=${respeita429} disco=${disco} poupa=${poupa} antigos=${antigos}`); failures++; }
+  }
+
   // ---- Teste 9: apuracao fiscal cita opcoes SEM isencao e IRRF 0,005% (regras vigentes)
   const { IRRF_SWING_SOBRE_VENDA, ALIQUOTA_SWING } = await import("../fiscal");
   const semIsencaoOpcao = /NÃO vale para opções/.test(ler("lib/fiscal.ts"));
