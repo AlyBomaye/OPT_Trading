@@ -589,12 +589,41 @@ export default function MacroPage() {
         </div>
       </div>
 
-      {/* Strip de falhas se algum símbolo falhar */}
+      {/* Strips de degradação: sem dado nenhum (falhas) e último dado bom servido (defasados).
+          16/09/2026: a rota tenta duas vezes, guarda o último dado bom e reduz o cache a 60 s
+          quando algo falhou — e agora diz o motivo, no título de cada símbolo. */}
       {data?.falhas && data.falhas.length > 0 && (
         <div className="bg-term-gold/10 border border-term-gold/40 text-term-gold px-3 py-1.5 rounded text-xs flex items-center gap-2">
           <AlertTriangle size={14} className="shrink-0" />
           <span>
-            Degradação graciosa: <b>{data.falhas.join(", ")}</b> indisponível(is) momentaneamente. Os demais ativos seguem atualizados.
+            Sem dado nenhum para{" "}
+            <b>
+              {data.falhas.map((s, i) => (
+                <span key={s} title={data.motivos?.[s] ?? "motivo não informado"}>
+                  {i > 0 ? ", " : ""}
+                  {s}
+                </span>
+              ))}
+            </b>{" "}
+            — o Yahoo não respondeu nas duas tentativas e não havia último dado guardado. A tela tenta de novo em 1 minuto. Os demais seguem.
+          </span>
+        </div>
+      )}
+      {data?.defasados && data.defasados.length > 0 && (
+        <div className="bg-term-panel border border-term-line text-term-dim px-3 py-1.5 rounded text-xs flex items-center gap-2">
+          <AlertTriangle size={14} className="shrink-0 text-term-gold" />
+          <span>
+            <span className="tag bg-term-gold/15 text-term-gold mr-1">STALE</span>
+            Servindo o último dado bom para{" "}
+            <b className="text-term-text">
+              {data.defasados.map((s, i) => (
+                <span key={s} title={data.motivos?.[s] ?? "motivo não informado"}>
+                  {i > 0 ? ", " : ""}
+                  {s}
+                </span>
+              ))}
+            </b>{" "}
+            — a rede falhou agora; a data de cada card é a do dado, não a de hoje. Nova tentativa em 1 minuto.
           </span>
         </div>
       )}

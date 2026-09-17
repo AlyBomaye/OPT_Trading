@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { gravarCache, lerCache } from "@/lib/cache-disco";
 import { rollingHV } from "@/lib/historical";
 import {
   bpsDelta,
@@ -81,6 +82,10 @@ export interface MacroSeries {
    */
   dataDoDado: string | null;
   ok: boolean;
+  /** 16/09/2026: `true` quando a rede falhou e este é o último dado bom guardado (memória ou disco). */
+  stale?: boolean;
+  /** Por que a busca falhou desta vez (HTTP 429, timeout…). Só quando `ok` é false ou `stale` é true. */
+  motivo?: string;
 }
 
 export interface SgsPoint {
@@ -104,26 +109,89 @@ export interface MacroBody {
   series: MacroSeries[];
   brasil: BrasilMacro;
   updatedAt: string;
+  /** Símbolos sem dado nenhum: a rede falhou e não havia último dado bom. */
   falhas: string[];
+  /** Símbolos servidos com o último dado bom (rede falhou agora). */
+  defasados: string[];
+  /** O motivo da falha desta rodada, por símbolo (falhas e defasados). */
+  motivos: Record<string, string>;
 }
 
 let cache: { body: MacroBody; at: number } | null = null;
 const CACHE_TTL_MS = 10 * 60 * 1000; // 10 min
+/**
+ * 16/09/2026 — a Macro apareceu com os 24 símbolos do Yahoo "indisponíveis momentaneamente" e,
+ * como a rota guardava a resposta por 10 min mesmo vazia, a tela ficou assim por 10 min embora
+ * o Yahoo já respondesse. Três defesas:
+ *   1. segunda tentativa por símbolo, no host query2, depois de uma pausa curta;
+ *   2. o último dado bom de cada símbolo fica guardado (memória + disco, 7 dias) e é servido
+ *      marcado como `stale` quando a rede falha — dado velho rotulado vale mais que caixa vazia;
+ *   3. resposta com falha ou defasagem só vale 60 s no cache: a próxima abertura tenta de novo.
+ */
+const CACHE_TTL_COM_FALHA_MS = 60 * 1000;
+const CHAVE_DISCO = "macro-series";
+const TTL_DISCO_MS = 7 * 24 * 3_600_000;
+const ultimoBom = new Map<string, MacroSeries>();
+
+function carregarUltimoBomDoDisco(): void {
+  if (ultimoBom.size > 0) return;
+  const c = lerCache<Record<string, MacroSeries>>(CHAVE_DISCO, TTL_DISCO_MS);
+  if (!c?.payload) return;
+  for (const [k, v] of Object.entries(c.payload)) if (v?.ok && v.last != null) ultimoBom.set(k, v);
+}
+
+function guardarUltimoBom(series: MacroSeries[]): void {
+  let mudou = false;
+  for (const s of series) {
+    if (s.ok && !s.stale && s.last != null) {
+      ultimoBom.set(s.symbol, s);
+      mudou = true;
+    }
+  }
+  if (mudou) {
+    const dados = Object.fromEntries(ultimoBom);
+    const datas = Object.values(dados).map((x) => x.dataDoDado).filter((d): d is string => !!d).sort();
+    gravarCache(CHAVE_DISCO, dados, datas.length ? datas[datas.length - 1] : null);
+  }
+}
+
+const HOSTS = ["query1", "query2"] as const;
+const PAUSA_ENTRE_TENTATIVAS_MS = 400;
+
+async function buscarChart(symbol: string, host: (typeof HOSTS)[number]): Promise<any> {
+  const url = `https://${host}.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?range=1y&interval=1d`;
+  const res = await fetch(url, {
+    headers: { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)" },
+    signal: AbortSignal.timeout(10000),
+    cache: "no-store",
+  });
+  if (!res.ok) throw new Error(`HTTP ${res.status} (${host})`);
+  return res.json();
+}
+
+/** Uma tentativa em cada host; entre elas, uma pausa. Lança com o motivo da última. */
+async function buscarComRetry(symbol: string): Promise<any> {
+  let ultimoErro: unknown = null;
+  for (let i = 0; i < HOSTS.length; i++) {
+    if (i > 0) await new Promise((r) => setTimeout(r, PAUSA_ENTRE_TENTATIVAS_MS));
+    try {
+      return await buscarChart(symbol, HOSTS[i]);
+    } catch (e) {
+      ultimoErro = e;
+    }
+  }
+  throw ultimoErro instanceof Error ? ultimoErro : new Error(String(ultimoErro));
+}
+
+function descreverErro(e: unknown): string {
+  const m = e instanceof Error ? e.message : String(e);
+  if (/abort|timeout/i.test(m)) return "timeout de 10 s";
+  return m;
+}
 
 async function fetchYahooSymbol(cfg: MacroSymbolConfig): Promise<MacroSeries> {
-  const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(
-    cfg.symbol
-  )}?range=1y&interval=1d`;
-
   try {
-    const res = await fetch(url, {
-      headers: { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)" },
-      signal: AbortSignal.timeout(10000),
-      cache: "no-store",
-    });
-
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const json = await res.json();
+    const json = await buscarComRetry(cfg.symbol);
     const result = json?.chart?.result?.[0];
     if (!result) throw new Error("Sem dados");
 
@@ -202,7 +270,11 @@ async function fetchYahooSymbol(cfg: MacroSymbolConfig): Promise<MacroSeries> {
       dataDoDado: candles.length ? candles[candles.length - 1].date || null : null,
       ok: true,
     };
-  } catch {
+  } catch (e) {
+    const motivo = descreverErro(e);
+    // A rede falhou: o último dado bom, rotulado, vale mais que um card vazio.
+    const anterior = ultimoBom.get(cfg.symbol);
+    if (anterior) return { ...anterior, stale: true, motivo };
     return {
       symbol: cfg.symbol,
       nome: cfg.nome,
@@ -226,6 +298,7 @@ async function fetchYahooSymbol(cfg: MacroSymbolConfig): Promise<MacroSeries> {
       updatedAt: new Date().toISOString(),
       dataDoDado: null,
       ok: false,
+      motivo,
     };
   }
 }
@@ -305,22 +378,34 @@ async function fetchBrasilMacro(): Promise<BrasilMacro> {
 }
 
 export async function GET(_req: NextRequest) {
-  if (cache && Date.now() - cache.at < CACHE_TTL_MS) {
-    return NextResponse.json(cache.body);
+  if (cache) {
+    const degradado = cache.body.falhas.length > 0 || cache.body.defasados.length > 0;
+    if (Date.now() - cache.at < (degradado ? CACHE_TTL_COM_FALHA_MS : CACHE_TTL_MS)) return NextResponse.json(cache.body);
   }
+  carregarUltimoBomDoDisco();
 
   const [seriesResults, brasil] = await Promise.all([
-    poolAll(MACRO_SYMBOLS, fetchYahooSymbol, 5),
+    poolAll(MACRO_SYMBOLS, fetchYahooSymbol, 4),
     fetchBrasilMacro(),
   ]);
+  guardarUltimoBom(seriesResults);
 
   const falhas = seriesResults.filter((s) => !s.ok).map((s) => s.symbol);
+  const defasados = seriesResults.filter((s) => s.ok && s.stale).map((s) => s.symbol);
+  const motivos: Record<string, string> = {};
+  for (const s of seriesResults) if (s.motivo) motivos[s.symbol] = s.motivo;
+  if (falhas.length + defasados.length > 0) {
+    const resumo = Object.entries(motivos).slice(0, 3).map(([k, v]) => `${k}: ${v}`).join(" · ");
+    console.warn(`[macro] Yahoo: ${falhas.length} sem dado, ${defasados.length} servidos do último dado bom — ${resumo}`);
+  }
 
   const body: MacroBody = {
     series: seriesResults,
     brasil,
     updatedAt: new Date().toISOString(),
     falhas,
+    defasados,
+    motivos,
   };
 
   cache = { body, at: Date.now() };

@@ -2478,6 +2478,19 @@ async function testesAjustes0209() {
     else { console.log(`✘ AJ Teste 15 falhou: store=${mesmoStore} botao=${semBotaoNoCockpit} seleciona=${selecionaSemNavegar} noticias=${noticiasLimpa} manual=${manualOk}`); failures++; }
   }
 
+  // ---- Teste 16 (16/09/2026): a Macro degrada com memória — retry em dois hosts, último dado bom em disco servido como STALE, cache curto quando algo falhou, motivo por símbolo
+  {
+    const srcR = ler("app/api/macro/route.ts");
+    const srcP = ler("app/macro/page.tsx");
+    const retry = /const HOSTS = \["query1", "query2"\]/.test(srcR) && /async function buscarComRetry/.test(srcR) && /PAUSA_ENTRE_TENTATIVAS_MS/.test(srcR) && !/query1\.finance\.yahoo\.com\/v8\/finance\/chart\/\$\{encodeURIComponent\(\s*cfg\.symbol/.test(srcR);
+    const memoria = /const ultimoBom = new Map<string, MacroSeries>\(\)/.test(srcR) && /lerCache<Record<string, MacroSeries>>\(CHAVE_DISCO/.test(srcR) && /gravarCache\(CHAVE_DISCO/.test(srcR) && /return \{ \.\.\.anterior, stale: true, motivo \}/.test(srcR);
+    const cacheCurto = /CACHE_TTL_COM_FALHA_MS = 60 \* 1000/.test(srcR) && /degradado \? CACHE_TTL_COM_FALHA_MS : CACHE_TTL_MS/.test(srcR);
+    const corpo = /defasados: string\[\]/.test(srcR) && /motivos: Record<string, string>/.test(srcR) && /console\.warn\(`\[macro\]/.test(srcR) && /descreverErro\(e\)/.test(srcR);
+    const tela = /data\.defasados/.test(srcP) && /data\.motivos\?\.\[s\]/.test(srcP) && /STALE/.test(srcP) && !/indisponível\(is\) momentaneamente/.test(srcP);
+    if (retry && memoria && cacheCurto && corpo && tela) console.log("✔ AJ Teste 16: a Macro tenta query1 e query2 com pausa, guarda o último dado bom (memória + disco) e o serve como STALE com o motivo, encurta o cache para 60 s quando algo falhou e a tela separa 'sem dado' de 'defasado'");
+    else { console.log(`✘ AJ Teste 16 falhou: retry=${retry} memoria=${memoria} cacheCurto=${cacheCurto} corpo=${corpo} tela=${tela}`); failures++; }
+  }
+
   // ---- Teste 9: apuracao fiscal cita opcoes SEM isencao e IRRF 0,005% (regras vigentes)
   const { IRRF_SWING_SOBRE_VENDA, ALIQUOTA_SWING } = await import("../fiscal");
   const semIsencaoOpcao = /NÃO vale para opções/.test(ler("lib/fiscal.ts"));
