@@ -402,7 +402,7 @@ export function resumoSetor(leituras: LeituraTendencia[]): ResumoSetor {
 export type FiltroUniverso = "todos" | "metodo" | "posicao";
 
 export const FILTROS: Array<{ valor: FiltroUniverso; rotulo: string; dica: string }> = [
-  { valor: "todos", rotulo: "Todos", dica: "Os 31 ativos do universo" },
+  { valor: "todos", rotulo: "Todos", dica: "Todos os ativos do universo" },
   { valor: "metodo", rotulo: "Método", dica: "Só os ativos da lista do manual (origem método ou ambos)" },
   { valor: "posicao", rotulo: "Com posição", dica: "Só os ativos com perna aberta no livro" },
 ];

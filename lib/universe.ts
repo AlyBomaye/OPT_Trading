@@ -37,6 +37,17 @@ export interface DividendEvent {
  */
 export type OrigemAtivo = "metodo" | "plataforma" | "ambos";
 
+/**
+ * WO-61 — saíram do universo em 17/09/2026, com o MT5 como testemunha: AZUL4 (último negócio em
+ * 22/12/2025) e GOLL4 (11/06/2025) não negociam mais nem têm opções vigentes; não há código novo
+ * no catálogo. Ficam registrados para o livro e os snapshots antigos continuarem legíveis.
+ */
+export const RETIRADOS_DO_UNIVERSO: ReadonlyArray<{ ticker: string; motivo: string }> = [
+  { ticker: "AZUL4", motivo: "sem negócios desde 22/12/2025 e sem opções vigentes (MT5, 17/09/2026)" },
+  { ticker: "GOLL4", motivo: "sem negócios desde 11/06/2025 e sem opções vigentes (MT5, 17/09/2026)" },
+  { ticker: "MRFG3", motivo: "virou MBRF3 (Marfrig + BRF); o código antigo parou em 22/09/2025" },
+];
+
 export interface UniverseEntry {
   ticker: string;
   name: string;
@@ -59,7 +70,6 @@ export const UNIVERSE: UniverseEntry[] = [
   { ticker: "BHIA3", name: "Casas Bahia ON", origem: "plataforma", sector: "Retail", divPayer: false, dividends: [] },
   { ticker: "CSNA3", name: "CSN ON", origem: "ambos", sector: "Mining/Steel", divPayer: false, dividends: [] },
   { ticker: "MGLU3", name: "Magazine Luiza ON", origem: "ambos", sector: "Retail", divPayer: false, dividends: [] },
-  { ticker: "AZUL4", name: "Azul PN", origem: "plataforma", sector: "Airlines", divPayer: false, dividends: [] },
   { ticker: "COGN3", name: "Cogna ON", origem: "ambos", sector: "Education", divPayer: false, dividends: [] },
   { ticker: "CVCB3", name: "CVC ON", origem: "plataforma", sector: "Retail", divPayer: false, dividends: [] },
   { ticker: "GGBR4", name: "Gerdau PN", origem: "ambos", sector: "Mining/Steel", divPayer: true, dividends: [] },
@@ -68,7 +78,6 @@ export const UNIVERSE: UniverseEntry[] = [
   { ticker: "RECV3", name: "PetroRecôncavo ON", origem: "plataforma", sector: "Oil&Gas", divPayer: false, dividends: [] },
   { ticker: "BPAC11", name: "BTG Pactual UNT", origem: "plataforma", sector: "Financials", divPayer: true, dividends: [] },
   { ticker: "CMIG4", name: "Cemig PN", origem: "plataforma", sector: "Utilities", divPayer: true, dividends: [] },
-  { ticker: "GOLL4", name: "Gol PN", origem: "plataforma", sector: "Airlines", divPayer: false, dividends: [] },
 
   // WO-43 — os 11 ativos do manual operacional (Ap. D) que faltavam no universo.
   { ticker: "BRAP4", name: "Bradespar PN", origem: "metodo", sector: "Mining/Steel", divPayer: true, dividends: [] },
@@ -77,7 +86,8 @@ export const UNIVERSE: UniverseEntry[] = [
   { ticker: "CASH3", name: "Méliuz ON", origem: "metodo", sector: "Retail", divPayer: false, dividends: [] },
   { ticker: "JHSF3", name: "JHSF Participações ON", origem: "metodo", sector: "Construction", divPayer: true, dividends: [] },
   { ticker: "LREN3", name: "Lojas Renner ON", origem: "metodo", sector: "Retail", divPayer: true, dividends: [] },
-  { ticker: "MRFG3", name: "Marfrig ON", origem: "metodo", sector: "Food", divPayer: false, dividends: [] },
+  // WO-61: MRFG3 virou MBRF3 (Marfrig + BRF) — no MT5 o código antigo parou em 22/09/2025.
+  { ticker: "MBRF3", name: "MBRF (Marfrig/BRF) ON", origem: "metodo", sector: "Food", divPayer: false, dividends: [] },
   { ticker: "MRVE3", name: "MRV Engenharia ON", origem: "metodo", sector: "Construction", divPayer: false, dividends: [] },
   { ticker: "RENT3", name: "Localiza ON", origem: "metodo", sector: "Industrials", divPayer: true, dividends: [] },
   { ticker: "SUZB3", name: "Suzano ON", origem: "metodo", sector: "Pulp&Paper", divPayer: false, dividends: [] },

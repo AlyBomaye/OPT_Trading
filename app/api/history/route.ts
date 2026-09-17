@@ -5,7 +5,8 @@ export const dynamic = "force-dynamic";
 
 /* ============================================================================
  * /api/history — série histórica diária OHLCV para ações B3
- * Fonte primária: Yahoo Finance (ticker .SA). Fallback: brapi.dev.
+ * Fonte primária (WO-61): a ponte MT5 (terminal da corretora, local). Reserva: Yahoo Finance
+ * (ticker .SA) e depois brapi.dev.
  * Cache em memória: 10 min por (ticker, range).
  * WO-59: o download vive em lib/historico-fonte.ts, compartilhado com /api/history/universo.
  * ==========================================================================*/
@@ -33,7 +34,7 @@ export async function GET(req: NextRequest) {
         candles: [],
         source: "yahoo",
         updatedAt: new Date().toISOString(),
-        error: "Yahoo e brapi indisponíveis para este ticker/período.",
+        error: "MT5, Yahoo e brapi indisponíveis para este ticker/período.",
       },
       { status: 502 }
     );

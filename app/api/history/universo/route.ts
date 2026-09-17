@@ -8,7 +8,7 @@ export const dynamic = "force-dynamic";
 /**
  * WO-59 — GET /api/history/universo[?forcar=1]
  *
- * O histórico diário de 1 ano dos 31 ativos do universo, para a Chart Attack. A ordem de leitura
+ * O histórico diário de 1 ano dos ativos do universo, para a Chart Attack. A ordem de leitura
  * é a do `lib/cache-disco`: disco (um pregão de validade) → rede → disco vencido com aviso.
  *
  * Quem enche o cache é o `dados:sync` (tarefa agendada, 18:30, com `?forcar=1`); a aba abre com o
@@ -26,7 +26,7 @@ const CONCORRENTES = 2;
 export interface AtivoHistorico {
   ticker: string;
   candles: Candle[];
-  fonte: "yahoo" | "brapi" | null;
+  fonte: "mt5" | "yahoo" | "brapi" | null;
   /** Data do último candle — a data DO DADO, nunca a do fetch. */
   dadoEm: string | null;
   vencido: boolean;
@@ -65,10 +65,10 @@ async function resolver(ticker: string, forcar: boolean, prazo: number): Promise
     return { ativo: { ticker, candles: body.candles, fonte: body.source, dadoEm, vencido: false, buscadoEm: new Date().toISOString() }, origem: "rede" };
   }
   if (cache?.payload?.candles?.length) {
-    return { ativo: { ...doCache(ticker, cache), vencido: true, erro: "Yahoo e brapi indisponíveis; servindo o último cache" }, origem: "cache" };
+    return { ativo: { ...doCache(ticker, cache), vencido: true, erro: "MT5, Yahoo e brapi indisponíveis; servindo o último cache" }, origem: "cache" };
   }
   // Sem dado nenhum não é "vencido" — é ausente. STALE é para dado velho, não para dado que não existe.
-  return { ativo: { ticker, candles: [], fonte: null, dadoEm: null, vencido: false, buscadoEm: null, erro: "Yahoo e brapi indisponíveis e sem cache em disco" }, origem: "falha" };
+  return { ativo: { ticker, candles: [], fonte: null, dadoEm: null, vencido: false, buscadoEm: null, erro: "MT5, Yahoo e brapi indisponíveis e sem cache em disco" }, origem: "falha" };
 }
 
 export async function GET(req: NextRequest) {

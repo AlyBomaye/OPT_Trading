@@ -52,7 +52,6 @@ const TICKER_KEYWORDS: Record<string, string[]> = {
   BHIA3: ["casas bahia", "bhia3"],
   CSNA3: ["csn", "csna3", "sid. nacional", "siderúrgica nacional"],
   MGLU3: ["magalu", "magazine luiza", "mglu3"],
-  AZUL4: ["azul ", "azul4"],
   COGN3: ["cogna", "cogn3"],
   CVCB3: ["cvc ", "cvcb3"],
   GGBR4: ["gerdau", "ggbr4"],
@@ -61,7 +60,18 @@ const TICKER_KEYWORDS: Record<string, string[]> = {
   RECV3: ["petrorecôncavo", "recv3"],
   BPAC11: ["btg pactual", "bpac11"],
   CMIG4: ["cemig", "cmig4"],
-  GOLL4: ["gol ", "goll4"],
+  // WO-43 — os 11 do método; WO-61 — MRFG3 virou MBRF3.
+  BRAP4: ["bradespar", "brap4"],
+  BRAV3: ["brava energia", "brav3"],
+  BRKM5: ["braskem", "brkm5"],
+  CASH3: ["méliuz", "meliuz", "cash3"],
+  JHSF3: ["jhsf", "jhsf3"],
+  LREN3: ["renner", "lren3"],
+  MBRF3: ["marfrig", "brf ", "mbrf3"],
+  MRVE3: ["mrv ", "mrve3"],
+  RENT3: ["localiza", "rent3"],
+  SUZB3: ["suzano", "suzb3"],
+  VBBR3: ["vibra", "vbbr3"],
 };
 
 const MACRO_KEYWORDS = [

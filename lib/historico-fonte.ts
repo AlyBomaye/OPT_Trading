@@ -5,7 +5,12 @@
  * precisou dos 31 históricos de uma vez, o download saiu de lá para cá: as duas rotas importam
  * daqui, e "como se baixa histórico" tem uma verdade só. Módulo de servidor (faz `fetch` externo);
  * nenhum componente "use client" o importa.
+ *
+ * WO-61: a ponte MT5 (terminal da corretora, local) vem PRIMEIRO — 2.000 candles por papel, com
+ * os códigos atuais da B3 (o Yahoo perdeu MBRF3 e afins). Yahoo e brapi continuam como reserva.
  */
+
+import { historicoMt5 } from "./fonte-mt5";
 
 export interface Candle {
   date: string; // YYYY-MM-DD
@@ -20,7 +25,7 @@ export interface HistoryBody {
   ticker: string;
   range: string;
   candles: Candle[];
-  source: "yahoo" | "brapi";
+  source: "mt5" | "yahoo" | "brapi";
   updatedAt: string;
   error?: string;
 }
@@ -85,7 +90,12 @@ export async function fromBrapi(ticker: string, range: string, timeoutMs = 10_00
   }
 }
 
-/** Yahoo primeiro; brapi se o Yahoo não responder. `null` quando nenhum dos dois tem o papel. */
+/** A ponte MT5 é a fonte local do terminal da corretora; `null` quando ela não responde. */
+export async function fromMt5(ticker: string, range: string, timeoutMs = 6_000): Promise<HistoryBody | null> {
+  return historicoMt5(ticker, range, timeoutMs);
+}
+
+/** MT5 primeiro; Yahoo se a ponte não responder; brapi se o Yahoo falhar. `null` quando nenhum tem o papel. */
 export async function baixarHistorico(ticker: string, range: string, timeoutMs = 10_000): Promise<HistoryBody | null> {
-  return (await fromYahoo(ticker, range, timeoutMs)) ?? (await fromBrapi(ticker, range, timeoutMs));
+  return (await fromMt5(ticker, range, Math.min(timeoutMs, 6_000))) ?? (await fromYahoo(ticker, range, timeoutMs)) ?? (await fromBrapi(ticker, range, timeoutMs));
 }
