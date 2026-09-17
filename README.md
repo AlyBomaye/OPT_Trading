@@ -26,9 +26,25 @@ Abre em `http://localhost:3000`. Em desenvolvimento, `APP_PASSWORD` em branco li
 | `npm run typecheck` | `tsc --noEmit` |
 | `npm run test:engine` | Suíte do engine, dos agentes e das travas de interface |
 | `npm run dados:sync` | Aquece o cache das fontes pesadas antes do pregão |
+| `npm run ponte` | Sobe a ponte MetaTrader 5 (Python, `127.0.0.1:3200`) em desenvolvimento; em produção o `prod:start` faz isso |
 | `npm run agents:daily` | Dispara um ciclo completo de agentes |
 | `npm run setup:db` | Cria banco e usuário no PostgreSQL e grava a `DATABASE_URL` (uma vez só) |
 | `npm run reset:senha-db` | Redefine a senha do superusuário `postgres` (só se você não a souber) |
+
+## MetaTrader 5 (a fonte primária de mercado)
+
+A cadeia de opções, o tick do papel e o histórico vêm do terminal **MetaTrader 5** da corretora
+(Genial, gratuito), lido por uma ponte local em Python — `scripts/mt5-ponte.py`. Pré-requisitos:
+
+```bash
+python -m pip install MetaTrader5
+```
+
+O terminal precisa estar **aberto e logado** nesta máquina; a ponte liga-se a ele por IPC e
+**não recebe credencial nenhuma** (nem login, nem senha, nem servidor). Ela escuta só em
+`127.0.0.1:3200`. Com o terminal fechado, a plataforma cai para opcoes.net.br e Yahoo, e a barra
+de veracidade diz de onde cada número veio. `npm run prod:status` mostra se a ponte responde e se
+o terminal está logado; o vigia avisa quando ele deslogar durante o pregão.
 
 ## Banco de dados (opcional, recomendado)
 

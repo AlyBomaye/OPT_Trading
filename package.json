@@ -15,6 +15,7 @@
     "prod:stop": "powershell -NoProfile -ExecutionPolicy Bypass -File ./scripts/producao.ps1 stop",
     "prod:status": "powershell -NoProfile -ExecutionPolicy Bypass -File ./scripts/producao.ps1 status",
     "prod:logs": "powershell -NoProfile -ExecutionPolicy Bypass -File ./scripts/producao.ps1 logs",
+    "ponte": "python scripts/mt5-ponte.py",
     "vigia": "node scripts/vigia.mjs",
     "vigia:uma-vez": "node scripts/vigia.mjs --uma-vez",
     "agendar": "powershell -NoProfile -ExecutionPolicy Bypass -File ./scripts/agendar.ps1 instalar",

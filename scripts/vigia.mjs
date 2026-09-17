@@ -25,6 +25,9 @@ const DIR_LOG = path.join(RAIZ, "data", "logs");
 const SEVERIDADES_QUE_AVISAM = new Set(["urgente", "atencao"]);
 const INTERVALO_MIN = { ABERTO: 5, PRE: 15, FECHADO: 60, FIM_DE_SEMANA: 360 };
 const FALHAS_ATE_AVISAR = 3;
+/** WO-61: leituras seguidas de /api/saude com a ponte MT5 fora ou o terminal deslogado antes de avisar (só em PRE/ABERTO, uma vez por dia). */
+const PONTE_FORA_ATE_AVISAR = 3;
+const CHAVE_AVISO_PONTE = "mt5-deslogado";
 
 for (const d of [DIR_RUN, DIR_LOG]) fs.mkdirSync(d, { recursive: true });
 
@@ -91,6 +94,38 @@ function toast(titulo, corpo) {
 
 let falhasSeguidas = 0;
 let avisouQueda = false;
+let ponteForaSeguidas = 0;
+
+/**
+ * WO-61 — a ponte MT5 é a fonte primária da cadeia; com o terminal fechado ou deslogado a
+ * plataforma cai para opcoes.net.br em silêncio (rotulado na tela). O operador precisa saber
+ * para reabrir o terminal — é ele quem loga; a ponte não tem credencial.
+ */
+async function vigiarPonte(dia, estado) {
+  let ponte = null;
+  try {
+    const r = await fetchAutenticado(`${BASE}/api/saude`, { signal: AbortSignal.timeout(10_000) });
+    if (r.ok) ponte = (await r.json())?.ponteMt5 ?? null;
+  } catch {
+    return; // a queda da plataforma já é tratada no ciclo
+  }
+  if (!ponte) return;
+  if (ponte.ok && ponte.logado) {
+    if (ponteForaSeguidas > 0) log(`ponte MT5 voltou (terminal logado) depois de ${ponteForaSeguidas} leitura(s)`);
+    ponteForaSeguidas = 0;
+    return;
+  }
+  ponteForaSeguidas++;
+  const motivo = ponte.ok ? "terminal MetaTrader 5 deslogado" : "ponte MT5 fora do ar";
+  log(`${motivo} (${ponteForaSeguidas}/${PONTE_FORA_ATE_AVISAR}) — a cadeia está vindo das fontes antigas`);
+  if (estado !== "PRE" && estado !== "ABERTO") return;
+  if (ponteForaSeguidas < PONTE_FORA_ATE_AVISAR) return;
+  const avisados = lerAvisados(dia);
+  if (avisados.has(CHAVE_AVISO_PONTE)) return;
+  await toast("MT5 deslogado — abra o terminal", `${motivo}. A plataforma está usando opcoes.net.br e Yahoo até o terminal voltar.`);
+  avisados.add(CHAVE_AVISO_PONTE);
+  gravarAvisados(dia, avisados);
+}
 
 async function ciclo() {
   const dia = hojeIso();
@@ -127,6 +162,7 @@ async function ciclo() {
     avisados.add(a.chave);
   }
   if (novos.length) gravarAvisados(dia, avisados);
+  await vigiarPonte(dia, resp.sessao);
   return { estado: resp.sessao };
 }
 

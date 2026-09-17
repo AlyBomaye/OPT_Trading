@@ -5,6 +5,11 @@
 # Producao na 3100 com build em .next-prod; o dev continua na 3000 em .next. Os dois convivem de
 # verdade: nem o build nem o start de producao tocam na pasta do dev. O .env.local (com
 # DATABASE_URL e APP_PASSWORD) e o mesmo para as duas portas. Nada aqui imprime segredo.
+#
+# WO-61 - a ponte MT5 (scripts\mt5-ponte.py, Python, 127.0.0.1:3200) sobe ANTES da plataforma e cai
+# com ela. Ela le o terminal MetaTrader 5 que o operador abriu e logou; nao recebe credencial
+# nenhuma. `status` diz se a ponte responde e se o terminal esta logado. Sem Python ou sem
+# terminal, a plataforma sobe do mesmo jeito e cai nas fontes antigas (opcoes.net.br, Yahoo).
 
 param([Parameter(Position = 0)][ValidateSet("build", "start", "stop", "status", "logs")][string]$acao = "status")
 
@@ -14,6 +19,8 @@ $porta = 3100
 $dirRun = Join-Path $raiz "data\run"
 $dirLog = Join-Path $raiz "data\logs"
 $pidFile = Join-Path $dirRun "producao.pid"
+$portaPonte = 3200
+$pidPonte = Join-Path $dirRun "ponte-mt5.pid"
 # Build de producao numa pasta propria (.next-prod): o dev continua em .next e os dois convivem.
 $env:NEXT_DIST_DIR = ".next-prod"
 New-Item -ItemType Directory -Force $dirRun, $dirLog | Out-Null
@@ -37,6 +44,43 @@ function Parar-Arvore([int]$raizPid) {
   Get-CimInstance Win32_Process -Filter "ParentProcessId = $raizPid" -ErrorAction SilentlyContinue | ForEach-Object { Parar-Arvore ([int]$_.ProcessId) }
   Stop-Process -Id $raizPid -Force -ErrorAction SilentlyContinue
 }
+# ---- ponte MT5 (WO-61) ------------------------------------------------------------------------
+function Ponte-Estado {
+  # @{ responde; logado; motivo } - so 127.0.0.1, so leitura.
+  try {
+    $r = Invoke-WebRequest -Uri "http://127.0.0.1:$portaPonte/saude" -UseBasicParsing -TimeoutSec 5
+    $j = $r.Content | ConvertFrom-Json
+    return @{ responde = $true; logado = [bool]$j.logado; motivo = $j.motivo }
+  } catch { return @{ responde = $false; logado = $false; motivo = "ponte nao responde na porta $portaPonte" } }
+}
+function Pid-DaPortaPonte {
+  try { return (Get-NetTCPConnection -LocalPort $portaPonte -State Listen -ErrorAction Stop | Select-Object -First 1 -ExpandProperty OwningProcess) } catch { return $null }
+}
+function Iniciar-Ponte {
+  $estado = Ponte-Estado
+  if ($estado.responde) { Write-Host ("Ponte MT5 ja responde na porta {0} (terminal {1})." -f $portaPonte, $(if ($estado.logado) { "logado" } else { "DESLOGADO: " + $estado.motivo })); return }
+  $python = Get-Command python -ErrorAction SilentlyContinue
+  if (-not $python) { Write-Host "Python nao encontrado no PATH: a ponte MT5 nao sobe. A plataforma segue com opcoes.net.br e Yahoo." -ForegroundColor Yellow; return }
+  $log = Join-Path $dirLog ("ponte-mt5-" + (Get-Date -Format "yyyy-MM-dd") + ".log")
+  $cmd = "cd /d `"$raiz`" && python scripts\mt5-ponte.py >> `"$log`" 2>&1"
+  $p = Start-Process -FilePath "cmd.exe" -ArgumentList "/c", $cmd -WindowStyle Hidden -PassThru
+  Set-Content -Path $pidPonte -Value $p.Id -Encoding ascii
+  $ok = $false
+  for ($i = 0; $i -lt 15 -and -not $ok; $i++) { Start-Sleep -Seconds 1; $ok = (Ponte-Estado).responde }
+  $estado = Ponte-Estado
+  if ($ok) { Write-Host ("Ponte MT5 no ar: http://127.0.0.1:{0} (PID {1}) - terminal {2} - log em {3}" -f $portaPonte, $p.Id, $(if ($estado.logado) { "logado" } else { "DESLOGADO: " + $estado.motivo + ". Abra e logue o MetaTrader 5." }), $log) -ForegroundColor $(if ($estado.logado) { "Green" } else { "Yellow" }) }
+  else { Write-Host "A ponte MT5 (PID $($p.Id)) nao respondeu em 15s. Veja $log (falta a biblioteca? python -m pip install MetaTrader5)." -ForegroundColor Yellow }
+}
+function Parar-Ponte {
+  $alvos = @()
+  if (Test-Path $pidPonte) { $p = Get-Content $pidPonte -ErrorAction SilentlyContinue | Select-Object -First 1; if ($p -and (Get-Process -Id ([int]$p) -ErrorAction SilentlyContinue)) { $alvos += [int]$p } }
+  $naPorta = Pid-DaPortaPonte
+  if ($naPorta) { $alvos += [int]$naPorta }
+  $alvos = $alvos | Select-Object -Unique
+  foreach ($a in $alvos) { Parar-Arvore ([int]$a); Write-Host "  ponte MT5: encerrado PID $a e filhos" }
+  Remove-Item $pidPonte -ErrorAction SilentlyContinue
+}
+
 function Dev-Vivo {
   # next dev deixa um node com "next dev" na linha de comando
   $procs = Get-CimInstance Win32_Process -Filter "Name = 'node.exe'" | Where-Object { $_.CommandLine -match "\bnext\b.*\bdev\b" }
@@ -67,6 +111,8 @@ switch ($acao) {
     $envFile = Join-Path $raiz ".env.local"
     $temSenha = (Test-Path $envFile) -and ((Get-Content $envFile | Where-Object { $_ -match '^APP_PASSWORD=\S+' } | Measure-Object).Count -gt 0)
     if (-not $temSenha) { Write-Host "Producao exige APP_PASSWORD no .env.local (a plataforma responde 503 sem ela). Adicione a linha APP_PASSWORD=<sua senha> e rode prod:start de novo. Os scripts (vigia, sync) leem a mesma senha para entrar." -ForegroundColor Yellow; exit 2 }
+    # WO-61: a ponte MT5 primeiro (nao e requisito: sem ela a plataforma cai nas fontes antigas).
+    Iniciar-Ponte
     $log = Join-Path $dirLog ("producao-" + (Get-Date -Format "yyyy-MM-dd") + ".log")
     $cmd = "cd /d `"$raiz`" && set NEXT_DIST_DIR=.next-prod&& npx next start -p $porta >> `"$log`" 2>&1"
     $p = Start-Process -FilePath "cmd.exe" -ArgumentList "/c", $cmd -WindowStyle Hidden -PassThru
@@ -78,9 +124,10 @@ switch ($acao) {
   }
   "stop" {
     $alvos = @((Pid-Gravado), (Pid-DaPorta)) | Where-Object { $_ } | Select-Object -Unique
-    if (-not $alvos) { Write-Host "Producao nao esta rodando (nada no PID gravado nem escutando a $porta)."; Remove-Item $pidFile -ErrorAction SilentlyContinue; exit 0 }
+    if (-not $alvos) { Write-Host "Producao nao esta rodando (nada no PID gravado nem escutando a $porta)."; Remove-Item $pidFile -ErrorAction SilentlyContinue; Parar-Ponte; exit 0 }
     foreach ($a in $alvos) { Parar-Arvore ([int]$a); Write-Host "  encerrado PID $a e filhos" }
     Remove-Item $pidFile -ErrorAction SilentlyContinue
+    Parar-Ponte
     Start-Sleep -Seconds 2
     $sobrou = Pid-DaPorta
     if ($sobrou) { Write-Host "Ainda ha algo na porta $porta (PID $sobrou)." -ForegroundColor Yellow; exit 1 }
@@ -92,6 +139,8 @@ switch ($acao) {
     $resp = Porta-Responde
     $build = if (Test-Path (Join-Path $dirRun "producao.build")) { Get-Content (Join-Path $dirRun "producao.build") } else { "sem build registrado" }
     Write-Host ("porta {0}: {1} | PID: {2} | build: {3} | dev vivo: {4}" -f $porta, $(if ($resp) { "responde" } else { "sem resposta" }), $(if ($vivo) { $vivo } else { "-" }), $build, $(Dev-Vivo))
+    $ponte = Ponte-Estado
+    Write-Host ("ponte MT5 ({0}): {1}" -f $portaPonte, $(if (-not $ponte.responde) { "fora do ar - " + $ponte.motivo } elseif ($ponte.logado) { "ok - terminal logado" } else { "responde, terminal DESLOGADO - " + $ponte.motivo })) -ForegroundColor $(if ($ponte.responde -and $ponte.logado) { "Green" } else { "Yellow" })
     if (-not $resp) { exit 1 }
   }
   "logs" {
