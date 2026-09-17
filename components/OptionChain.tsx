@@ -101,17 +101,17 @@ export function OptionChain() {
         <table className="w-full text-xs border-t border-term-line">
           <thead>
             <tr className="bg-term-panel2/60">
-              <th className="th text-center" colSpan={7}>CALLS</th>
+              <th className="th text-center" colSpan={8}>CALLS</th>
               <th className="th text-center bg-term-panel2">STRIKE</th>
-              <th className="th text-center" colSpan={7}>PUTS</th>
+              <th className="th text-center" colSpan={8}>PUTS</th>
             </tr>
             <tr className="border-b border-term-line">
-              {["Ticker", "Últ", "IV", "Δ", "Γ", "Θ", "Neg/Vol"].map((h) => (
-                <th key={`c-${h}`} className="th text-right">{h}</th>
+              {["Ticker", "Bid/Ask", "Últ", "IV", "Δ", "Γ", "Θ", "Neg/Vol"].map((h) => (
+                <th key={`c-${h}`} className="th text-right" title={h === "Bid/Ask" ? "Melhor oferta de compra / de venda — ao vivo (MT5) ou de fechamento (COTAHIST)" : undefined}>{h}</th>
               ))}
               <th className="th text-center bg-term-panel2">K</th>
-              {["Neg/Vol", "Θ", "Γ", "Δ", "IV", "Últ", "Ticker"].map((h) => (
-                <th key={`p-${h}`} className="th text-left">{h}</th>
+              {["Neg/Vol", "Θ", "Γ", "Δ", "IV", "Últ", "Bid/Ask", "Ticker"].map((h) => (
+                <th key={`p-${h}`} className="th text-left" title={h === "Bid/Ask" ? "Melhor oferta de compra / de venda — ao vivo (MT5) ou de fechamento (COTAHIST)" : undefined}>{h}</th>
               ))}
             </tr>
           </thead>
@@ -135,15 +135,23 @@ export function OptionChain() {
         Clique <span className="text-term-up">C</span>/<span className="text-term-down">V</span> para comprar/vender a perna no
         Strategy Builder. Fundo verde = ITM.
         {(() => {
-          // WO-56: quantas séries têm oferta de compra e venda no fechamento (COTAHIST da B3).
+          // WO-56/WO-61: quantas séries têm bid e ask — ao vivo (MT5, `tickAt`) ou de fechamento (COTAHIST).
           const comOferta = chain.options.filter((o) => o.bid != null && o.ask != null);
-          const data = comOferta[0]?.ofertasData ?? null;
+          const aoVivo = comOferta.filter((o) => o.tickAt).length;
+          const data = comOferta.find((o) => o.ofertasData)?.ofertasData ?? null;
+          if (aoVivo > 0) {
+            return (
+              <span className="ml-2 text-term-green" title="Book ao vivo pela ponte MT5 (terminal da corretora). Séries com as duas ofertas e spread razoável são marcadas pelo mid.">
+                · book ao vivo (MT5): {aoVivo} de {chain.options.length} séries com bid e ask{comOferta.length > aoVivo ? ` (+${comOferta.length - aoVivo} de fechamento)` : ""}
+              </span>
+            );
+          }
           return comOferta.length > 0 ? (
             <span className="ml-2 text-term-cyan" title="Melhor oferta de compra e de venda no fechamento, do arquivo diário da B3. Séries com as duas ofertas e spread razoável são marcadas pelo mid na Carteira.">
               · ofertas de fechamento{data ? ` (${data})` : ""}: {comOferta.length} de {chain.options.length} séries com bid e ask
             </span>
           ) : (
-            <span className="ml-2">· sem ofertas de fechamento (COTAHIST da B3 indisponível para a data)</span>
+            <span className="ml-2">· sem book: ponte MT5 fora e COTAHIST da B3 indisponível para a data</span>
           );
         })()}
       </div>
@@ -202,8 +210,23 @@ function ivTitle(o: OptionQuote): string {
   return `IV extraída com o fechamento de ${d} (mesma data do prêmio). Engine local.`;
 }
 
+/** WO-61: bid/ask da série — ao vivo (MT5) em verde, de fechamento (COTAHIST) em ciano. */
+function BidAsk({ o, align }: { o: OptionQuote; align: "left" | "right" }) {
+  const tem = o.bid != null || o.ask != null;
+  if (!tem) return <td className={clsx("td text-term-dim", align === "left" ? "text-left" : "text-right")}>—</td>;
+  const aoVivo = Boolean(o.tickAt);
+  const titulo = aoVivo
+    ? `Book ao vivo (MT5) — tick ${o.tickAt!.slice(11, 19)}${o.mid != null ? ` · mid ${fmtNum(o.mid)}` : ""}`
+    : `Oferta de fechamento (COTAHIST${o.ofertasData ? ` ${fmtDateBR(o.ofertasData)}` : ""})${o.mid != null ? ` · mid ${fmtNum(o.mid)}` : ""}`;
+  return (
+    <td className={clsx("td whitespace-nowrap", align === "left" ? "text-left" : "text-right", aoVivo ? "text-term-green" : "text-term-cyan")} title={titulo}>
+      {o.bid != null ? fmtNum(o.bid) : "—"}/{o.ask != null ? fmtNum(o.ask) : "—"}
+    </td>
+  );
+}
+
 function CallCells({ o, spot, onAdd }: { o: OptionQuote | null; spot: number; onAdd: (o: OptionQuote, s: 1 | -1) => void }) {
-  if (!o) return <td className="td text-term-dim text-right" colSpan={7}>—</td>;
+  if (!o) return <td className="td text-term-dim text-right" colSpan={8}>—</td>;
   const stale = o.markQuality === "stale";
   const bg = clsx(itm(o, spot) && "bg-term-up/5", stale && "text-term-dim");
   const ageTitle = stale
@@ -218,6 +241,7 @@ function CallCells({ o, spot, onAdd }: { o: OptionQuote | null; spot: number; on
         <span className="text-term-dim">{o.opTicker.replace(o.underlying.slice(0, 4), "")}</span>
         <TradeBtns o={o} onAdd={onAdd} />
       </td>
+      <BidAsk o={o} align="right" />
       <td className={clsx("td text-right font-semibold", bg)}>
         {fmtNum(o.last)}
         <AgeChip o={o} />
@@ -231,15 +255,29 @@ function CallCells({ o, spot, onAdd }: { o: OptionQuote | null; spot: number; on
       <td className={clsx("td text-right", bg, !stale && "text-term-cyan")}>{fmtNum(o.delta, 3)}</td>
       <td className={clsx("td text-right", bg)}>{fmtNum(o.gamma, 4)}</td>
       <td className={clsx("td text-right", bg, !stale && "text-term-down")}>{fmtNum(o.theta, 4)}</td>
-      <td className={clsx("td text-right text-term-dim", bg)}>
-        {fmtCompact(o.trades)}/{fmtCompact(o.volumeFin)}
-      </td>
+      <NegVol o={o} align="right" bg={bg} />
     </>
   );
 }
 
+/** Negócios/volume do dia; provisório (~) enquanto a ponte MT5 completa o cache diário da série. */
+function NegVol({ o, align, bg }: { o: OptionQuote; align: "left" | "right"; bg: string }) {
+  if (o.diarioProvisorio) {
+    return (
+      <td className={clsx("td text-term-dim", align === "left" ? "text-left" : "text-right", bg)} title="Provisório: a ponte MT5 ainda está completando o cache diário desta série (negócios e último negócio vêm do candle diário). O próximo pedido traz o número certo.">
+        ~{fmtCompact(o.trades)}/—
+      </td>
+    );
+  }
+  return (
+    <td className={clsx("td text-term-dim", align === "left" ? "text-left" : "text-right", bg)}>
+      {fmtCompact(o.trades)}/{fmtCompact(o.volumeFin)}
+    </td>
+  );
+}
+
 function PutCells({ o, spot, onAdd }: { o: OptionQuote | null; spot: number; onAdd: (o: OptionQuote, s: 1 | -1) => void }) {
-  if (!o) return <td className="td text-term-dim" colSpan={7}>—</td>;
+  if (!o) return <td className="td text-term-dim" colSpan={8}>—</td>;
   const stale = o.markQuality === "stale";
   const bg = clsx(itm(o, spot) && "bg-term-up/5", stale && "text-term-dim");
   const ageTitle = stale
@@ -250,9 +288,7 @@ function PutCells({ o, spot, onAdd }: { o: OptionQuote | null; spot: number; onA
 
   return (
     <>
-      <td className={clsx("td text-left text-term-dim", bg)}>
-        {fmtCompact(o.trades)}/{fmtCompact(o.volumeFin)}
-      </td>
+      <NegVol o={o} align="left" bg={bg} />
       <td className={clsx("td text-left", bg, !stale && "text-term-down")}>{fmtNum(o.theta, 4)}</td>
       <td className={clsx("td text-left", bg)}>{fmtNum(o.gamma, 4)}</td>
       <td className={clsx("td text-left", bg, !stale && "text-term-cyan")}>{fmtNum(o.delta, 3)}</td>
@@ -266,6 +302,7 @@ function PutCells({ o, spot, onAdd }: { o: OptionQuote | null; spot: number; onA
         <AgeChip o={o} />
         {fmtNum(o.last)}
       </td>
+      <BidAsk o={o} align="left" />
       <td className={clsx("td text-left", bg)}>
         <TradeBtns o={o} onAdd={onAdd} />
         <span className="text-term-dim">{o.opTicker.replace(o.underlying.slice(0, 4), "")}</span>

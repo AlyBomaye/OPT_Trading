@@ -19,7 +19,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             <TickerBar />
             <main className="flex-1 p-3 space-y-3 overflow-x-hidden">{children}</main>
             <footer className="px-4 py-2 text-xxs text-term-dim border-t border-term-line">
-              Dados: opcoes.net.br (delay). IV e gregas calculadas localmente (Black-Scholes, 252 du).
+              Dados: MetaTrader 5 da corretora (ao vivo) — opcoes.net.br e COTAHIST de reserva. IV e gregas calculadas localmente (Black-Scholes, 252 du).
               Ferramenta educacional — não é recomendação de investimento.
             </footer>
           </div>

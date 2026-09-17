@@ -7,6 +7,11 @@
  * Existe porque a plataforma exibia três datas distintas (histórico de hoje, chain de D-1,
  * posições em aberto de D-3) todas como se fossem "agora". Sem esta barra, nenhuma outra
  * correção adianta: é ela que devolve ao trader o direito de julgar o número.
+ *
+ * WO-61: a fonte deixou de ser uma string fixa. A cadeia diz de onde veio (`chain.fonte`,
+ * `chain.fonteDetalhe`: "MT5 · Genial · tick 16:54:57" ou "opcoes.net.br · último negócio"), o spot
+ * idem (tick do MT5 na sessão corrente, ou fechamento do histórico), e o chip BOOK conta as séries
+ * com bid e ask — ao vivo (MT5) ou de fechamento (COTAHIST).
  */
 
 import { useMarket } from "@/store/market";
@@ -47,14 +52,22 @@ export function TruthBar({
 
   if (!chain) return null;
 
-  const provChain = construirProvenance("opcoes.net.br", chain.dataEfetiva, {
+  const viaMt5 = chain.fonte === "mt5";
+  const horaTick = viaMt5 && chain.spotTickAt ? chain.spotTickAt.slice(11, 16) : null;
+  const provChain = construirProvenance(chain.fonteDetalhe ?? chain.fonte ?? "cadeia", chain.dataEfetiva, {
     buscadoEm: chain.fetchedAt ?? chain.updatedAt,
+    horaDoDado: horaTick,
     refSession: sess.ultimaSessao,
   });
-  const provSpot = construirProvenance("Yahoo Finance (fechamento)", chain.spotDate, {
-    buscadoEm: chain.fetchedAt ?? chain.updatedAt,
-    refSession: sess.ultimaSessao,
-  });
+  const provSpot = construirProvenance(
+    viaMt5 ? `tick do papel · ${chain.fonteDetalhe ?? "MT5"}` : "histórico diário (fechamento)",
+    chain.spotDate,
+    { buscadoEm: chain.fetchedAt ?? chain.updatedAt, horaDoDado: horaTick, refSession: sess.ultimaSessao }
+  );
+  // Book: ao vivo pela ponte (tickAt) ou de fechamento (ofertasData); a contagem separa os dois.
+  const comBook = chain.options.filter((o) => o.bid != null && o.ask != null);
+  const bookAoVivo = comBook.filter((o) => o.tickAt).length;
+  const bookFechamento = comBook.length - bookAoVivo;
   const provOi = construirProvenance("B3 DerivativesOpenPosition", oiFileDate, {
     buscadoEm: oiUpdatedAt ?? new Date().toISOString(),
     refSession: sess.ultimaSessao,
@@ -69,9 +82,29 @@ export function TruthBar({
         <span className="text-term-fg">{fmtPreco(chain.spot)}</span>
       </span>
 
-      <Bloco label="SPOT" prov={provSpot} />
-      <Bloco label="CHAIN" prov={provChain} />
+      <Bloco label="SPOT" prov={provSpot} extra={horaTick ?? undefined} />
+      <Bloco label="CHAIN" prov={provChain} extra={viaMt5 ? "MT5" : chain.fonte === "opcoes.net.br" ? "opcoes.net.br" : undefined} />
+      {chain.stale && (
+        <span className="whitespace-nowrap text-term-amber" title="A fonte falhou e a rota serviu a última grade boa guardada. Os números são de quando ela foi buscada.">
+          STALE
+        </span>
+      )}
       {oiFileDate && <Bloco label="OI B3" prov={provOi} />}
+
+      <span
+        className="whitespace-nowrap text-term-dim"
+        title={
+          comBook.length === 0
+            ? "Nenhuma série com bid e ask: sem ponte MT5 e sem arquivo de ofertas de fechamento da B3 para a data."
+            : `${bookAoVivo} série(s) com book ao vivo (MT5)${bookFechamento ? ` e ${bookFechamento} com oferta de fechamento (COTAHIST)` : ""}. Séries com as duas ofertas e spread razoável são marcadas pelo mid.`
+        }
+      >
+        BOOK{" "}
+        <span className={comBook.length === 0 ? "text-term-dim" : bookAoVivo > 0 ? "text-term-green" : "text-term-cyan"}>
+          {comBook.length}/{chain.options.length}
+        </span>{" "}
+        {bookAoVivo > 0 ? "ao vivo" : comBook.length > 0 ? "fechamento" : "sem oferta"}
+      </span>
 
       <span className="whitespace-nowrap text-term-dim" title="Nenhuma grega vem da fonte; todas são calculadas pelo engine local.">
         GREGAS <span className="text-term-amber">ENGINE LOCAL</span>

@@ -79,9 +79,9 @@ export function MiniChain({ legs }: { legs: Leg[] }) {
         <table className="w-full text-xs">
           <thead className="sticky top-0 bg-term-panel z-10">
             <tr className="border-b border-term-line">
-              <th className="th text-left" colSpan={3}>Call</th>
+              <th className="th text-left" colSpan={4}>Call · bid/ask · últ · IV</th>
               <th className="th text-center bg-term-panel2">K</th>
-              <th className="th text-right" colSpan={3}>Put</th>
+              <th className="th text-right" colSpan={4}>IV · últ · bid/ask · Put</th>
             </tr>
           </thead>
           <tbody>
@@ -107,7 +107,7 @@ export function MiniChain({ legs }: { legs: Leg[] }) {
             })}
             {!rows.length && (
               <tr>
-                <td colSpan={7} className="td text-term-dim py-3">
+                <td colSpan={9} className="td text-term-dim py-3">
                   Sem linhas líquidas na banda — alargue o ±%.
                 </td>
               </tr>
@@ -132,7 +132,7 @@ function SideCells({
   onAdd: (o: OptionQuote, s: 1 | -1) => void;
   align: "left" | "right";
 }) {
-  if (!o) return <td className={`td text-term-dim text-${align}`} colSpan={3}>—</td>;
+  if (!o) return <td className={`td text-term-dim text-${align}`} colSpan={4}>—</td>;
   const stale = o.markQuality === "stale";
   const ageTitle = stale
     ? o.lastTradeAt
@@ -151,6 +151,16 @@ function SideCells({
     </span>
   );
   const last = <span className={clsx("font-semibold", stale && "text-term-dim")}>{fmtNum(o.last)}</span>;
+  // WO-61: bid/ask — ao vivo (MT5) em verde, de fechamento (COTAHIST) em ciano; sem oferta, traço.
+  const temBook = o.bid != null || o.ask != null;
+  const book = (
+    <span
+      className={clsx("text-xxs", !temBook ? "text-term-dim" : o.tickAt ? "text-term-green" : "text-term-cyan")}
+      title={!temBook ? "Sem oferta" : o.tickAt ? `Book ao vivo (MT5) — tick ${o.tickAt.slice(11, 19)}` : `Oferta de fechamento (COTAHIST${o.ofertasData ? ` ${fmtDateBR(o.ofertasData)}` : ""})`}
+    >
+      {temBook ? `${o.bid != null ? fmtNum(o.bid) : "—"}/${o.ask != null ? fmtNum(o.ask) : "—"}` : "—"}
+    </span>
+  );
   const iv = (
     <span className={clsx(stale ? "text-term-dim line-through" : "text-term-gold")} title={ageTitle}>
       {fmtPct(o.iv)}
@@ -159,6 +169,7 @@ function SideCells({
   return align === "left" ? (
     <>
       <td className="td text-left">{btns}</td>
+      <td className="td text-right whitespace-nowrap">{book}</td>
       <td className="td text-right">{last}</td>
       <td className="td text-right">{iv}</td>
     </>
@@ -166,6 +177,7 @@ function SideCells({
     <>
       <td className="td text-right">{iv}</td>
       <td className="td text-right">{last}</td>
+      <td className="td text-right whitespace-nowrap">{book}</td>
       <td className="td text-right">{btns}</td>
     </>
   );

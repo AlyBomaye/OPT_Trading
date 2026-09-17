@@ -436,7 +436,7 @@ export default function PortfolioPage() {
                   <td className="td text-right">
                     {fmtBRL(cp)}
                     {mark.fonte === "mid" && cp != null && (
-                      <span className="tag bg-term-cyan/15 text-term-cyan ml-1" title="Marca = mid entre a melhor oferta de compra e de venda no fechamento (COTAHIST da B3), não o último negócio.">MID</span>
+                      <span className="tag bg-term-cyan/15 text-term-cyan ml-1" title="Marca = mid entre a melhor oferta de compra e de venda — ao vivo pela ponte MT5 ou, sem ela, no fechamento (COTAHIST da B3) —, não o último negócio.">MID</span>
                     )}
                     {mark.stale && cp != null && (
                       <span
