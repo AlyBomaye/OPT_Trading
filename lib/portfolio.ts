@@ -1,6 +1,7 @@
 import { bsGreeks } from "./black-scholes";
 import { pnlAtDay } from "./payoff";
 import type { ChainData, Leg, Position } from "./types";
+import { mesmaSerie } from "./marcacao";
 
 export interface NetGreeks {
   deltaShares: number; // Δ em "ações equivalentes"
@@ -19,7 +20,7 @@ export function netGreeks(positions: Leg[], chain: ChainData | null, r: number):
       out.deltaShares += p.side * p.qty;
       continue;
     }
-    const live = chain.options.find((o) => o.opTicker === p.opTicker);
+    const live = chain.options.find((o) => mesmaSerie(o.opTicker, p.opTicker));
     const iv = live?.iv ?? p.iv;
     const du = live?.du ?? p.du ?? 0;
     if (iv == null || du <= 0 || p.strike == null || !p.type) continue;

@@ -39,6 +39,7 @@ import { curvaSmile, popNoSmile } from "@/lib/smile";
 import { betaVolSpot } from "@/lib/vol-acoplada";
 import { useSerieIv } from "@/lib/hooks/useIvRank";
 import { performanceStats, groupTrades } from "@/lib/performance";
+import { mesmaSerie } from "@/lib/marcacao";
 
 /* ============================================================================
  * Estratégia — a tela onde a operação nasce e é boletada para a carteira.
@@ -270,7 +271,7 @@ function Workbench() {
     setBoletando(true);
     setErroBoleta(null);
     const pernas: PernaRascunho[] = legs.map((l) => {
-      const o = l.kind === "OPTION" ? chain.options.find((x) => x.opTicker === l.opTicker) : undefined;
+      const o = l.kind === "OPTION" ? chain.options.find((x) => mesmaSerie(x.opTicker, l.opTicker)) : undefined;
       const marca = o ? marcaDaSerie(o) : { preco: null, fonte: null };
       return {
         opTicker: l.kind === "OPTION" ? l.opTicker ?? null : null,

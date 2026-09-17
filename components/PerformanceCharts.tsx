@@ -33,6 +33,7 @@ import { allocatedCapital } from "@/lib/portfolio";
 import { sectorOf } from "@/lib/universe";
 import { fmtBRL, fmtCompact, fmtNum, fmtPct } from "@/lib/format";
 import type { ChainData, Position } from "@/lib/types";
+import { mesmaSerie } from "@/lib/marcacao";
 
 interface Props {
   positions: Position[];
@@ -118,7 +119,7 @@ export function PerformanceCharts({
       };
 
       const chain = chainCache[p.underlying];
-      const live = chain?.options?.find((o) => o.opTicker === p.opTicker);
+      const live = chain?.options?.find((o) => mesmaSerie(o.opTicker, p.opTicker));
       const delta = live?.delta ?? p.entryGreeks?.delta ?? 0;
 
       cur.count++;

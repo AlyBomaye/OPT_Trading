@@ -17,6 +17,7 @@ import { julgarEstrutura, resumirCriterios, type Criterio, type Situacao } from 
 import { custosDaOperacao } from "./custos-operacao";
 import type { TabelaCustos } from "./boleta-calculos";
 import type { ChainData, Leg, MetricasLiquidas, StrategyMetrics } from "./types";
+import { mesmaSerie } from "./marcacao";
 
 export interface ItemPrateleira {
   ticker: string;
@@ -69,7 +70,7 @@ function deltaVendido(legs: Leg[], chain: ChainData): number | null {
   let melhor: number | null = null;
   for (const l of legs) {
     if (l.side !== -1 || l.kind !== "OPTION") continue;
-    const q = chain.options.find((o) => o.opTicker === l.opTicker);
+    const q = chain.options.find((o) => mesmaSerie(o.opTicker, l.opTicker));
     if (q?.delta == null) continue;
     if (melhor == null || Math.abs(q.delta) > Math.abs(melhor)) melhor = q.delta;
   }

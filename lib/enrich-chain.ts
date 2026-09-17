@@ -33,6 +33,12 @@ export interface ApiRow {
   expiry: string;
   du: number;
   dte: number;
+  /** WO-61: book ao vivo (só quando a fonte é a ponte MT5). */
+  bid?: number | null;
+  ask?: number | null;
+  mid?: number | null;
+  tickAt?: string | null;
+  diarioProvisorio?: boolean;
 }
 
 export interface ApiBody {
@@ -46,6 +52,12 @@ export interface ApiBody {
   options: ApiRow[];
   sourceGreeksAvailable: boolean;
   error?: string;
+  /** WO-61: de onde a grade veio, e a frase para a barra de veracidade. */
+  fonte?: "mt5" | "opcoes.net.br";
+  fonteDetalhe?: string;
+  spotTickAt?: string | null;
+  stale?: boolean;
+  aviso?: string;
 }
 
 // WO-12: memoização do pricing americano por (opTicker, last, spot, r)
@@ -193,6 +205,12 @@ export function enrich(
       theta,
       vega,
       rho,
+      // WO-61: o book ao vivo passa reto; o COTAHIST de fechamento só entra onde faltar (store).
+      bid: o.bid ?? null,
+      ask: o.ask ?? null,
+      mid: o.mid ?? null,
+      tickAt: o.tickAt ?? null,
+      diarioProvisorio: o.diarioProvisorio ?? false,
     };
   });
 
@@ -208,5 +226,9 @@ export function enrich(
     greeksComputedLocally: !body.sourceGreeksAvailable,
     spotDate: spotDate ?? null,
     cobertura,
+    fonte: body.fonte,
+    fonteDetalhe: body.fonteDetalhe,
+    spotTickAt: body.spotTickAt ?? null,
+    stale: body.stale ?? false,
   };
 }

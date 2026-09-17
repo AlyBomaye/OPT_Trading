@@ -4,7 +4,7 @@ import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import { effectiveDividends, useDividends } from "@/lib/dividends";
 import { enrich, type ApiBody } from "@/lib/enrich-chain";
-import { markFromChain } from "@/lib/marcacao";
+import { codigoSerie, markFromChain, mesmaSerie } from "@/lib/marcacao";
 import { snapshotFromChain, useSnapshots } from "@/lib/snapshots";
 import { sessionInfo, sessionsBetween } from "@/lib/session";
 import type { ChainData, Leg, OptionQuote, Position } from "@/lib/types";
@@ -240,12 +240,18 @@ export const useMarket = create<MarketState>()(
             }
           } catch {}
 
-          // Prioridade de spot: spotOverride > (useOfficialSpot ? officialSpot : null) > body.spot
+          // Prioridade de spot (WO-61): spotOverride > tick ao vivo do MT5 > (useOfficialSpot ?
+          // officialSpot : null) > body.spot derivado. O tick do MT5 é o preço do papel na sessão
+          // do tick (`dataEfetiva`): a regra WO-30 §2.3 continua — prêmio de hoje casa com o tick de
+          // hoje; prêmio antigo casa com o fechamento daquela data em `closesByDate`.
           let effectiveSpot: number | null = null;
           let effectiveSpotDate: string | null = null;
           if (isActive && spotOverride != null) {
             effectiveSpot = spotOverride;
             effectiveSpotDate = null; // override manual não tem data de mercado
+          } else if (body.fonte === "mt5" && body.spot != null && body.spot > 0) {
+            effectiveSpot = body.spot;
+            effectiveSpotDate = body.dataEfetiva ?? null;
           } else if (useOfficialSpot && officialSpot != null) {
             effectiveSpot = officialSpot.price;
             effectiveSpotDate = officialSpot.date;
@@ -267,26 +273,30 @@ export const useMarket = create<MarketState>()(
             closesByDate
           );
           // WO-56: bid/ask/mid de fechamento do COTAHIST da data efetiva, quando a B3 já publicou.
+          // WO-61: só onde a série ainda não tem oferta — o book ao vivo do MT5 vence o fechamento.
           // Sem rede ou sem arquivo, a cadeia segue só com o último negócio — como sempre foi.
-          try {
-            const dataOf = chain.dataEfetiva ?? sess.ultimaSessao;
-            const oRes = await fetch(`/api/cotahist?data=${encodeURIComponent(dataOf)}&ticker=${encodeURIComponent(target)}`, { signal: AbortSignal.timeout(20_000) });
-            if (oRes.ok) {
-              const oj = await oRes.json();
-              if (oj?.ok && oj.series) {
-                for (const o of chain.options) {
-                  // A fonte da cadeia sufixa o ano (PETRI482_2026); o COTAHIST não (PETRI482).
-                  const c = oj.series[o.opTicker.replace(/_\d{4}$/, "")] ?? oj.series[o.opTicker];
-                  if (!c) continue;
-                  o.bid = c.bid ?? null;
-                  o.ask = c.ask ?? null;
-                  o.mid = c.mid ?? null;
-                  o.ofertasData = oj.dataArquivo ?? null;
+          const semOferta = chain.options.filter((o) => o.bid == null || o.ask == null);
+          if (semOferta.length > 0) {
+            try {
+              const dataOf = chain.dataEfetiva ?? sess.ultimaSessao;
+              const oRes = await fetch(`/api/cotahist?data=${encodeURIComponent(dataOf)}&ticker=${encodeURIComponent(target)}`, { signal: AbortSignal.timeout(20_000) });
+              if (oRes.ok) {
+                const oj = await oRes.json();
+                if (oj?.ok && oj.series) {
+                  for (const o of semOferta) {
+                    // A fonte antiga sufixa o ano (PETRI482_2026); o COTAHIST e o MT5 não (PETRI482).
+                    const c = oj.series[codigoSerie(o.opTicker)] ?? oj.series[o.opTicker];
+                    if (!c) continue;
+                    o.bid = c.bid ?? null;
+                    o.ask = c.ask ?? null;
+                    o.mid = c.mid ?? null;
+                    o.ofertasData = oj.dataArquivo ?? null;
+                  }
                 }
               }
+            } catch {
+              /* ofertas são complemento, não requisito */
             }
-          } catch {
-            /* ofertas são complemento, não requisito */
           }
           const cur = get().selectedExpiry;
           const validExpiry = chain.expiries.some((e) => e.date === cur)
@@ -358,7 +368,7 @@ export const useMarket = create<MarketState>()(
                 entryGreeks = { delta: 1, vega: 0, theta: 0 };
               } else {
                 const chain = st.chainCache[l.underlying] ?? st.chain;
-                const o = chain?.ticker === l.underlying ? chain.options.find((x) => x.opTicker === l.opTicker) : undefined;
+                const o = chain?.ticker === l.underlying ? chain.options.find((x) => mesmaSerie(x.opTicker, l.opTicker)) : undefined;
                 entryGreeks = o ? { delta: o.delta, vega: o.vega, theta: o.theta } : undefined;
               }
               return { ...l, id: `pos-${l.id}`, openedAt: new Date().toISOString(), fees: 0, entryGreeks, ...journal };

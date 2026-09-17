@@ -3,7 +3,7 @@ export type ExerciseModel = "A" | "E"; // Americana | Europeia
 /** Qualidade da marcação (WO-5): stale = last < intrínseco ou sem negócios. */
 export type MarkQuality = "fresh" | "ok" | "stale";
 
-/** Uma opção do chain do opcoes.net.br, enriquecida pelo engine local. */
+/** Uma opção do chain (ponte MT5 ou opcoes.net.br), enriquecida pelo engine local. */
 export interface OptionQuote {
   opTicker: string;
   underlying: string;
@@ -44,12 +44,19 @@ export interface OptionQuote {
   theta: number | null;
   vega: number | null;
   rho: number | null;
-  /** WO-56: melhor oferta de compra/venda no fechamento (COTAHIST diário da B3), quando houver. */
+  /**
+   * Melhor oferta de compra/venda: ao vivo pela ponte MT5 (WO-61, `tickAt` preenchido) ou, na
+   * falta dela, a de fechamento do COTAHIST diário da B3 (WO-56, `ofertasData` preenchido).
+   */
   bid?: number | null;
   ask?: number | null;
   mid?: number | null;
-  /** Data do arquivo de ofertas usado. */
+  /** Data do arquivo de ofertas de fechamento usado (só COTAHIST). */
   ofertasData?: string | null;
+  /** ISO do último tick da série (só MT5). */
+  tickAt?: string | null;
+  /** WO-61: negócios/último negócio provisórios (cache diário da ponte ainda completando). */
+  diarioProvisorio?: boolean;
 }
 
 export interface ExpiryInfo {
@@ -85,6 +92,13 @@ export interface ChainData {
   };
   /** Data do fechamento usado como spot de referência, quando veio do histórico. */
   spotDate?: string | null;
+  /** WO-61: de onde a grade veio e a frase da barra de veracidade ("MT5 · Genial · tick 16:54:57"). */
+  fonte?: "mt5" | "opcoes.net.br";
+  fonteDetalhe?: string;
+  /** ISO do tick do papel que deu o spot (só MT5). */
+  spotTickAt?: string | null;
+  /** A rota serviu a última grade boa porque a fonte falhou. */
+  stale?: boolean;
 }
 
 export type Side = 1 | -1; // 1 = compra, -1 = venda

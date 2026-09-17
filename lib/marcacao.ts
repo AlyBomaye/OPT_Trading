@@ -13,6 +13,21 @@ import type { ChainData, Leg, Position } from "./types";
 /** WO-56: spread acima disto (relativo ao mid) e o mid deixa de ser marcação confiável. */
 const SPREAD_MAX_PARA_MID = 0.5;
 
+/**
+ * WO-61 — o código de uma série sem o sufixo de ano.
+ *
+ * O opcoes.net.br sufixa o ano quando o código se repete entre anos (`PETRI482_2026`); o MT5 e o
+ * COTAHIST nomeiam sem sufixo (`PETRI482`). Posições gravadas com uma fonte precisam continuar
+ * casando com a cadeia da outra: toda comparação de código de série passa por aqui.
+ */
+export function codigoSerie(codigo: string): string {
+  return codigo.replace(/_\d{4}$/, "");
+}
+
+export function mesmaSerie(a: string | null | undefined, b: string | null | undefined): boolean {
+  return a != null && b != null && codigoSerie(a) === codigoSerie(b);
+}
+
 /** A marca de uma série: o mid das ofertas de fechamento quando existe e o spread é razoável; senão o último negócio. */
 export function marcaDaSerie(o: { last: number | null; bid?: number | null; ask?: number | null; mid?: number | null } | undefined): { preco: number | null; fonte: "mid" | "ultimo" | null } {
   if (!o) return { preco: null, fonte: null };
@@ -25,7 +40,7 @@ export function marcaDaSerie(o: { last: number | null; bid?: number | null; ask?
 export function markFromChain(pos: Leg, chain: ChainData): number | null {
   if (pos.underlying !== chain.ticker) return null;
   if (pos.kind === "STOCK") return chain.spot;
-  const o = chain.options.find((x) => x.opTicker === pos.opTicker);
+  const o = chain.options.find((x) => mesmaSerie(x.opTicker, pos.opTicker));
   return marcaDaSerie(o).preco;
 }
 
@@ -59,10 +74,10 @@ export function markInfo(pos: Position, chainCache: Record<string, ChainData>): 
     const live = markFromChain(pos, chain);
     if (live != null) {
       // Idade real = a do último negócio da própria série que originou a marca.
-      const q = chain.options.find((o) => o.opTicker === pos.opTicker);
+      const q = chain.options.find((o) => mesmaSerie(o.opTicker, pos.opTicker));
       const { fonte } = pos.kind === "STOCK" ? { fonte: null } : marcaDaSerie(q);
-      // Mid das ofertas de fechamento: a data é a do arquivo da B3, não a do último negócio.
-      const markDate = fonte === "mid" && q?.ofertasData ? q.ofertasData : q?.lastTradeAt ? q.lastTradeAt.slice(0, 10) : null;
+      // Mid: a data é a do tick (MT5) ou a do arquivo de ofertas da B3 — não a do último negócio.
+      const markDate = fonte === "mid" && q?.tickAt ? q.tickAt.slice(0, 10) : fonte === "mid" && q?.ofertasData ? q.ofertasData : q?.lastTradeAt ? q.lastTradeAt.slice(0, 10) : null;
       const agePregoes = markDate ? sessionsBetween(markDate, refSession) : null;
       return {
         price: live,

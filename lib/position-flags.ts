@@ -8,6 +8,7 @@ import { strategyMetrics } from "./payoff";
 import { divsBeforeExpiry, effectiveDividends } from "./dividends";
 import { sectorOf } from "./universe";
 import { fmtBRL, fmtNum, fmtPct } from "./format";
+import { mesmaSerie } from "./marcacao";
 
 export type FlagSeverity = "urgente" | "atencao" | "info";
 export type FlagKind =
@@ -199,7 +200,7 @@ export function evaluateFlags(
     const pnl = unrealizedPnl(p, cp);
     const chain = chainCache[p.underlying];
     const spot = chain?.spot;
-    const liveOpt = p.kind === "OPTION" && chain ? chain.options.find((o) => o.opTicker === p.opTicker) : null;
+    const liveOpt = p.kind === "OPTION" && chain ? chain.options.find((o) => mesmaSerie(o.opTicker, p.opTicker)) : null;
     const totalCost = Math.abs(p.price * p.qty);
 
     /**

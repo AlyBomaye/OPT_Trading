@@ -1,18 +1,28 @@
 import { NextRequest, NextResponse } from "next/server";
 import { gravarCache, lerCache } from "@/lib/cache-disco";
+import { BANDA_VARREDURA_PCT, ESPERA_CADEIA_COMPLETA_MS, ESPERA_CADEIA_VARREDURA_MS, cadeiaMt5, detalheFonteMt5, linhaDaSerie, montarExpiries, saudePonte, type LinhaCadeia } from "@/lib/fonte-mt5";
+import { sessionInfo } from "@/lib/session";
 
 /**
- * Proxy do opcoes.net.br — mesma fonte do Power Query da planilha
- * (fnGetOpcoes). Busca todos os vencimentos em paralelo e devolve linhas
- * limpas e tipadas. Cache em memória de 60s por ticker.
+ * A grade de opções — GET /api/opcoes?ticker=&maxExpiries=&soMensal=
  *
- * Obs.: para requisições anônimas a fonte "borra" IV e gregas (volblur.png).
- * O front recalcula tudo localmente via Black-Scholes a partir do prêmio.
+ * WO-61: a fonte primária é a PONTE MT5 (`scripts/mt5-ponte.py`, terminal MetaTrader 5 da
+ * corretora, aberto e logado nesta máquina): cadeia em tempo real com bid/ask/último/hora do tick.
+ * Se a ponte não responde ou o terminal está deslogado, o fluxo antigo segue INTACTO:
+ * opcoes.net.br (proxy anônimo, mesma fonte do Power Query da planilha) e, falhando ele, a última
+ * grade boa em disco, rotulada. O corpo diz de onde veio (`fonte`, `fonteDetalhe`) e o header
+ * `x-fonte` também. Nenhum chamador precisou mudar.
+ *
+ * Obs.: para requisições anônimas o opcoes.net.br "borra" IV e gregas (volblur.png), e o MT5 não
+ * as entrega. O engine local recalcula tudo via Black-Scholes a partir do prêmio, nas duas fontes.
  */
 
 const BASE = "https://opcoes.net.br/listaopcoes/completa";
 const HEADERS = { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)" };
 const CACHE_TTL_MS = 60_000;
+/** Com o MT5 o dado é ao vivo: cache curto; mais curto ainda enquanto a ponte completa o cache diário. */
+const CACHE_TTL_MT5_MS = 15_000;
+const CACHE_TTL_MT5_PENDENTE_MS = 5_000;
 
 /**
  * WO-37 §B: esta rota não tinha timeout algum.
@@ -110,26 +120,10 @@ interface RawExpiry {
 
 type RawRow = (string | number | null)[];
 
-interface CleanRow {
-  opTicker: string;
-  type: "CALL" | "PUT";
-  model: "A" | "E";
-  moneyness: "ITM" | "ATM" | "OTM" | null;
-  strike: number;
-  distStrikePct: number | null;
-  premioPctCot: number | null;
-  last: number | null;
-  trades: number | null;
-  volumeFin: number | null;
-  lastTradeAt: string | null;
-  sourceIv: number | null;
-  sourceDelta: number | null;
-  expiry: string;
-  du: number;
-  dte: number;
-}
+/** WO-61: a mesma linha para as duas fontes; bid/ask/mid/tickAt só vêm do MT5. */
+type CleanRow = LinhaCadeia;
 
-const cache = new Map<string, { at: number; body: unknown }>();
+const cache = new Map<string, { at: number; body: unknown; ttl?: number }>();
 
 function num(v: unknown): number | null {
   if (v == null) return null;
@@ -209,7 +203,7 @@ function servirStale(ticker: string, aviso: string): NextResponse | null {
   if (!anterior) return null;
   return NextResponse.json(
     { ...anterior.body, stale: true, aviso: `${aviso} Servindo a última grade boa (${anterior.origem}), de ${anterior.body.dataEfetiva ?? "data desconhecida"}.` },
-    { headers: { "x-cache": `STALE-${anterior.origem.toUpperCase()}` } }
+    { headers: { "x-cache": `STALE-${anterior.origem.toUpperCase()}`, "x-fonte": String(anterior.body.fonte ?? "opcoes.net.br") } }
   );
 }
 
@@ -258,8 +252,49 @@ export async function GET(req: NextRequest) {
   // Cache em memória por (ticker, recorte): a grade completa e a da varredura são corpos diferentes.
   const chaveMem = soMensal || maxExp !== 8 ? `${ticker}|${soMensal ? "m" : "t"}${maxExp}` : ticker;
   const hit = cache.get(chaveMem);
-  if (hit && Date.now() - hit.at < CACHE_TTL_MS) {
-    return NextResponse.json(hit.body, { headers: { "x-cache": "HIT" } });
+  if (hit && Date.now() - hit.at < (hit.ttl ?? CACHE_TTL_MS)) {
+    return NextResponse.json(hit.body, { headers: { "x-cache": "HIT", "x-fonte": String((hit.body as any)?.fonte ?? "") } });
+  }
+
+  // WO-61: a ponte MT5 primeiro. Sem ela (ou terminal deslogado), tudo abaixo segue como sempre.
+  // Varredura (1º mensal): só a banda em torno do dinheiro — é o que ela lê, e poupa o Market Watch.
+  const varredura = soMensal || maxExp <= 3;
+  const viaMt5 = await cadeiaMt5(ticker, soMensal, maxExp, varredura ? ESPERA_CADEIA_VARREDURA_MS : ESPERA_CADEIA_COMPLETA_MS, varredura ? BANDA_VARREDURA_PCT : undefined);
+  if (viaMt5) {
+    const sess = sessionInfo();
+    const expiries = montarExpiries(viaMt5.expiries, sess.ultimaSessao);
+    const porData = new Map(expiries.map((e) => [e.date, e]));
+    const options: CleanRow[] = [];
+    for (const serie of viaMt5.options) {
+      const exp = porData.get(serie.expiry);
+      if (exp) options.push(linhaDaSerie(serie, viaMt5.spot, viaMt5.sessao, exp));
+    }
+    let dataMaisRecente: string | null = null;
+    for (const o of options) if (o.lastTradeAt && (!dataMaisRecente || o.lastTradeAt > dataMaisRecente)) dataMaisRecente = o.lastTradeAt;
+    const nowIso = new Date().toISOString();
+    const saude = await saudePonte();
+    const body = {
+      ticker,
+      spot: viaMt5.spot,
+      updatedAt: nowIso,
+      fetchedAt: nowIso,
+      dataEfetiva: viaMt5.sessao,
+      dataMaisRecente,
+      expiries,
+      options,
+      sourceGreeksAvailable: false,
+      falhas: [] as string[],
+      fonte: "mt5" as const,
+      fonteDetalhe: detalheFonteMt5(viaMt5.spotTickAt, saude.servidor),
+      spotTickAt: viaMt5.spotTickAt,
+      spotFonte: viaMt5.spotFonte,
+      // Séries cujo cache diário (negócios, último negócio) a ponte ainda está completando (linhas provisórias).
+      diarioPendente: viaMt5.diario.pendentes,
+      bandaPct: viaMt5.bandaPct ?? null,
+    };
+    cache.set(chaveMem, { at: Date.now(), body, ttl: viaMt5.diario.pendentes > 0 ? CACHE_TTL_MT5_PENDENTE_MS : CACHE_TTL_MT5_MS });
+    if (options.length > 0 && !soMensal && maxExp >= 8) gravarCache(CHAVE_DISCO(ticker), body, viaMt5.sessao);
+    return NextResponse.json(body, { headers: { "x-cache": "MISS", "x-fonte": "mt5", "x-upstream": "0", "x-ponte-ms": String(viaMt5.duracaoMs) } });
   }
 
   // Bloqueado pela fonte: nem tenta. Última grade boa, rotulada — ou o motivo, com a hora.
@@ -403,11 +438,13 @@ export async function GET(req: NextRequest) {
       sourceGreeksAvailable: options.some((o) => o.sourceIv != null),
       // Grade parcial é servida, mas nomeada: quem lê precisa saber que faltou vencimento.
       falhas: falhasPorVencimento,
+      fonte: "opcoes.net.br" as const,
+      fonteDetalhe: "opcoes.net.br · último negócio (proxy anônimo)",
     };
     cache.set(chaveMem, { at: Date.now(), body });
     // Em disco só a grade completa: é ela que vale como "última grade boa" para qualquer recorte.
     if (options.length > 0 && !soMensal && maxExp >= 8) gravarCache(CHAVE_DISCO(ticker), body, dataEfetiva);
-    return NextResponse.json(body, { headers: { "x-cache": "MISS", "x-upstream": String(requisicoes) } });
+    return NextResponse.json(body, { headers: { "x-cache": "MISS", "x-fonte": "opcoes.net.br", "x-upstream": String(requisicoes) } });
   } catch (err: any) {
     if (err instanceof ErroPausa) {
       // A fonte pediu 15 s a 3 min. Com grade boa guardada, ela vai agora, rotulada; sem, espera-se

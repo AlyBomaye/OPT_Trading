@@ -28,6 +28,7 @@ import { lognormalPdf } from "./black-scholes";
 import { acertoMinimoParaEmpatar } from "./amostra";
 import { REALIZAR_PCT_LUCRO_MAXIMO, DU_ROLAR, DU_FECHAR, TETO_POR_OPERACAO, EXPOSICAO_MIN, EXPOSICAO_MAX } from "./metodo";
 import type { ChainData, Leg } from "./types";
+import { mesmaSerie } from "./marcacao";
 
 /** Onde o método manda realizar, traduzido para um preço do ativo. */
 export interface AlvoRealizacao {
@@ -335,7 +336,7 @@ export function custoExecucaoSpread(legs: Leg[], chain: ChainData | null, valorE
   let semOferta = 0;
   for (const l of legs) {
     if (l.kind !== "OPTION" || !l.opTicker) continue;
-    const q = chain.options.find((o) => o.opTicker === l.opTicker);
+    const q = chain.options.find((o) => mesmaSerie(o.opTicker, l.opTicker));
     const bid = q?.bid ?? null;
     const ask = q?.ask ?? null;
     if (bid == null || ask == null || !(ask >= bid) || !(bid > 0)) { semOferta++; continue; }
