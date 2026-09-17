@@ -38,14 +38,38 @@ const VENCIMENTO_TIMEOUT_MS = 12_000;
  *
  *   1. FILA COM ESPAÇAMENTO: toda requisição à fonte sai por uma fila única, com pelo menos
  *      ESPACO_MIN_MS entre uma e outra, independentemente de quantos chamadores existam.
- *   2. RESPEITO AO 429: ao receber 429, a rota lê o Retry-After e não toca na fonte até lá —
- *      insistir só estende o bloqueio. Enquanto isso serve o último dado bom, rotulado.
+ *   2. RESPEITO AO 429: a fonte tem dois 429. O CURTO (Retry-After de 1–10 s, medido: mesmo a
+ *      1 requisição/s ele aparece de vez em quando) pausa a fila pelo tempo pedido e a MESMA
+ *      requisição é repetida — o chamador não vê falha, só demora. O LONGO (Retry-After de
+ *      minutos, depois de uma rajada) bloqueia a rota: nada é pedido à fonte até lá — insistir só
+ *      estende a pena — e o último dado bom é servido, rotulado.
+ *   4. VARREDURAS PEDEM POUCO: `soMensal=1&maxExpiries=1` traz só o 1º vencimento mensal; e o
+ *      catálogo já vem com as linhas do vencimento que a fonte marca como selecionado, que
+ *      então não é pedido de novo. Um papel na varredura custa 1–2 requisições, não 9.
  *   3. ÚLTIMO DADO BOM EM DISCO por papel (`chain-<TICKER>`): quando a fonte falha ou está
  *      bloqueada, a grade anterior volta com `stale: true`, `fetchedAt` e `dataEfetiva` originais
  *      — a barra de veracidade mostra a defasagem em vez de a tela ficar vazia.
  */
-const ESPACO_MIN_MS = 300;
+const ESPACO_MIN_MS = 250;
 const BLOQUEIO_PADRAO_S = 900;
+/**
+ * Retry-After até PAUSA_INLINE_MAX_S: a fila espera e a requisição é repetida ali mesmo (o chamador
+ * só vê demora). Entre isso e PAUSA_CURTA_MAX_S: a rota serve a última grade boa se tiver
+ * (esperar 1–3 min numa tela é pior que dado rotulado como velho) e, se não tiver, espera e tenta
+ * de novo. Acima de PAUSA_CURTA_MAX_S: bloqueio longo — nada é pedido à fonte até lá.
+ * Medido em 17/09/2026: a fonte pede de 1 s a ~90 s depois de uma varredura, e ~75 min depois
+ * de uma rajada.
+ */
+const PAUSA_INLINE_MAX_S = 15;
+const PAUSA_CURTA_MAX_S = 180;
+const TENTATIVAS_429 = 5;
+
+/** A fonte pediu uma pausa maior que a inline: quem decide se espera ou serve o dado antigo é o GET. */
+class ErroPausa extends Error {
+  constructor(public readonly segundos: number) {
+    super(`opcoes.net.br pediu pausa de ${segundos}s (HTTP 429)`);
+  }
+}
 const CHAVE_DISCO = (ticker: string) => `chain-${ticker}`;
 const TTL_DISCO_MS = 5 * 24 * 3_600_000;
 
@@ -53,11 +77,13 @@ let filaUpstream: Promise<void> = Promise.resolve();
 let ultimoUpstreamEm = 0;
 let bloqueadoAte = 0;
 let motivoBloqueio = "";
+/** Pausa curta pedida pela fonte (429 com Retry-After de segundos): a fila inteira espera. */
+let pausaAte = 0;
 
-/** Libera a próxima requisição à fonte só depois de ESPACO_MIN_MS da anterior. */
+/** Libera a próxima requisição à fonte só depois de ESPACO_MIN_MS da anterior e da pausa curta vigente. */
 function agendarUpstream<T>(fn: () => Promise<T>): Promise<T> {
   const vez = filaUpstream.then(async () => {
-    const espera = ultimoUpstreamEm + ESPACO_MIN_MS - Date.now();
+    const espera = Math.max(ultimoUpstreamEm + ESPACO_MIN_MS, pausaAte) - Date.now();
     if (espera > 0) await new Promise((r) => setTimeout(r, espera));
     ultimoUpstreamEm = Date.now();
   });
@@ -135,26 +161,38 @@ function parseTradeDate(val: unknown): string | null {
 }
 
 async function fetchJson(params: Record<string, string>, timeoutMs: number): Promise<any> {
-  const bloqueio = bloqueioVigente();
-  if (bloqueio) throw new Error(bloqueio);
   const url = `${BASE}?${new URLSearchParams(params)}`;
-  return agendarUpstream(async () => {
-    const res = await fetch(url, {
-      headers: HEADERS,
-      cache: "no-store",
-      signal: AbortSignal.timeout(timeoutMs),
+  for (let tentativa = 1; tentativa <= TENTATIVAS_429; tentativa++) {
+    const bloqueio = bloqueioVigente();
+    if (bloqueio) throw new Error(bloqueio);
+    const resultado = await agendarUpstream(async () => {
+      const res = await fetch(url, {
+        headers: HEADERS,
+        cache: "no-store",
+        signal: AbortSignal.timeout(timeoutMs),
+      });
+      if (res.status === 429) {
+        const retry = Number(res.headers.get("retry-after"));
+        const segundos = Number.isFinite(retry) && retry > 0 ? retry : BLOQUEIO_PADRAO_S;
+        if (segundos <= PAUSA_CURTA_MAX_S) {
+          // Pausa curta: a fila inteira espera o que a fonte pediu (+0,5 s de folga). Até
+          // PAUSA_INLINE_MAX_S a requisição é repetida aqui mesmo; acima, o GET decide.
+          pausaAte = Date.now() + segundos * 1000 + 500;
+          if (segundos > PAUSA_INLINE_MAX_S) throw new ErroPausa(segundos);
+          return { repetir: true as const, segundos };
+        }
+        bloqueadoAte = Date.now() + segundos * 1000;
+        motivoBloqueio = (await res.text().catch(() => "")).trim().slice(0, 120);
+        console.warn(`[opcoes] 429 LONGO da fonte; Retry-After ${segundos}s — sem requisições até ${new Date(bloqueadoAte).toISOString()}`);
+        throw new Error(`opcoes.net.br HTTP 429 (bloqueado por ${Math.round(segundos / 60)} min)`);
+      }
+      if (!res.ok) throw new Error(`opcoes.net.br HTTP ${res.status}`);
+      return { repetir: false as const, json: await res.json() };
     });
-    if (res.status === 429) {
-      const retry = Number(res.headers.get("retry-after"));
-      const segundos = Number.isFinite(retry) && retry > 0 ? retry : BLOQUEIO_PADRAO_S;
-      bloqueadoAte = Date.now() + segundos * 1000;
-      motivoBloqueio = (await res.text().catch(() => "")).trim().slice(0, 120);
-      console.warn(`[opcoes] 429 da fonte; Retry-After ${segundos}s — sem requisições até ${new Date(bloqueadoAte).toISOString()}`);
-      throw new Error(`opcoes.net.br HTTP 429 (bloqueado por ${Math.round(segundos / 60)} min)`);
-    }
-    if (!res.ok) throw new Error(`opcoes.net.br HTTP ${res.status}`);
-    return res.json();
-  });
+    if (!resultado.repetir) return resultado.json;
+    if (tentativa === TENTATIVAS_429) throw new Error(`opcoes.net.br HTTP 429 repetido ${TENTATIVAS_429} vezes (pausas de ${resultado.segundos}s)`);
+  }
+  throw new Error("opcoes.net.br: sem resposta");
 }
 
 /** O último dado bom deste papel: memória (mesmo vencida) ou disco. */
@@ -180,11 +218,46 @@ function calDays(iso: string): number {
   return Math.max(0, Math.round((d - Date.now()) / 86_400_000));
 }
 
+/** Linhas cruas de um vencimento → linhas limpas. */
+function linhasDe(rows: RawRow[], exp: { date: string; du: number; dte: number }): CleanRow[] {
+  return rows
+    .map((r): CleanRow | null => {
+      const opTicker = String(r[0] ?? "");
+      const type = r[2] === "CALL" || r[2] === "PUT" ? r[2] : null;
+      const strike = num(r[5]);
+      if (!opTicker || !type || strike == null) return null;
+      const mRaw = String(r[4] ?? "");
+      return {
+        opTicker,
+        type,
+        model: r[3] === "A" ? "A" : "E",
+        moneyness: mRaw === "ITM" || mRaw === "ATM" || mRaw === "OTM" ? mRaw : null,
+        strike,
+        distStrikePct: num(r[6]),
+        premioPctCot: num(r[7]),
+        last: num(r[8]),
+        trades: num(r[9]),
+        volumeFin: num(r[10]),
+        lastTradeAt: parseTradeDate(r[11]),
+        sourceIv: num(r[12]),
+        sourceDelta: num(r[13]),
+        expiry: exp.date,
+        du: exp.du,
+        dte: exp.dte,
+      };
+    })
+    .filter((x): x is CleanRow => x != null);
+}
+
 export async function GET(req: NextRequest) {
   const ticker = (req.nextUrl.searchParams.get("ticker") ?? "PETR4").toUpperCase().trim();
   const maxExp = Number(req.nextUrl.searchParams.get("maxExpiries") ?? 8);
+  // Varreduras: só vencimentos mensais (o 1º é o que a Watchlist, o setorial e o iv-sync leem).
+  const soMensal = req.nextUrl.searchParams.get("soMensal") === "1";
 
-  const hit = cache.get(ticker);
+  // Cache em memória por (ticker, recorte): a grade completa e a da varredura são corpos diferentes.
+  const chaveMem = soMensal || maxExp !== 8 ? `${ticker}|${soMensal ? "m" : "t"}${maxExp}` : ticker;
+  const hit = cache.get(chaveMem);
   if (hit && Date.now() - hit.at < CACHE_TTL_MS) {
     return NextResponse.json(hit.body, { headers: { "x-cache": "HIT" } });
   }
@@ -197,18 +270,25 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: bloqueio, bloqueadoAte: new Date(bloqueadoAte).toISOString() }, { status: 503 });
   }
 
+  for (let rodada = 1; rodada <= 2; rodada++) {
   try {
+    // `cotacoes: "true"` no catálogo traz, na mesma resposta, as linhas do vencimento que a fonte
+    // marca como selecionado — uma requisição a menos sempre que ele estiver no recorte pedido.
     const cat = await fetchJson(
-      { idAcao: ticker, listarVencimentos: "true", cotacoes: "false" },
+      { idAcao: ticker, listarVencimentos: "true", cotacoes: "true" },
       CATALOGO_TIMEOUT_MS
     );
     const rawExpiries: RawExpiry[] = cat?.data?.vencimentos ?? [];
     if (!rawExpiries.length) {
       return NextResponse.json({ error: `Sem vencimentos para ${ticker}` }, { status: 404 });
     }
+    const selecionado = rawExpiries.find((e) => e.selected)?.value ?? null;
+    const linhasDoCatalogo: RawRow[] = selecionado && Array.isArray(cat?.data?.cotacoesOpcoes) ? cat.data.cotacoesOpcoes : [];
+    let requisicoes = 1;
 
     const expiries = rawExpiries
       .filter((e) => !("disabled" in e) || !e.disabled)
+      .filter((e) => !soMensal || e.dataAttributes?.m === "1")
       .slice(0, maxExp)
       .map((e) => ({
         date: e.value,
@@ -225,7 +305,9 @@ export async function GET(req: NextRequest) {
 
     const perExpiry = await Promise.all(
       expiries.map(async (exp) => {
+        if (exp.date === selecionado && linhasDoCatalogo.length > 0) return linhasDe(linhasDoCatalogo, exp);
         try {
+          requisicoes++;
           const j = await fetchJson(
             {
               idAcao: ticker,
@@ -236,32 +318,9 @@ export async function GET(req: NextRequest) {
             VENCIMENTO_TIMEOUT_MS
           );
           const rows: RawRow[] = j?.data?.cotacoesOpcoes ?? [];
-          return rows.map((r): CleanRow | null => {
-            const opTicker = String(r[0] ?? "");
-            const type = r[2] === "CALL" || r[2] === "PUT" ? r[2] : null;
-            const strike = num(r[5]);
-            if (!opTicker || !type || strike == null) return null;
-            const mRaw = String(r[4] ?? "");
-            return {
-              opTicker,
-              type,
-              model: r[3] === "A" ? "A" : "E",
-              moneyness: mRaw === "ITM" || mRaw === "ATM" || mRaw === "OTM" ? mRaw : null,
-              strike,
-              distStrikePct: num(r[6]),
-              premioPctCot: num(r[7]),
-              last: num(r[8]),
-              trades: num(r[9]),
-              volumeFin: num(r[10]),
-              lastTradeAt: parseTradeDate(r[11]),
-              sourceIv: num(r[12]),
-              sourceDelta: num(r[13]),
-              expiry: exp.date,
-              du: exp.du,
-              dte: exp.dte,
-            };
-          }).filter((x): x is CleanRow => x != null);
+          return linhasDe(rows, exp);
         } catch (err: any) {
+          if (err instanceof ErroPausa) throw err;
           const causa = /timeout|abort/i.test(String(err?.message ?? err))
             ? `tempo esgotado (${VENCIMENTO_TIMEOUT_MS / 1000}s)`
             : String(err?.message ?? "falha desconhecida");
@@ -345,10 +404,21 @@ export async function GET(req: NextRequest) {
       // Grade parcial é servida, mas nomeada: quem lê precisa saber que faltou vencimento.
       falhas: falhasPorVencimento,
     };
-    cache.set(ticker, { at: Date.now(), body });
-    if (options.length > 0) gravarCache(CHAVE_DISCO(ticker), body, dataEfetiva);
-    return NextResponse.json(body, { headers: { "x-cache": "MISS" } });
+    cache.set(chaveMem, { at: Date.now(), body });
+    // Em disco só a grade completa: é ela que vale como "última grade boa" para qualquer recorte.
+    if (options.length > 0 && !soMensal && maxExp >= 8) gravarCache(CHAVE_DISCO(ticker), body, dataEfetiva);
+    return NextResponse.json(body, { headers: { "x-cache": "MISS", "x-upstream": String(requisicoes) } });
   } catch (err: any) {
+    if (err instanceof ErroPausa) {
+      // A fonte pediu 15 s a 3 min. Com grade boa guardada, ela vai agora, rotulada; sem, espera-se
+      // a pausa uma vez e tenta-se de novo — só depois disso é falha.
+      const stale = servirStale(ticker, `opcoes.net.br pediu pausa de ${err.segundos}s (HTTP 429).`);
+      if (stale) return stale;
+      if (rodada === 1) {
+        await new Promise((r) => setTimeout(r, Math.max(0, pausaAte - Date.now())));
+        continue;
+      }
+    }
     const msg = String(err?.message ?? err);
     const foiTimeout = /timeout|abort/i.test(msg);
     const erro = foiTimeout
@@ -358,4 +428,6 @@ export async function GET(req: NextRequest) {
     if (stale) return stale;
     return NextResponse.json({ error: erro, bloqueadoAte: bloqueadoAte > Date.now() ? new Date(bloqueadoAte).toISOString() : undefined }, { status: 502 });
   }
+  }
+  return NextResponse.json({ error: "opcoes.net.br: sem resposta" }, { status: 502 });
 }

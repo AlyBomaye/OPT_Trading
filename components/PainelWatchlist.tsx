@@ -99,8 +99,8 @@ async function scanTicker(ticker: string, r: number): Promise<WatchRow> {
     hv21: null,
   };
   try {
-    // 17/09/2026: a varredura só precisa do ATM do 1º mensal — 3 vencimentos bastam e poupam a fonte (429).
-    const opRes = await fetch(`/api/opcoes?ticker=${encodeURIComponent(ticker)}&maxExpiries=3`);
+    // 17/09/2026: a varredura só precisa do ATM do 1º mensal — o 1º mensal basta (soMensal=1&maxExpiries=1) e poupam a fonte (429).
+    const opRes = await fetch(`/api/opcoes?ticker=${encodeURIComponent(ticker)}&soMensal=1&maxExpiries=1`);
     const op: OpBody = await opRes.json();
     if (opRes.ok && !op.error) {
       base.spot = op.spot;

@@ -53,8 +53,8 @@ export async function scanTicker(ticker: string, r = 0.15): Promise<WatchRowLike
   };
 
   try {
-    // 17/09/2026: 3 vencimentos bastam para o ATM e poupam a fonte (429).
-    const opRes = await fetch(`/api/opcoes?ticker=${encodeURIComponent(ticker)}&maxExpiries=3`, {
+    // 17/09/2026: o 1º mensal basta (soMensal=1&maxExpiries=1) para o ATM e poupam a fonte (429).
+    const opRes = await fetch(`/api/opcoes?ticker=${encodeURIComponent(ticker)}&soMensal=1&maxExpiries=1`, {
       signal: AbortSignal.timeout(VARREDURA_TIMEOUT_MS),
     });
     if (opRes.ok) {
