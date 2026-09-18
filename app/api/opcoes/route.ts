@@ -23,6 +23,13 @@ const CACHE_TTL_MS = 60_000;
 /** Com o MT5 o dado é ao vivo: cache curto; mais curto ainda enquanto a ponte completa o cache diário. */
 const CACHE_TTL_MT5_MS = 15_000;
 const CACHE_TTL_MT5_PENDENTE_MS = 5_000;
+/**
+ * 18/09/2026 — o catálogo do servidor da Genial é incompleto para papéis menos líquidos: medido
+ * no vencimento de 16/10, CSNA3, CMIG4, BRKM5 e JHSF3 têm 0 séries e CASH3 tem 2 (o opcoes.net.br
+ * lista 138 para CSNA3). Cadeia do MT5 com menos séries que isto, no recorte pedido, não é resposta:
+ * a reserva vale. Reiniciar o terminal não muda o catálogo (testado).
+ */
+const MINIMO_SERIES_MT5 = 6;
 
 /**
  * WO-37 §B: esta rota não tinha timeout algum.
@@ -260,10 +267,8 @@ export async function GET(req: NextRequest) {
   // Varredura (1º mensal): só a banda em torno do dinheiro — é o que ela lê, e poupa o Market Watch.
   const varredura = soMensal || maxExp <= 3;
   const respostaMt5 = await cadeiaMt5(ticker, soMensal, maxExp, varredura ? ESPERA_CADEIA_VARREDURA_MS : ESPERA_CADEIA_COMPLETA_MS, varredura ? BANDA_VARREDURA_PCT : undefined);
-  // 18/09/2026: o catálogo do terminal pode estar incompleto (CSNA3 tinha 4 das 138 séries de outubro;
-  // o total de símbolos não mudava entre dias). Cadeia vazia do MT5 não é resposta — é a reserva que vale.
-  const viaMt5 = respostaMt5 && respostaMt5.options.length > 0 ? respostaMt5 : null;
-  if (respostaMt5 && !viaMt5) console.warn(`[opcoes] MT5 sem séries para ${ticker} (catálogo do terminal incompleto?) — usando opcoes.net.br`);
+  const viaMt5 = respostaMt5 && respostaMt5.options.length >= MINIMO_SERIES_MT5 ? respostaMt5 : null;
+  if (respostaMt5 && !viaMt5) console.warn(`[opcoes] MT5 com ${respostaMt5.options.length} série(s) para ${ticker} (catálogo da corretora incompleto) — usando opcoes.net.br`);
   if (viaMt5) {
     const sess = sessionInfo();
     const expiries = montarExpiries(viaMt5.expiries, sess.ultimaSessao);

@@ -259,8 +259,10 @@ e `fonte-mt5`; README cita `MetaTrader5`; nenhum arquivo do repo contém a conta
 - **Catálogo do terminal incompleto (18/09/2026, medido)**: CSNA3 tinha 4 das 138 séries de 16/10 que o
   opcoes.net.br lista (e as 4 eram registros velhos, com a própria série como base); PETR4 tinha 371
   contra 448; `symbols_total` não mudou entre 17 e 18/09. É do lado do terminal/corretora (ressincronizar
-  fechando e reabrindo o MT5). A rota passou a tratar cadeia vazia do MT5 como sem resposta e cai no
-  opcoes.net.br; cadeia parcial ainda é servida como MT5 — limite conhecido.
+  fechando e reabrindo o MT5). Reiniciar o terminal não mudou nada (testado às 18:31). Cobertura medida em 16/10: 24 papéis
+  com ≥ 20 séries, CASH3 com 2, CSNA3/CMIG4/BRKM5/JHSF3 com 0. A rota trata cadeia do MT5 com menos
+  de 6 séries no recorte como sem resposta e cai no opcoes.net.br; cadeia parcial (PETR4 371 de 448)
+  ainda é servida como MT5 — limite conhecido, candidato a "lista do opcoes.net.br + book do MT5".
 - O catálogo do MT5 traz séries vencidas desde 2022 e instrumentos de exercício (`PETRI499E`, base =
   a própria opção); AZUL4/GOLL4 aparecem em 57 "séries" que são só esses instrumentos.
 
