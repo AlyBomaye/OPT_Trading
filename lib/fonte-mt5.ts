@@ -183,9 +183,16 @@ function diasCorridos(iso: string, agora: Date): number {
   return Math.max(0, Math.round((d - agora.getTime()) / 86_400_000));
 }
 
-/** As datas da ponte → `ExpiryInfo` com mensal/semanal, du (pregões) e dte (dias corridos). */
+/**
+ * As datas da ponte → `ExpiryInfo` com mensal/semanal, du (pregões) e dte (dias corridos).
+ *
+ * 18/09/2026: a série que vence NA sessão corrente fica de fora. O MT5 a lista até o fim do dia
+ * (`expiration_time` = 23:59:59), mas com du = 0 não há IV nem gregas a extrair — a varredura
+ * pegava o "1º mensal" vencendo hoje e a Watchlist inteira saía sem IV. O 1º mensal do dia do
+ * vencimento é o do mês seguinte, como a fonte antiga já fazia.
+ */
 export function montarExpiries(datas: string[], hojeIso: string, agora = new Date()): ExpiryInfo[] {
-  return datas.map((date) => {
+  return datas.filter((date) => date > hojeIso).map((date) => {
     const mensal = ehMensal(date, datas);
     const dia = Number(date.slice(8, 10));
     const [d, m] = date.split("-").slice(1).reverse();
