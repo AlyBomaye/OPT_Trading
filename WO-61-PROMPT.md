@@ -256,6 +256,11 @@ e `fonte-mt5`; README cita `MetaTrader5`; nenhum arquivo do repo contém a conta
   a varredura pegava esse "1º mensal" com du 0 e a Watchlist inteira saía sem IV. Ponte e conversão
   passaram a descartar a série que vence na sessão corrente — o 1º mensal do dia do vencimento é o
   do mês seguinte (16/10, du 20).
+- **Catálogo do terminal incompleto (18/09/2026, medido)**: CSNA3 tinha 4 das 138 séries de 16/10 que o
+  opcoes.net.br lista (e as 4 eram registros velhos, com a própria série como base); PETR4 tinha 371
+  contra 448; `symbols_total` não mudou entre 17 e 18/09. É do lado do terminal/corretora (ressincronizar
+  fechando e reabrindo o MT5). A rota passou a tratar cadeia vazia do MT5 como sem resposta e cai no
+  opcoes.net.br; cadeia parcial ainda é servida como MT5 — limite conhecido.
 - O catálogo do MT5 traz séries vencidas desde 2022 e instrumentos de exercício (`PETRI499E`, base =
   a própria opção); AZUL4/GOLL4 aparecem em 57 "séries" que são só esses instrumentos.
 

@@ -259,7 +259,11 @@ export async function GET(req: NextRequest) {
   // WO-61: a ponte MT5 primeiro. Sem ela (ou terminal deslogado), tudo abaixo segue como sempre.
   // Varredura (1º mensal): só a banda em torno do dinheiro — é o que ela lê, e poupa o Market Watch.
   const varredura = soMensal || maxExp <= 3;
-  const viaMt5 = await cadeiaMt5(ticker, soMensal, maxExp, varredura ? ESPERA_CADEIA_VARREDURA_MS : ESPERA_CADEIA_COMPLETA_MS, varredura ? BANDA_VARREDURA_PCT : undefined);
+  const respostaMt5 = await cadeiaMt5(ticker, soMensal, maxExp, varredura ? ESPERA_CADEIA_VARREDURA_MS : ESPERA_CADEIA_COMPLETA_MS, varredura ? BANDA_VARREDURA_PCT : undefined);
+  // 18/09/2026: o catálogo do terminal pode estar incompleto (CSNA3 tinha 4 das 138 séries de outubro;
+  // o total de símbolos não mudava entre dias). Cadeia vazia do MT5 não é resposta — é a reserva que vale.
+  const viaMt5 = respostaMt5 && respostaMt5.options.length > 0 ? respostaMt5 : null;
+  if (respostaMt5 && !viaMt5) console.warn(`[opcoes] MT5 sem séries para ${ticker} (catálogo do terminal incompleto?) — usando opcoes.net.br`);
   if (viaMt5) {
     const sess = sessionInfo();
     const expiries = montarExpiries(viaMt5.expiries, sess.ultimaSessao);
