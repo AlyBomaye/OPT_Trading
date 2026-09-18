@@ -390,7 +390,8 @@ def aquecer_papel(ticker: str, so_mensal: bool, max_exp: int, banda: float | Non
     agora = agora_servidor()
     todas = mt5.symbols_get(f"{ticker[:4]}*") or []
     vigentes = [s for s in todas if s.option_strike > 0 and s.expiration_time >= agora and s.basis == ticker]
-    datas = sorted({data_servidor(s.expiration_time) for s in vigentes})
+    sessao = data_servidor(t.time) if t and t.time else data_servidor(agora)
+    datas = sorted({data_servidor(s.expiration_time) for s in vigentes if data_servidor(s.expiration_time) > sessao})
     if so_mensal:
         datas = [d for d in datas if e_mensal_aprox(d, datas)]
     conjunto = set(datas[:max_exp])
@@ -431,7 +432,10 @@ def rota_cadeia(q: dict) -> dict:
     todas = mt5.symbols_get(prefixo) or []
     # base == papel: separa PETR3 de PETR4 e deixa de fora os instrumentos de exercício (sufixo E).
     vigentes = [s for s in todas if s.option_strike > 0 and s.expiration_time >= agora and s.basis == ticker]
-    datas = sorted({data_servidor(s.expiration_time) for s in vigentes})
+    sessao = data_servidor(t.time) if t and t.time else data_servidor(agora)
+    # A série que vence NA sessão corrente fica de fora (o MT5 a lista até 23:59:59, mas com 0 dias
+    # úteis não há IV): no dia do vencimento o 1º mensal é o do mês seguinte.
+    datas = sorted({data_servidor(s.expiration_time) for s in vigentes if data_servidor(s.expiration_time) > sessao})
 
     # Mensal/semanal, du e dte são decididos pela plataforma (lib/fonte-mt5.ts), que tem o
     # calendário. Aqui só se recorta: `soMensal` é "terceira sexta ou véspera", para não mandar
@@ -453,7 +457,6 @@ def rota_cadeia(q: dict) -> dict:
     # Cache diário: quem negociou alguma vez (last > 0) precisa da data do último negócio.
     # Perto do dinheiro e vencimento próximo primeiro; o que não couber no orçamento vai para a fila.
     ordem = {d: i for i, d in enumerate(datas)}
-    sessao = data_servidor(t.time) if t and t.time else data_servidor(agora)
     precisam = [s for s in escolhidas if s.last > 0 and TERMINAL.diario_valido(s.name) is None]
     # quem teve tick na sessão corrente provavelmente negociou hoje: vai primeiro
     precisam.sort(key=lambda s: (0 if data_servidor(s.time) == sessao else 1, ordem[data_servidor(s.expiration_time)], abs(s.option_strike - spot)))

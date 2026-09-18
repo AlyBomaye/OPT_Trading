@@ -252,6 +252,10 @@ e `fonte-mt5`; README cita `MetaTrader5`; nenhum arquivo do repo contém a conta
   MT5. Meta "31 em < 40 s" só vale quente; a fria fica registrada aqui como limite.
 - `volumehigh > 0` **não** significa "negociou hoje": é o volume máximo do último dia em que a
   série negociou. Não serve de atalho.
+- **Dia do vencimento (18/09/2026, medido ao vivo)**: o MT5 lista a série que vence hoje até 23:59:59;
+  a varredura pegava esse "1º mensal" com du 0 e a Watchlist inteira saía sem IV. Ponte e conversão
+  passaram a descartar a série que vence na sessão corrente — o 1º mensal do dia do vencimento é o
+  do mês seguinte (16/10, du 20).
 - O catálogo do MT5 traz séries vencidas desde 2022 e instrumentos de exercício (`PETRI499E`, base =
   a própria opção); AZUL4/GOLL4 aparecem em 57 "séries" que são só esses instrumentos.
 
