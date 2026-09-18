@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { bancoConfigurado } from "@/lib/db";
 import { configCustosVigente, gravarConfigCustos } from "@/lib/boletas";
-import { CUSTOS_SUGERIDOS_XP_B3 } from "@/lib/custos-sugeridos";
+import { CUSTOS_SUGERIDOS_PADRAO } from "@/lib/custos-sugeridos";
 
 /**
  * WO-48 §6 — GET/POST /api/custos
@@ -19,7 +19,7 @@ export async function GET(req: Request) {
   const data = new URL(req.url).searchParams.get("data") ?? new Date().toISOString().slice(0, 10);
   const custos = await configCustosVigente(data);
   // Sem tabela gravada, a sugestão (com proveniência) vai junto — a tela pré-preenche, você confirma.
-  return NextResponse.json({ configurado: true, data, custos, sugestao: custos ? null : CUSTOS_SUGERIDOS_XP_B3 });
+  return NextResponse.json({ configurado: true, data, custos, sugestao: custos ? null : CUSTOS_SUGERIDOS_PADRAO });
 }
 
 export async function POST(req: Request) {

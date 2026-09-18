@@ -19,7 +19,7 @@ import { useMarket } from "@/store/market";
 import { fmtBRL, fmtDateBR, fmtNum } from "@/lib/format";
 import type { PernaVencida } from "@/lib/boletas";
 import { propostaVencimento } from "@/lib/boleta-calculos";
-import { CUSTOS_SUGERIDOS_XP_B3 } from "@/lib/custos-sugeridos";
+import { CUSTOS_SUGERIDOS_PADRAO, corretagemExercicioGenial } from "@/lib/custos-sugeridos";
 
 interface Proposta {
   perna: PernaVencida;
@@ -92,9 +92,11 @@ export function PainelVencimentos() {
     } else {
       // A opção sai por exercício (preço 0); a ação entra na MESMA estrutura, a strike.
       const ladoAcao = propostaVencimento(p.perna, p.fechamento).ladoAcao ?? 1;
-      // XP: exercício custa Tabela Bovespa com MÍNIMO de R$ 100 por série (texto oficial, 02/09/2026).
-      // Vai como corretagem da boleta de exercício; corrija pelo ajuste se a nota disser outro valor.
-      boletas.push({ tipo: "exercicio", origem: "vencimento", executadoEm: quando, ticker: p.perna.ticker, kind: "OPTION", posicaoId: p.perna.posicaoId, quantidade: p.perna.quantidade, preco: 0, motivoSaida: "vencimento", corretagem: CUSTOS_SUGERIDOS_XP_B3.exercicioMinimoPorSerie, emolumentos: 0, liquidacao: 0, nota: "exercício: corretagem mínima da XP por série (Tabela Bovespa, mín. R$ 100)" });
+      // Genial (tabela oficial 06/26, lida em 18/09/2026): exercer uma opção comprada passa pela mesa —
+      // 0,50% do financeiro (strike × quantidade) + R$ 25,21, mínimo R$ 40 por série. Ser exercido
+      // custa a corretagem normal (R$ 0,99). Vai como corretagem da boleta; corrija pelo ajuste se a
+      // nota disser outro valor.
+      boletas.push({ tipo: "exercicio", origem: "vencimento", executadoEm: quando, ticker: p.perna.ticker, kind: "OPTION", posicaoId: p.perna.posicaoId, quantidade: p.perna.quantidade, preco: 0, motivoSaida: "vencimento", corretagem: ladoAcao === 1 ? corretagemExercicioGenial((p.perna.strike ?? 0) * p.perna.quantidade) : CUSTOS_SUGERIDOS_PADRAO.corretagemFixa, emolumentos: 0, liquidacao: 0, nota: "exercício: corretagem mínima da XP por série (Tabela Bovespa, mín. R$ 100)" });
       boletas.push({ tipo: "abertura", origem: "vencimento", executadoEm: quando, ticker: p.perna.ticker, kind: "STOCK", lado: ladoAcao, quantidade: p.perna.quantidade, preco: p.perna.strike, estruturaId: p.perna.estruturaId, nota: `exercício/atribuição de ${p.perna.opTicker ?? "opção"}` });
     }
     try {
@@ -138,7 +140,7 @@ export function PainelVencimentos() {
         ))}
         {erro && <div className="text-term-down">{erro}</div>}
         <p className="text-term-dim">
-          Exercício e atribuição entram como ação na mesma estrutura, a strike. A XP cobra exercício pela Tabela Bovespa com mínimo de {fmtBRL(CUSTOS_SUGERIDOS_XP_B3.exercicioMinimoPorSerie)} por série — é o que a boleta de exercício traz como corretagem; fechar ou rolar antes do vencimento evita esse piso. Corrija pela boleta (ajuste) se a nota disser outro valor.
+          Exercício e atribuição entram como ação na mesma estrutura, a strike. Na Genial, exercer uma opção comprada passa pela mesa: 0,50% do financeiro + R$ 25,21, mínimo de {fmtBRL(CUSTOS_SUGERIDOS_PADRAO.exercicioMinimoPorSerie)} por série — é o que a boleta de exercício traz como corretagem; ser exercido custa {fmtBRL(CUSTOS_SUGERIDOS_PADRAO.corretagemFixa)}. Fechar ou rolar antes do vencimento evita a mesa. Corrija pela boleta (ajuste) se a nota disser outro valor.
         </p>
       </div>
     </div>

@@ -1,15 +1,16 @@
 ---
 name: risco-do-book
-description: Risco agregado da carteira de opções (gregas do book, VaR por grade spot×vol, VaR por simulação histórica, stress, limites de risco em R$, economia do delta-hedge com custos XP, risco de exercício/atribuição, pin risk, flags de posição) para esta plataforma (lib/portfolio.ts, lib/position-flags.ts, lib/gex.ts, lib/performance.ts, lib/zeragem.ts, lib/amostra.ts). Use sempre que o pedido envolver Carteira, "quanto posso perder", VaR, cenário de queda, hedge, delta da carteira, margem, vencimento chegando, atribuição, dividendo ex-date com call vendida, ou "o que fazer com essa posição" — mesmo que a palavra risco não apareça.
+description: Risco agregado da carteira de opções (gregas do book, VaR por grade spot×vol, VaR por simulação histórica, stress, limites de risco em R$, economia do delta-hedge com custos Genial, risco de exercício/atribuição, pin risk, flags de posição) para esta plataforma (lib/portfolio.ts, lib/position-flags.ts, lib/gex.ts, lib/performance.ts, lib/zeragem.ts, lib/amostra.ts). Use sempre que o pedido envolver Carteira, "quanto posso perder", VaR, cenário de queda, hedge, delta da carteira, margem, vencimento chegando, atribuição, dividendo ex-date com call vendida, ou "o que fazer com essa posição" — mesmo que a palavra risco não apareça.
 ---
 
 # Risco do book — medir a exposição, decidir o que fazer, e não repetir os desastres clássicos
 
 A Carteira desta plataforma é o livro de um investidor pessoa física com capital pequeno
-(centenas de reais em prêmio), operando estruturas de opções na B3 com custos fixos de
-R$ 18,90 por ordem. Isso muda tudo em relação ao livro-texto: **um hedge de R$ 22 numa
-posição de R$ 200 é 11% do capital**. As ferramentas de risco existem para decidir *quando não
-fazer nada* tanto quanto para agir.
+(R$ 2.000 desde 18/09/2026; centenas de reais em prêmio), operando estruturas de opções na B3 pela
+Genial: R$ 0,99 de corretagem por ordem (com RLP) mais 0,134% de B3 sobre o prêmio. Com a XP eram
+R$ 22 fixos por perna, e um hedge de R$ 22 numa posição de R$ 200 era 11% do capital; agora o custo
+fixo quase sumiu e o que pesa é o **spread** e o tamanho (1% do capital = R$ 20 por operação). As
+ferramentas de risco existem para decidir *quando não fazer nada* tanto quanto para agir.
 
 ## 1. O que já está medido (e onde)
 

@@ -2324,13 +2324,16 @@ async function testesAjustes0209() {
   }
 
   // ---- Teste 5: a sugestao de custos carrega proveniencia e e marcada como "a confirmar"
-  const { CUSTOS_SUGERIDOS_XP_B3: sug } = await import("../custos-sugeridos");
+  // 18/09/2026: o padrão passou a ser a Genial (migração das operações); a XP fica como referência histórica.
+  const { CUSTOS_SUGERIDOS_PADRAO: sug, CUSTOS_SUGERIDOS_GENIAL_B3: gen, CUSTOS_SUGERIDOS_XP_B3: xp, corretagemExercicioGenial } = await import("../custos-sugeridos");
   const b3Oficial = Math.abs(sug.emolumentosPct + sug.liquidacaoPct + sug.registroPct - 0.00134) < 1e-9;
-  const comFonte = /B3 \(oficial/.test(sug.fonte) && /XP \(oficial/.test(sug.fonte) && sug.corretagemFixa === 18.9 && sug.impostosCorretagemPct === 0.0965 && sug.exercicioMinimoPorSerie === 100 && sug.confirmar === true && sug.observacoes.length >= 3;
-  const rotaEntrega = /sugestao: custos \? null : CUSTOS_SUGERIDOS_XP_B3/.test(ler("app/api/custos/route.ts"));
+  const comFonte = sug === gen && /B3 \(oficial/.test(sug.fonte) && /Genial \(oficial/.test(sug.fonte) && sug.corretagemFixa === 0.99 && sug.taxaOperacionalPct === 0 && sug.impostosCorretagemPct === 0.0965 && sug.exercicioMinimoPorSerie === 40 && sug.confirmar === true && sug.observacoes.length >= 5
+    && /RLP/.test(sug.observacoes.join(" ")) && /day trade/i.test(sug.observacoes.join(" ")) && xp.corretagemFixa === 18.9 && xp.exercicioMinimoPorSerie === 100
+    && corretagemExercicioGenial(1000) === 40 && Math.abs(corretagemExercicioGenial(10_000) - 75.21) < 1e-9;
+  const rotaEntrega = /sugestao: custos \? null : CUSTOS_SUGERIDOS_PADRAO/.test(ler("app/api/custos/route.ts")) && /CUSTOS_SUGERIDOS_PADRAO/.test(ler("lib/hooks/useLivro.ts")) && /corretagemExercicioGenial\(\(p\.perna\.strike \?\? 0\) \* p\.perna\.quantidade\)/.test(ler("components/PainelVencimentos.tsx"));
   const telaAvisa = /tabela SUGERIDA/.test(ler("components/FormularioBoleta.tsx")) && /Preencher com a sugestão/.test(ler("components/PainelCustos.tsx"));
   if (b3Oficial && comFonte && rotaEntrega && telaAvisa) {
-    console.log("✔ AJ Teste 5: sugestao = B3 0,1340% oficial + XP oficial (18,90 + 9,65% de impostos, 5,9%, exercicio min. R$ 100), com fonte, entregue pela rota e sinalizada na tela");
+    console.log("✔ AJ Teste 5: sugestao padrao = B3 0,1340% oficial + Genial oficial (R$ 0,99 com RLP, + 9,65% de impostos, sem taxa operacional, exercer 0,50% + R$ 25,21 min. R$ 40), com fonte, RLP e day trade nas observacoes; XP guardada como referencia; rota, hook e vencimentos usam o padrao");
   } else {
     console.log(`✘ AJ Teste 5 falhou: b3=${b3Oficial}, fonte=${comFonte}, rota=${rotaEntrega}, tela=${telaAvisa}`);
     failures++;

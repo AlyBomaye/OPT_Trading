@@ -3,7 +3,7 @@
 import { useEffect, useMemo } from "react";
 import { useMarket } from "@/store/market";
 import { caixaLivre } from "@/lib/portfolio";
-import { CUSTOS_SUGERIDOS_XP_B3 } from "@/lib/custos-sugeridos";
+import { CUSTOS_SUGERIDOS_PADRAO } from "@/lib/custos-sugeridos";
 import type { TabelaCustos } from "@/lib/boleta-calculos";
 
 /**
@@ -30,7 +30,7 @@ export function useLivro() {
   }, []);
 
   const tabelaCustos: TabelaCustos = useMemo(
-    () => livro.custos ?? { ...CUSTOS_SUGERIDOS_XP_B3, vigenteDesde: "sugestao" },
+    () => livro.custos ?? { ...CUSTOS_SUGERIDOS_PADRAO, vigenteDesde: "sugestao" },
     [livro.custos]
   );
 

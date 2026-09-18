@@ -44,7 +44,7 @@ import { PainelAlocacao } from "@/components/PainelAlocacao";
 import { PainelCorrelacao } from "@/components/PainelCorrelacao";
 import { estruturasAbertas } from "@/lib/position-flags";
 import { strategyMetrics } from "@/lib/payoff";
-import { CUSTOS_SUGERIDOS_XP_B3 } from "@/lib/custos-sugeridos";
+import { CUSTOS_SUGERIDOS_PADRAO } from "@/lib/custos-sugeridos";
 import { usePersistedState } from "@/lib/use-persisted-state";
 import type { Regime } from "@/lib/metodo";
 import { ActionFlags } from "@/components/ActionFlags";
@@ -191,7 +191,7 @@ export default function PortfolioPage() {
   }, [positions, chainCache, refresh]);
 
   // Sem tabela gravada, a sugestao (oficial, com proveniencia) serve para estimar o fechamento.
-  const tabelaCustos = livro.custos ?? { ...CUSTOS_SUGERIDOS_XP_B3, vigenteDesde: "sugestao" };
+  const tabelaCustos = livro.custos ?? { ...CUSTOS_SUGERIDOS_PADRAO, vigenteDesde: "sugestao" };
 
   const revalAll = async () => {
     const tickers = Array.from(new Set(positions.map((p) => p.underlying)));

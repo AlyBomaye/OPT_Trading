@@ -1,6 +1,6 @@
 ---
 name: boletagem-e-custos
-description: Boletagem (ledger append-only de boletas no Postgres), custos oficiais XP/B3 (corretagem, emolumentos, liquidação, registro, taxa operacional, ISS/PIS/COFINS), zeragem a custo zero, regras fiscais de opções e ações (15%, isenção de R$ 20 mil só para ações à vista, IRRF 0,005%), exercício/vencimento, o RASCUNHO de boleta (WO-58: a estrutura esperando a execução no Profit; lib/rascunhos.ts, db/006_rascunhos.sql, /api/rascunhos) e exportação Excel para esta plataforma (lib/boletas.ts, lib/boleta-calculos.ts, lib/custos-sugeridos.ts, lib/zeragem.ts, lib/fiscal.ts, db/002_boletagem.sql). Use sempre que o pedido tocar em Portfolio, Boletagem, rascunho, slippage, "Boletar", boleta, estorno/ajuste, preço médio, caixa, aporte/retirada, custos, corretagem, emolumentos, IR/DARF, apuração mensal, exercício, vencimento, migração do navegador para o banco ou exportação de operações.
+description: Boletagem (ledger append-only de boletas no Postgres), custos oficiais Genial/B3 (XP como referência histórica) (corretagem, emolumentos, liquidação, registro, taxa operacional, ISS/PIS/COFINS), zeragem a custo zero, regras fiscais de opções e ações (15%, isenção de R$ 20 mil só para ações à vista, IRRF 0,005%), exercício/vencimento, o RASCUNHO de boleta (WO-58: a estrutura esperando a execução no Profit; lib/rascunhos.ts, db/006_rascunhos.sql, /api/rascunhos) e exportação Excel para esta plataforma (lib/boletas.ts, lib/boleta-calculos.ts, lib/custos-sugeridos.ts, lib/zeragem.ts, lib/fiscal.ts, db/002_boletagem.sql). Use sempre que o pedido tocar em Portfolio, Boletagem, rascunho, slippage, "Boletar", boleta, estorno/ajuste, preço médio, caixa, aporte/retirada, custos, corretagem, emolumentos, IR/DARF, apuração mensal, exercício, vencimento, migração do navegador para o banco ou exportação de operações.
 ---
 
 # Boletagem e custos — o livro é a verdade, e a verdade é líquida de tudo
@@ -9,8 +9,9 @@ A Carteira desta plataforma não é uma lista de posições: é um **livro cont�
 Postgres, do qual posições, estruturas, caixa e P&L são projeções. Isso foi decidido (WO-48)
 porque o trader precisa reconstruir qualquer número a partir do que realmente aconteceu na
 corretora, com os custos reais, para a apuração fiscal e para saber se o método está dando
-resultado. Esta skill protege esses invariantes e traz a tabela de custos e as regras fiscais
-que o trader validou contra o material oficial da XP.
+resultado. Esta skill protege esses invariantes e traz a tabela de custos e as regras fiscais.
+Desde 18/09/2026 o operador executa na **Genial** (tabela oficial lida na íntegra); a XP fica como
+referência histórica das boletas anteriores.
 
 ## 0. A porta única e o rascunho (WO-58)
 
@@ -78,28 +79,44 @@ que sabe. Regras que valem para qualquer código novo:
 
 ## 3. Custos — a tabela oficial e como ela é aplicada
 
-Valores padrão em `lib/custos-sugeridos.ts` (`CUSTOS_SUGERIDOS_XP_B3`), editáveis em
-`config_custos` com `vigente_desde`; cada boleta grava os custos calculados **na hora**, então
-mudar a tabela nunca reescreve o passado.
+Valores padrão em `lib/custos-sugeridos.ts` (`CUSTOS_SUGERIDOS_PADRAO` = `CUSTOS_SUGERIDOS_GENIAL_B3`;
+`CUSTOS_SUGERIDOS_XP_B3` é referência histórica), editáveis em `config_custos` com `vigente_desde`;
+cada boleta grava os custos calculados **na hora**, então mudar a tabela nunca reescreve o passado.
+Vigência gravada em 18/09/2026 (Genial); as boletas anteriores ficam com a tabela da XP.
+
+Genial — tabela oficial (genialinvestimentos.com.br/custos-tarifas, "última atualização 06/26"),
+pessoa física, **RLP ativo** (a plataforma assume que está):
 
 | componente | valor | sobre |
 |---|---|---|
-| corretagem fixa (swing, via plataforma) | R$ 18,90 por ordem | — |
-| impostos sobre corretagem (ISS 5% + PIS 0,65% + COFINS 4%) | 9,65% | gross-up: bruta = 18,90 × 1,0965 |
-| emolumentos (negociação) | 0,0370% | financeiro da ordem (prêmio × qty) |
-| liquidação | 0,0275% | idem |
-| registro (só opções) | 0,0695% | idem — ações à vista não têm |
-| taxa operacional XP | 5,9% | sobre corretagem + taxas B3 |
-| exercício | mínimo R$ 100 por série | corretagem de exercício |
+| corretagem — opções compra/venda, swing, RLP ativo | R$ 0,99 por ordem | sem RLP: R$ 2,49 |
+| corretagem — ações lote padrão / fracionário / BDR, swing, RLP ativo | R$ 0,99 | sem RLP: R$ 2,99 / 0,99 / 2,99 |
+| corretagem — day trade, RLP ativo | ZERO (ações, BDR, opções) | sem RLP: ações R$ 0,99, opções R$ 2,49 |
+| ser exercido (atribuído) | R$ 0,99 (swing, RLP); ZERO no day trade | sem RLP: R$ 2,99 |
+| exercer uma opção comprada (mesa) | 0,50% do financeiro + R$ 25,21, **mínimo R$ 40** por série | `corretagemExercicioGenial(strike × qty)` |
+| impostos sobre corretagem (ISS 5% + PIS 0,65% + COFINS 4%) | 9,65% | gross-up: bruta = 0,99 × 1,0965 |
+| taxa operacional | **não há** | — |
+| custódia (fixa e variável) | ZERO | — |
+| emolumentos B3 (negociação) | 0,0370% | financeiro da ordem (prêmio × qty) |
+| liquidação B3 | 0,0275% | idem |
+| registro B3 (só opções) | 0,0695% | idem — ações à vista não têm |
 | ações à vista (B3 total) | 0,0300% | financeiro |
+
+Condições que a Genial amarra ao preço: RLP ativo (adesão e permanência); plataformas a custo zero
+(Profit e afins) exigem ainda uma ordem real em WDO/WIN por ciclo de renovação, senão a mensalidade
+da plataforma é cobrada no mês seguinte (o MetaTrader 5 não está na lista de cobrança); ordens com
+validade acima de 1 dia podem pagar taxa por dia com execução parcial — validade do dia. Day trade:
+a corretagem é zero, mas as taxas da B3 continuam e o IR é 20%; a apuração da plataforma é de swing.
 
 `calcularCustos(kind, preco, qty, tabela)` aplica exatamente isso; `custos_total` é coluna gerada
 no banco para a soma nunca divergir do detalhe. Sempre que exibir um custo, mostre a
 composição (a tela de prévia já faz) — o trader confere contra a nota.
 
-Por que isso importa mais que parece: com R$ 22 de custo por perna, uma Trava de Linha de
-R$ 300 de prêmio paga ~R$ 44 para abrir e ~R$ 44 para fechar. **30% do prêmio vai em custo.** É
-por isso que existe a zeragem a custo zero.
+O que a migração mudou na economia da operação: com a XP (R$ 18,90 + 9,65% + 5,9%) uma perna
+custava ~R$ 22 fixos; na Genial custa **~R$ 1,09 fixos + 0,134% do prêmio**. Uma Trava de Linha de
+R$ 300 de prêmio paga ~R$ 2,60 para abrir e ~R$ 2,60 para fechar (era ~R$ 44 + ~R$ 44). A zeragem a
+custo zero continua existindo, mas agora o que pesa é o spread, não a corretagem — e com R$ 2.000
+de capital (aporte de 18/09/2026) o 1% por operação é R$ 20: a régua do tamanho mudou de escala.
 
 ## 4. Zeragem a custo zero
 
