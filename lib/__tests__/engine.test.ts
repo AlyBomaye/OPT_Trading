@@ -6388,6 +6388,83 @@ Líquido para 04/09/2026 5.134,69 D`;
     else { console.log(`✘ WO-61 Teste 6 falhou: manual=${manualOk} skills=${skillsOk} antigravity=${agOk} docs=${docsOk} credencial=${semCredencial}`); failures++; }
   }
 
+  // =========================================================================
+  // WO-62 — Macro e curva DI pelo terminal MT5
+  // =========================================================================
+  {
+    const fs62 = await import("node:fs");
+    const path62 = await import("node:path");
+    const ler62 = (rel: string) => fs62.readFileSync(path62.join(process.cwd(), rel), "utf8");
+    const { montarCurvaDi } = await import("../fonte-mt5");
+
+    // ---- Teste 1: a curva DI pura — ordem, anos, variações contra N pregões antes da data do dado, null sem histórico
+    const fech = (closes: number[], ate: string) => {
+      // fechamentos ascendentes terminando em `ate` (dias úteis para trás)
+      const out: { date: string; close: number }[] = [];
+      const d = new Date(`${ate}T12:00:00Z`);
+      for (let i = closes.length - 1; i >= 0; i--) {
+        out.unshift({ date: d.toISOString().slice(0, 10), close: closes[i] });
+        do { d.setUTCDate(d.getUTCDate() - 1); } while (d.getUTCDay() === 0 || d.getUTCDay() === 6);
+      }
+      return out;
+    };
+    const c27 = { contrato: "DI1F27", vencimento: "2027-01-04", taxa: 13.555, bid: 13.55, ask: 13.555, tickAt: "2026-09-18T17:59:00-03:00", fechamentos: fech([13.6, 13.58, 13.57, 13.56, 13.555, 13.55, 13.555], "2026-09-18") };
+    const c26 = { contrato: "DI1V26", vencimento: "2026-10-01", taxa: 13.653, bid: null, ask: null, tickAt: "2026-09-18T17:58:00-03:00", fechamentos: fech([13.655, 13.653], "2026-09-18") };
+    const c40 = { contrato: "DI1F40", vencimento: "2040-01-02", taxa: 14.34, bid: null, ask: null, tickAt: "2026-09-17T16:00:00-03:00", fechamentos: [] };
+    const morto = { contrato: "DI1X25", vencimento: "2025-11-03", taxa: 12, bid: null, ask: null, tickAt: null, fechamentos: [] };
+    const curva = montarCurvaDi([c40, c27, morto, c26], "2026-09-18");
+    const v27 = curva.vertices.find((v) => v.contrato === "DI1F27")!;
+    const v26 = curva.vertices.find((v) => v.contrato === "DI1V26")!;
+    const v40 = curva.vertices.find((v) => v.contrato === "DI1F40")!;
+    const curvaOk = curva.vertices.map((v) => v.contrato).join() === "DI1V26,DI1F27,DI1F40" && curva.dataDoDado === "2026-09-18" && /MT5/.test(curva.fonte)
+      // 1D atrás = fechamento de 17/09 (13,55), não o candle do próprio dia 18/09
+      && Math.abs(v27.d1! - (13.555 - 13.55)) < 1e-9 && Math.abs(v27.d5! - (13.555 - 13.58)) < 1e-9 && v27.d21 === null && v27.d63 === null
+      && Math.abs(v26.d1! - (13.653 - 13.655)) < 1e-9 && v26.d5 === null && v40.d1 === null && v40.taxa === 14.34
+      && v27.anos > 0.25 && v27.anos < 0.35 && v40.anos > 12 && v26.anos > 0 && v26.anos < 0.05
+      && curva.historico.d1.length === 2 && curva.historico.d5.length === 1 && curva.datasComparacao.d1 === "2026-09-17" && curva.datasComparacao.d63 === null
+      && montarCurvaDi([], "2026-09-18").vertices.length === 0;
+    if (curvaOk) console.log("✔ WO-62 Teste 1: montarCurvaDi ordena por vencimento, descarta contrato vencido, mede anos em pregões/252, compara com o fechamento de N pregões antes da data do dado (o candle do dia não é '1D atrás'), devolve null onde não há histórico e monta o histórico por horizonte com a data de comparação");
+    else { console.log(`✘ WO-62 Teste 1 falhou: ${JSON.stringify({ ordem: curva.vertices.map((v) => v.contrato), d1: v27.d1, d5: v27.d5, anos27: v27.anos, anos40: v40.anos, hist: curva.historico.d1.length, datas: curva.datasComparacao })}`); failures++; }
+
+    // ---- Teste 2: a ponte tem /macro e /curva-di; a rota Macro tenta o MT5 antes do Yahoo, com escala, séries só-MT5 e a curva no corpo
+    const ponte = ler62("scripts/mt5-ponte.py");
+    const ponteOk = /def rota_macro/.test(ponte) && /def rota_curva_di/.test(ponte) && /"\/macro": rota_macro/.test(ponte) && /"\/curva-di": rota_curva_di/.test(ponte)
+      && /def e_contrato_di/.test(ponte) && /nome\[3\]\.isalpha\(\) and nome\[4:\]\.isdigit\(\)/.test(ponte) && /CANDLES_CURVA_DI = 70/.test(ponte) && !/order_send|mt5\.login/.test(ponte);
+    const rota = ler62("app/api/macro/route.ts");
+    const iMt5 = rota.indexOf("await Promise.all([macroMt5(simbolosMt5), curvaDiMt5(), fetchBrasilMacro()])");
+    const iPool = rota.indexOf("poolAll(MACRO_SYMBOLS, (cfg) => fetchSerie(cfg, doMt5), 4)");
+    const rotaOk = iMt5 > 0 && iPool > iMt5 && /mt5: "IBOV"/.test(rota) && /mt5: "ISP\$"/.test(rota) && /symbol: "DOL\$"[^\n]*escala: 0\.001[^\n]*soMt5: true/.test(rota) && /symbol: "BIT\$"[^\n]*soMt5: true/.test(rota) && /symbol: "DI1\$"[^\n]*grupo: "JURO"[^\n]*soMt5: true/.test(rota)
+      && /function serieDeFechamentos\(/.test(rota) && /function serieDoMt5\(/.test(rota) && /return serieDeFechamentos\(cfg, validCloses, candles, "yahoo"\)/.test(rota) && /fonte\?: "mt5" \| "yahoo"/.test(rota) && /curvaDi: CurvaDi \| null/.test(rota)
+      && /montarCurvaDi\(di\.contratos, sessionInfo\(\)\.ultimaSessao\)/.test(rota) && /motivos\["DI1"\]/.test(rota) && /buscarComRetry/.test(rota) && /ultimoBom/.test(rota);
+    const fm = ler62("lib/fonte-mt5.ts");
+    const fmOk = /export async function macroMt5/.test(fm) && /export async function curvaDiMt5/.test(fm) && /export function montarCurvaDi/.test(fm) && /TIMEOUT_CURVA_DI_MS = 15_000/.test(fm);
+    if (ponteOk && rotaOk && fmOk) console.log("✔ WO-62 Teste 2: a ponte expõe /macro e /curva-di (só contratos DI1 por vencimento, sem os contínuos); a rota Macro pede o MT5 e a curva DI numa rodada só antes do Yahoo, monta a série pelos fechamentos com escala (DOL$ em R$/US$), marca a fonte, mantém retry e último dado bom do Yahoo, e coloca a curva DI no corpo com motivo quando falta");
+    else { console.log(`✘ WO-62 Teste 2 falhou: ponte=${ponteOk} rota=${rotaOk} fonte=${fmOk}`); failures++; }
+
+    // ---- Teste 3: a tela — linha "DI futuros (B3)" em Rates & FX com fonte MT5 e a coluna do contrato; chip MT5 nas séries
+    const pag = ler62("app/macro/page.tsx");
+    const iPre = pag.indexOf('"Pré (Tesouro) — curva nominal BR"');
+    const iDi = pag.indexOf('"DI futuros (B3) — curva de juros pelo MT5"');
+    const iPush = pag.indexOf("out.push(linhaDi);");
+    const iCupom = pag.indexOf("// 3 — Cupom cambial");
+    const pagOk = iPre > 0 && iDi > iPre && iPush > iDi && iCupom > iPush && /data\?\.curvaDi/.test(pag) && /chave: "contrato", rotulo: "CONTRATO"/.test(pag) && /Curva DI indisponível/.test(pag)
+      && /s\.fonte === "mt5" && <span/.test(pag) && /Não é a curva de futuros DI1 da B3\./.test(pag);
+    if (pagOk) console.log("✔ WO-62 Teste 3: Rates & FX ganha a linha 'DI futuros (B3) — curva de juros pelo MT5' em largura inteira, depois do par Pré/Treasuries, com o contrato na tabela e o aviso quando a ponte falta; as séries vindas do terminal levam o chip MT5; o Pré continua rotulado como Tesouro");
+    else { console.log(`✘ WO-62 Teste 3 falhou: pre=${iPre} di=${iDi} push=${iPush} cupom=${iCupom}`); failures++; }
+
+    // ---- Teste 4: documentação — a curva DI existe agora (pelo MT5), o Pré continua Pré; skills, ANTIGRAVITY, README, FONTES, Manual
+    const { RESUMO_TELAS: RT62 } = await import("../manual-content");
+    const manualOk = /curva DI/.test(RT62.find((r) => r.modulo === "6. Macro")?.resposta ?? "") && /MT5|MetaTrader/.test(RT62.find((r) => r.modulo === "6. Macro")?.resposta ?? "");
+    const readme = ler62("README.md");
+    const ag = ler62("ANTIGRAVITY.md");
+    const fontes = ler62("FONTES-DE-DADOS.md");
+    const docsOk = /curva DI[^\n]*MT5|MT5[^\n]*curva DI/i.test(readme) && !/Não existe fonte pública para a\n  curva de futuros DI1/.test(readme)
+      && /WO-62/.test(ag) && /curva-di/.test(ag) && /\*\*Desde a WO-62/.test(ag) && /curva DI/i.test(fontes) && /curva-di|WO-62/.test(fontes)
+      && /curva-di/.test(ler62(".claude/skills/engenharia-da-plataforma/SKILL.md")) && /WO-62/.test(ler62("lib/curvas.ts"));
+    if (manualOk && docsOk) console.log("✔ WO-62 Teste 4: Manual (Macro cita a curva DI pelo MT5), README, ANTIGRAVITY (§7 e roadmap), FONTES-DE-DADOS, skill de engenharia e o cabeçalho de lib/curvas.ts dizem que a curva DI agora existe pelo terminal — e que o Pré continua sendo o Tesouro");
+    else { console.log(`✘ WO-62 Teste 4 falhou: manual=${manualOk} docs=${docsOk}`); failures++; }
+  }
+
 }
 
 testesAssincronos()

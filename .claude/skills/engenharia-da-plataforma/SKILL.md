@@ -137,6 +137,12 @@ e diga no commit. Se a quebra não for intencional, o teste venceu.
   Diagnóstico: `python scripts/mt5-sonda.py PETR4 +VALE3`.
 - Universo (WO-61): MRFG3 → MBRF3; AZUL4 e GOLL4 saíram (`RETIRADOS_DO_UNIVERSO`). Nada apagado
   do banco.
+- Macro (WO-62): a ponte expõe `/macro?simbolos=` (índices e contínuos `$` da BMF: tick + 260
+  fechamentos) e `/curva-di` (contratos `DI1` por vencimento, taxa em % a.a., 70 fechamentos).
+  `lib/fonte-mt5.ts`: `macroMt5`, `curvaDiMt5`, `montarCurvaDi` (puro: anos = pregões/252, d1/d5/
+  d21/d63 contra o fechamento de N pregões antes da data do dado). `/api/macro`: `MacroSymbolConfig`
+  ganha `mt5`, `escala` (DOL$ é R$ por US$ 1.000 → 0,001) e `soMt5`; MT5 primeiro, Yahoo de reserva;
+  `MacroSeries.fonte`; `MacroBody.curvaDi`. VIX$, DAX$ e WTI$ estão mortos no servidor da Genial.
 
 ## 6. Convenções numéricas (resumo; detalhe nas skills de domínio)
 

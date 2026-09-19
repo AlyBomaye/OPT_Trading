@@ -8,6 +8,10 @@
  *
  * Por isso a curva nominal se chama **Pré (Tesouro)**, nunca "DI": é a curva dos títulos do
  * Tesouro, não a de futuros. Rotular como DI mentiria sobre a fonte (ANTIGRAVITY.md §7.1.1).
+ *
+ * WO-62 (19/09/2026): a curva DI de verdade passou a existir pelo terminal MetaTrader 5 —
+ * `montarCurvaDi` em `lib/fonte-mt5.ts` reutiliza `VerticeCurva` e `CurvaHistorica` daqui. As duas
+ * curvas convivem em Rates & FX, cada uma com o seu nome.
  */
 
 export interface VerticeCurva {

@@ -379,6 +379,13 @@ do Tesouro Direto responde **410 Gone** e a página de taxas referenciais da B3 
 tabela. Por isso a curva nominal é rotulada **"Pré (Tesouro)"**, nunca "DI" — chamá-la de DI
 mentiria sobre a fonte.
 
+**Desde a WO-62 (19/09/2026) a curva DI existe — pelo terminal.** A ponte MT5 expõe `/curva-di`
+(os contratos `DI1` por vencimento: taxa, bid/ask, 70 fechamentos) e `/macro` (índices e contínuos
+da BMF); `montarCurvaDi` em `lib/fonte-mt5.ts` monta `VerticeCurva`/`CurvaHistorica` e `/api/macro`
+entrega `curvaDi` no corpo. Rates & FX mostra "DI futuros (B3) — curva de juros pelo MT5" ao lado
+do Pré, que continua sendo o Tesouro. Ibovespa, S&P futuro, dólar futuro, Bitcoin futuro e DI1
+vêm do terminal (chip MT5); VIX, DAX e WTI estão mortos no servidor da Genial e seguem no Yahoo.
+
 Armadilhas do parsing, ambas cobertas por teste:
 
 1. **O CSV não está em ordem cronológica.** Varrer só o final devolve datas de 2016; a varredura
@@ -884,9 +891,10 @@ calculado à mão ou de literatura (Hull).
 aproximação de margem B3 CORE; persistência server-side **[CONCLUÍDO WO-48 — Postgres]**; SVI
 smile fit; comando palette (Ctrl+K).
 
-**WO-62 (próxima):** Macro pelo MT5 — IBOV, WIN, DOL/WDO, ISP, BIT, T10, GLD existem no terminal
-(VIX, WTI e DAX estão mortos lá) — e a **curva DI pelos contratos `DI1F27…`**, a fonte que a
-plataforma nunca teve.
+**WO-62 [CONCLUÍDO 19/09/2026]:** Macro pelo MT5 (Ibovespa, S&P futuro, dólar futuro, Bitcoin
+futuro, DI1 por liquidez, com Yahoo de reserva) e a **curva DI pelos contratos `DI1F27…`** em
+Rates & FX. Próximos, pelo MAPA-SOFTWARE-PESSOAL.md: estado no banco e saúde visível (WO-63),
+supervisor e acesso local (WO-64), ponte em tempo real (WO-65).
 
 **Fora de escopo permanente sem ordem explícita:** execução real de ordens em corretora.
 

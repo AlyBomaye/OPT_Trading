@@ -35,9 +35,11 @@ linhas para extrair a curva de um dia. Pior: **o CSV não é cronológico** — 
 que varrer só o final do arquivo devolve datas de 2016. É preciso ler o arquivo inteiro para achar
 a data-base mais recente.
 
-Não há alternativa. O JSON do Tesouro Direto responde 410 Gone e a página de taxas referenciais da
-B3 devolve HTML sem tabela — ambos verificados em 04/08/2026. Por isso a curva nominal é rotulada
-"Pré (Tesouro)" e **nunca "DI"**: não é a curva de futuros DI1.
+O JSON do Tesouro Direto responde 410 Gone e a página de taxas referenciais da B3 devolve HTML sem
+tabela — ambos verificados em 04/08/2026. Por isso a curva nominal é rotulada "Pré (Tesouro)" e
+**nunca "DI"**: não é a curva de futuros DI1. Desde a WO-62 (19/09/2026) a **curva DI** vem do
+terminal MetaTrader 5 pela ponte (`/curva-di`: os contratos `DI1` por vencimento, com taxa e 70
+fechamentos) e aparece em Rates & FX com nome próprio, "DI futuros (B3)". As duas convivem.
 
 - **Se cair:** Pré, NTN-B e cupom cambial somem de Rates & FX. O resto da Macro segue.
 - **Rotina:** `npm run dados:sync` antes do pregão. `Last-Modified` observado ~10:20 UTC.

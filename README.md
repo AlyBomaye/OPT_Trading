@@ -109,8 +109,9 @@ Em resumo:
 
 - **Grade de opções**: `opcoes.net.br`. A fonte anônima borra IV e gregas, então o engine local
   recalcula **IV por Newton-Raphson** a partir do prêmio real e deriva todas as gregas.
-- **Curvas brasileiras**: CSV do Tesouro Transparente (13,7 MB). Não existe fonte pública para a
-  curva de futuros DI1 da B3 — por isso a curva nominal é rotulada "Pré (Tesouro)", nunca "DI".
+- **Curvas brasileiras**: CSV do Tesouro Transparente (13,7 MB) para o Pré e a NTN-B, e a
+  **curva DI dos futuros da B3 pela ponte MT5** (contratos `DI1F27…`, WO-62). As duas têm nome
+  próprio na tela: "Pré (Tesouro)" nunca é chamada de DI.
 - **Expectativas**: API Olinda do BCB (Boletim Focus), com defasagem de dias, sempre rotulada pela
   data de coleta.
 - **Posições em aberto**: arquivo oficial de derivativos da B3, base do GEX.
