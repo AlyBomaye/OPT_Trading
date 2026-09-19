@@ -20,6 +20,10 @@ Rotas (todas GET, JSON):
                                             seleciona ~40 séries por papel em vez de 500)
   /historico?ticker=PETR4&range=1y        → candles diários (3mo|6mo|1y|2y|5y)
   /ticks?serie=PETRI499&data=2026-09-17   → negócios do dia de UMA série
+  /macro?simbolos=IBOV,ISP$,DOL$&range=1y → último tick + fechamentos diários de índices e
+                                            contratos contínuos da BMF (WO-62)
+  /curva-di                               → os contratos DI1 vigentes: taxa (último), bid/ask,
+                                            vencimento e fechamentos diários (WO-62)
 
 Uso:  python scripts/mt5-ponte.py            (porta 3200; PONTE_MT5_PORTA muda)
       npm run ponte                          (o mesmo)
@@ -52,7 +56,7 @@ except ImportError:  # pragma: no cover
     print("Biblioteca MetaTrader5 ausente: python -m pip install MetaTrader5")
     sys.exit(2)
 
-VERSAO_PONTE = "1.0.0"
+VERSAO_PONTE = "1.1.0"
 HOST = "127.0.0.1"
 PORTA = int(os.environ.get("PONTE_MT5_PORTA", "3200"))
 FUSO_SERVIDOR_S = 3 * 3600  # Brasília = UTC−3; o MT5 entrega epoch "como se fosse UTC"
@@ -574,7 +578,107 @@ def rota_ticks(q: dict) -> dict:
     }
 
 
-ROTAS = {"/saude": lambda q: rota_saude(), "/cotacao": rota_cotacao, "/cadeia": rota_cadeia, "/historico": rota_historico, "/ticks": rota_ticks}
+# ---------------------------------------------------------------------------------------------
+# WO-62 — Macro e curva DI
+# ---------------------------------------------------------------------------------------------
+# Contratos contínuos "por liquidez" (sufixo $) e os DI1 por vencimento. Medido em 19/09/2026:
+# IBOV, WIN$, IND$, DOL$, WDO$, ISP$, BIT$, DI1$, T10$, GLD$ têm tick e candle D1; VIX$, DAX$ e
+# WTI$ estão mortos no servidor da Genial (último candle de meses ou anos atrás). O DI1 é cotado
+# em TAXA (% a.a., 3 casas), um contrato por vencimento (F = janeiro, J = abril, N = julho,
+# V = outubro), vencendo no 1º dia útil do mês.
+CANDLES_CURVA_DI = 70
+MAX_SIMBOLOS_MACRO = 40
+
+
+def fechamentos_d1(nome: str, n: int) -> list[dict]:
+    r = mt5.copy_rates_from_pos(nome, mt5.TIMEFRAME_D1, 0, n)
+    if r is None:
+        return []
+    return [{"date": data_servidor(int(c["time"])), "close": float(c["close"])} for c in r if float(c["close"]) > 0]
+
+
+def rota_macro(q: dict) -> dict:
+    exigir_logado()
+    inicio = time.time()
+    pedidos = [x.strip().upper() for x in (q.get("simbolos") or "").split(",") if x.strip()][:MAX_SIMBOLOS_MACRO]
+    rng = q.get("range") or "1y"
+    if rng not in CANDLES_POR_RANGE:
+        raise ErroHttp(400, f"range inválido: {rng}")
+    if not pedidos:
+        raise ErroHttp(400, "informe simbolos=A,B,C")
+    novos = 0
+    for n in pedidos:
+        if mt5.symbol_info(n) is not None and TERMINAL.selecionar_papel(n):
+            novos += 1
+    if novos:
+        time.sleep(min(ESPERA_PRIMEIRO_TICK_S, 0.5 + novos / 10))
+    series = []
+    for n in pedidos:
+        i = mt5.symbol_info(n)
+        if i is None:
+            series.append({"simbolo": n, "ok": False, "motivo": "não existe no catálogo"})
+            continue
+        t = mt5.symbol_info_tick(n)
+        candles = fechamentos_d1(n, CANDLES_POR_RANGE[rng])
+        last = preco_ou_none(t.last) if t else None
+        if last is None and not candles:
+            series.append({"simbolo": n, "ok": False, "motivo": "sem tick e sem candle"})
+            continue
+        series.append({
+            "simbolo": n,
+            "ok": True,
+            "descricao": i.description,
+            "last": last,
+            "tickAt": iso_servidor(t.time) if t and t.time else None,
+            "sessao": data_servidor(t.time) if t and t.time else None,
+            "candles": candles,
+        })
+    return {"series": series, "range": rng, "geradoEm": iso_servidor(agora_servidor()), "duracaoMs": int((time.time() - inicio) * 1000)}
+
+
+def e_contrato_di(nome: str) -> bool:
+    # DI1F27, DI1N30… — nunca os contínuos (DI1$, DI1$D, DI1@…)
+    return nome.startswith("DI1") and len(nome) == 6 and nome[3].isalpha() and nome[4:].isdigit()
+
+
+def rota_curva_di(q: dict) -> dict:
+    exigir_logado()
+    inicio = time.time()
+    agora = agora_servidor()
+    contratos = [s for s in (mt5.symbols_get("DI1*") or []) if e_contrato_di(s.name) and s.expiration_time >= agora]
+    contratos.sort(key=lambda s: s.expiration_time)
+    novos = 0
+    for s in contratos:
+        if TERMINAL.selecionar_papel(s.name):
+            novos += 1
+    if novos:
+        time.sleep(min(ESPERA_PRIMEIRO_TICK_S, 0.5 + novos / 10))
+    saida = []
+    sessao = data_servidor(agora)
+    for s in contratos:
+        t = mt5.symbol_info_tick(s.name)
+        fech = fechamentos_d1(s.name, CANDLES_CURVA_DI)
+        taxa = preco_ou_none(t.last) if t else None
+        tick_at = iso_servidor(t.time) if t and t.time else None
+        if taxa is None and fech:
+            taxa = fech[-1]["close"]
+        if taxa is None:
+            continue
+        if t and t.time and data_servidor(t.time) > sessao:
+            sessao = data_servidor(t.time)
+        saida.append({
+            "contrato": s.name,
+            "vencimento": data_servidor(s.expiration_time),
+            "taxa": taxa,
+            "bid": preco_ou_none(t.bid) if t else None,
+            "ask": preco_ou_none(t.ask) if t else None,
+            "tickAt": tick_at,
+            "fechamentos": fech,
+        })
+    return {"contratos": saida, "sessao": sessao, "geradoEm": iso_servidor(agora), "duracaoMs": int((time.time() - inicio) * 1000)}
+
+
+ROTAS = {"/saude": lambda q: rota_saude(), "/cotacao": rota_cotacao, "/cadeia": rota_cadeia, "/historico": rota_historico, "/ticks": rota_ticks, "/macro": rota_macro, "/curva-di": rota_curva_di}
 
 
 # ---------------------------------------------------------------------------------------------
@@ -621,8 +725,8 @@ class Handler(BaseHTTPRequestHandler):
             corpo, status = {"erro": f"falha interna: {type(e).__name__}"}, 500
             log(f"ERRO {u.path} {q}: {type(e).__name__}: {e}")
         self._responder(status, corpo)
-        tam = len(corpo.get("options", [])) if isinstance(corpo, dict) else 0
-        log(f"{status} {u.path} {q.get('ticker') or q.get('serie') or ''} {int((time.time() - inicio) * 1000)} ms{f' · {tam} séries' if tam else ''}")
+        tam = len(corpo.get("options", corpo.get("contratos", corpo.get("series", [])))) if isinstance(corpo, dict) else 0
+        log(f"{status} {u.path} {q.get('ticker') or q.get('serie') or ''} {int((time.time() - inicio) * 1000)} ms{f' · {tam} item(ns)' if tam else ''}")
 
 
 def main() -> None:
