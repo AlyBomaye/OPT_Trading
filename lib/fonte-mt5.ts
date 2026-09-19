@@ -19,6 +19,7 @@
 
 import type { HistoryBody } from "./historico-fonte";
 import type { ExpiryInfo } from "./types";
+import type { CurvaHistorica, Horizonte, VerticeCurva } from "./curvas";
 import { sessionsBetween } from "./session";
 
 export const PONTE_MT5_URL = process.env.PONTE_MT5_URL ?? "http://127.0.0.1:3200";
@@ -262,6 +263,113 @@ export function linhaDaSerie(s: SerieMt5, spot: number, sessao: string, exp: Pic
     tickAt: s.tickAt,
     diarioProvisorio: provisorio || undefined,
   };
+}
+
+// ---------------------------------------------------------------------------------------------
+// WO-62 — Macro e curva DI pelo terminal
+// ---------------------------------------------------------------------------------------------
+const TIMEOUT_MACRO_MS = 12_000;
+const TIMEOUT_CURVA_DI_MS = 15_000;
+
+export interface SerieMacroMt5 {
+  simbolo: string;
+  ok: boolean;
+  motivo?: string;
+  descricao?: string;
+  last?: number | null;
+  tickAt?: string | null;
+  sessao?: string | null;
+  candles?: { date: string; close: number }[];
+}
+
+/** Índices e contratos contínuos da BMF pela ponte, indexados por símbolo. `null` sem ponte. */
+export async function macroMt5(simbolos: string[], range = "1y"): Promise<Record<string, SerieMacroMt5> | null> {
+  if (simbolos.length === 0) return {};
+  const j = await buscarJsonPonte<{ series: SerieMacroMt5[] }>(`/macro?simbolos=${encodeURIComponent(simbolos.join(","))}&range=${range}`, TIMEOUT_MACRO_MS);
+  if (!j || !Array.isArray(j.series)) return null;
+  const out: Record<string, SerieMacroMt5> = {};
+  for (const s of j.series) out[s.simbolo] = s;
+  return out;
+}
+
+export interface ContratoDi {
+  contrato: string;
+  /** YYYY-MM-DD — 1º dia útil do mês do contrato. */
+  vencimento: string;
+  /** Taxa a.a. em percentual (13.555 = 13,555 % a.a.). */
+  taxa: number;
+  bid: number | null;
+  ask: number | null;
+  tickAt: string | null;
+  /** Fechamentos diários (ascendente), até 70 pregões. */
+  fechamentos: { date: string; close: number }[];
+}
+
+/** Os contratos DI1 vigentes pela ponte. `null` sem ponte ou terminal deslogado. */
+export async function curvaDiMt5(): Promise<{ contratos: ContratoDi[]; sessao: string } | null> {
+  const j = await buscarJsonPonte<{ contratos: ContratoDi[]; sessao: string }>("/curva-di", TIMEOUT_CURVA_DI_MS);
+  if (!j || !Array.isArray(j.contratos) || j.contratos.length === 0) return null;
+  return j;
+}
+
+export interface VerticeDi extends VerticeCurva {
+  contrato: string;
+  bid: number | null;
+  ask: number | null;
+  tickAt: string | null;
+}
+
+export interface CurvaDi {
+  /** Data do dado — a sessão do tick mais recente entre os contratos. */
+  dataDoDado: string | null;
+  fonte: string;
+  vertices: VerticeDi[];
+  historico: CurvaHistorica;
+  datasComparacao: Record<Horizonte, string | null>;
+}
+
+const OFFSETS: Record<Horizonte, number> = { d1: 1, d5: 5, d21: 21, d63: 63 };
+
+/**
+ * Contratos da ponte → a curva no formato que Rates & FX já mostra (`VerticeCurva` +
+ * `CurvaHistorica`). `anos` = pregões até o vencimento / 252. As variações d1/d5/d21/d63 comparam
+ * a taxa de agora com o fechamento de N pregões ANTES da data do dado (o candle do próprio dia
+ * não conta como "1D atrás"). Sem fechamento naquele ponto → `null`, nunca zero.
+ */
+export function montarCurvaDi(contratos: ContratoDi[], hojeIso: string): CurvaDi {
+  const ordenados = [...contratos].filter((c) => c.taxa > 0 && c.vencimento > hojeIso).sort((a, b) => (a.vencimento < b.vencimento ? -1 : 1));
+  const datasTick = ordenados.map((c) => c.tickAt?.slice(0, 10)).filter((d): d is string => !!d).sort();
+  const dataDoDado = datasTick.length ? datasTick[datasTick.length - 1] : hojeIso;
+  const historico: CurvaHistorica = { d1: [], d5: [], d21: [], d63: [] };
+  const datasComparacao: Record<Horizonte, string | null> = { d1: null, d5: null, d21: null, d63: null };
+  const vertices: VerticeDi[] = ordenados.map((c) => {
+    const anteriores = c.fechamentos.filter((f) => f.date < dataDoDado && f.close > 0);
+    const n = anteriores.length;
+    const delta: Partial<Record<Horizonte, number | null>> = {};
+    for (const h of Object.keys(OFFSETS) as Horizonte[]) {
+      const k = OFFSETS[h];
+      const ref = n >= k ? anteriores[n - k] : null;
+      delta[h] = ref ? c.taxa - ref.close : null;
+      if (ref) {
+        historico[h].push({ vencimento: c.vencimento, taxa: ref.close });
+        if (!datasComparacao[h]) datasComparacao[h] = ref.date;
+      }
+    }
+    return {
+      contrato: c.contrato,
+      vencimento: c.vencimento,
+      anos: sessionsBetween(hojeIso, c.vencimento) / 252,
+      taxa: c.taxa,
+      bid: c.bid,
+      ask: c.ask,
+      tickAt: c.tickAt,
+      d1: delta.d1 ?? null,
+      d5: delta.d5 ?? null,
+      d21: delta.d21 ?? null,
+      d63: delta.d63 ?? null,
+    };
+  });
+  return { dataDoDado, fonte: "MT5 · Genial (futuros DI1 da B3)", vertices, historico, datasComparacao };
 }
 
 /** "MT5 · Genial · tick 16:54:57" — o que a barra de veracidade mostra. */

@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { gravarCache, lerCache } from "@/lib/cache-disco";
+import { curvaDiMt5, macroMt5, montarCurvaDi, type CurvaDi, type SerieMacroMt5 } from "@/lib/fonte-mt5";
 import { rollingHV } from "@/lib/historical";
+import { sessionInfo } from "@/lib/session";
 import {
   bpsDelta,
   classifyTrend,
@@ -16,11 +18,20 @@ export interface MacroSymbolConfig {
   symbol: string;
   nome: string;
   grupo: "INDICE" | "FUTURO" | "MOEDA" | "COMMODITY" | "VOL" | "JURO";
+  /**
+   * WO-62: símbolo no terminal MetaTrader 5 (ponte local). Quando existe, a ponte é a primeira
+   * fonte — tick da sessão, sem limite de requisições — e o Yahoo é a reserva. `escala` converte a
+   * unidade do contrato para a da série (DOL$ é cotado em R$ por US$ 1.000). `soMt5`: não há
+   * equivalente no Yahoo; sem ponte, a série fica sem dado (ou com o último bom, rotulado).
+   */
+  mt5?: string;
+  escala?: number;
+  soMt5?: boolean;
 }
 
 const MACRO_SYMBOLS: MacroSymbolConfig[] = [
   // ÍNDICES GLOBAIS
-  { symbol: "^BVSP", nome: "Ibovespa", grupo: "INDICE" },
+  { symbol: "^BVSP", nome: "Ibovespa", grupo: "INDICE", mt5: "IBOV" },
   { symbol: "^GSPC", nome: "S&P 500", grupo: "INDICE" },
   { symbol: "^IXIC", nome: "Nasdaq Composite", grupo: "INDICE" },
   { symbol: "^DJI", nome: "Dow Jones", grupo: "INDICE" },
@@ -31,12 +42,15 @@ const MACRO_SYMBOLS: MacroSymbolConfig[] = [
   { symbol: "000001.SS", nome: "Xangai Composite (China)", grupo: "INDICE" },
 
   // FUTUROS & VOL
-  { symbol: "ES=F", nome: "S&P 500 Futuros", grupo: "FUTURO" },
+  { symbol: "ES=F", nome: "S&P 500 Futuros", grupo: "FUTURO", mt5: "ISP$" },
   { symbol: "NQ=F", nome: "Nasdaq Futuros", grupo: "FUTURO" },
   { symbol: "^VIX", nome: "VIX (Volatilidade)", grupo: "VOL" },
+  // WO-62 — contratos da B3 que só existem no terminal (VIX$, DAX$ e WTI$ estão mortos lá; medido em 19/09/2026)
+  { symbol: "BIT$", nome: "Bitcoin futuro B3 (R$)", grupo: "FUTURO", mt5: "BIT$", soMt5: true },
 
   // MOEDAS
   { symbol: "USDBRL=X", nome: "USD / BRL", grupo: "MOEDA" },
+  { symbol: "DOL$", nome: "Dólar futuro B3 (R$/US$)", grupo: "MOEDA", mt5: "DOL$", escala: 0.001, soMt5: true },
   { symbol: "DX-Y.NYB", nome: "DXY (Índice Dólar)", grupo: "MOEDA" },
   { symbol: "EURUSD=X", nome: "EUR / USD", grupo: "MOEDA" },
   { symbol: "USDCNY=X", nome: "USD / CNY", grupo: "MOEDA" },
@@ -52,6 +66,8 @@ const MACRO_SYMBOLS: MacroSymbolConfig[] = [
   { symbol: "^FVX", nome: "US 5 Anos", grupo: "JURO" },
   { symbol: "^TNX", nome: "US 10 Anos", grupo: "JURO" },
   { symbol: "^TYX", nome: "US 30 Anos", grupo: "JURO" },
+  // WO-62 — o DI1 "por liquidez" (o contrato mais negociado, hoje F31); a curva inteira vai em `curvaDi`.
+  { symbol: "DI1$", nome: "DI 1 dia (contrato mais líquido)", grupo: "JURO", mt5: "DI1$", soMt5: true },
 ];
 
 export interface MacroSeries {
@@ -82,6 +98,8 @@ export interface MacroSeries {
    */
   dataDoDado: string | null;
   ok: boolean;
+  /** WO-62: de onde a série veio nesta rodada. */
+  fonte?: "mt5" | "yahoo";
   /** 16/09/2026: `true` quando a rede falhou e este é o último dado bom guardado (memória ou disco). */
   stale?: boolean;
   /** Por que a busca falhou desta vez (HTTP 429, timeout…). Só quando `ok` é false ou `stale` é true. */
@@ -115,6 +133,8 @@ export interface MacroBody {
   defasados: string[];
   /** O motivo da falha desta rodada, por símbolo (falhas e defasados). */
   motivos: Record<string, string>;
+  /** WO-62: a curva de futuros DI1 da B3 pelo terminal MT5; `null` sem ponte (motivo em `motivos.DI1`). */
+  curvaDi: CurvaDi | null;
 }
 
 let cache: { body: MacroBody; at: number } | null = null;
@@ -189,31 +209,10 @@ function descreverErro(e: unknown): string {
   return m;
 }
 
-async function fetchYahooSymbol(cfg: MacroSymbolConfig): Promise<MacroSeries> {
-  try {
-    const json = await buscarComRetry(cfg.symbol);
-    const result = json?.chart?.result?.[0];
-    if (!result) throw new Error("Sem dados");
+type CandleSimples = { date: string; open: number; high: number; low: number; close: number; volume: number };
 
-    const timestamps: number[] = result.timestamp ?? [];
-    const rawCloses: (number | null)[] = result.indicators?.quote?.[0]?.close ?? [];
-
-    const candles: { date: string; open: number; high: number; low: number; close: number; volume: number }[] = [];
-    const validCloses: number[] = [];
-
-    for (let i = 0; i < rawCloses.length; i++) {
-      const c = rawCloses[i];
-      if (c != null && Number.isFinite(c) && c > 0) {
-        validCloses.push(c);
-        const dateStr = timestamps[i]
-          ? new Date(timestamps[i] * 1000).toISOString().slice(0, 10)
-          : "";
-        candles.push({ date: dateStr, open: c, high: c, low: c, close: c, volume: 100 });
-      }
-    }
-
-    if (!validCloses.length) throw new Error("Array de fechaes vazio");
-
+/** Uma série pronta a partir dos fechamentos (Yahoo ou MT5) — retornos, HV, médias, sparkline. */
+function serieDeFechamentos(cfg: MacroSymbolConfig, validCloses: number[], candles: CandleSimples[], fonte: "mt5" | "yahoo"): MacroSeries {
     const last = validCloses[validCloses.length - 1];
 
     // Para grupo JURO, as taxas são expressas em %, e as variações são em basis points (bps)
@@ -269,10 +268,12 @@ async function fetchYahooSymbol(cfg: MacroSymbolConfig): Promise<MacroSeries> {
       updatedAt: new Date().toISOString(),
       dataDoDado: candles.length ? candles[candles.length - 1].date || null : null,
       ok: true,
+      fonte,
     };
-  } catch (e) {
-    const motivo = descreverErro(e);
-    // A rede falhou: o último dado bom, rotulado, vale mais que um card vazio.
+}
+
+/** Falha desta rodada: o último dado bom, rotulado, vale mais que um card vazio. */
+function serieFalha(cfg: MacroSymbolConfig, motivo: string): MacroSeries {
     const anterior = ultimoBom.get(cfg.symbol);
     if (anterior) return { ...anterior, stale: true, motivo };
     return {
@@ -300,7 +301,62 @@ async function fetchYahooSymbol(cfg: MacroSymbolConfig): Promise<MacroSeries> {
       ok: false,
       motivo,
     };
+}
+
+async function fetchYahooSymbol(cfg: MacroSymbolConfig): Promise<MacroSeries> {
+  try {
+    const json = await buscarComRetry(cfg.symbol);
+    const result = json?.chart?.result?.[0];
+    if (!result) throw new Error("Sem dados");
+
+    const timestamps: number[] = result.timestamp ?? [];
+    const rawCloses: (number | null)[] = result.indicators?.quote?.[0]?.close ?? [];
+
+    const candles: CandleSimples[] = [];
+    const validCloses: number[] = [];
+
+    for (let i = 0; i < rawCloses.length; i++) {
+      const c = rawCloses[i];
+      if (c != null && Number.isFinite(c) && c > 0) {
+        validCloses.push(c);
+        const dateStr = timestamps[i]
+          ? new Date(timestamps[i] * 1000).toISOString().slice(0, 10)
+          : "";
+        candles.push({ date: dateStr, open: c, high: c, low: c, close: c, volume: 100 });
+      }
+    }
+
+    if (!validCloses.length) throw new Error("Array de fechaes vazio");
+    return serieDeFechamentos(cfg, validCloses, candles, "yahoo");
+  } catch (e) {
+    return serieFalha(cfg, descreverErro(e));
   }
+}
+
+/**
+ * WO-62 — a série pela ponte MT5: fechamentos diários do terminal e, quando o tick é de uma
+ * sessão posterior ao último candle, o tick entra como o fechamento corrente. `escala` converte
+ * a unidade do contrato. Sem ponte: Yahoo (quando existe) ou o último dado bom.
+ */
+function serieDoMt5(cfg: MacroSymbolConfig, m: SerieMacroMt5 | undefined): MacroSeries | null {
+  if (!m?.ok || !m.candles?.length) return null;
+  const escala = cfg.escala ?? 1;
+  const candles: CandleSimples[] = m.candles.filter((c) => c.close > 0).map((c) => ({ date: c.date, open: c.close * escala, high: c.close * escala, low: c.close * escala, close: c.close * escala, volume: 100 }));
+  if (m.last != null && m.last > 0 && m.sessao && candles.length && m.sessao > candles[candles.length - 1].date) {
+    const v = m.last * escala;
+    candles.push({ date: m.sessao, open: v, high: v, low: v, close: v, volume: 100 });
+  }
+  if (!candles.length) return null;
+  return serieDeFechamentos(cfg, candles.map((c) => c.close), candles, "mt5");
+}
+
+async function fetchSerie(cfg: MacroSymbolConfig, doMt5: Record<string, SerieMacroMt5> | null): Promise<MacroSeries> {
+  if (cfg.mt5) {
+    const viaMt5 = serieDoMt5(cfg, doMt5?.[cfg.mt5]);
+    if (viaMt5) return viaMt5;
+    if (cfg.soMt5) return serieFalha(cfg, doMt5 ? (doMt5[cfg.mt5]?.motivo ?? "sem dado no terminal") : "ponte MT5 indisponível");
+  }
+  return fetchYahooSymbol(cfg);
 }
 
 /** Executa uma lista de tarefas com concorrência máxima limitada. */
@@ -384,16 +440,18 @@ export async function GET(_req: NextRequest) {
   }
   carregarUltimoBomDoDisco();
 
-  const [seriesResults, brasil] = await Promise.all([
-    poolAll(MACRO_SYMBOLS, fetchYahooSymbol, 4),
-    fetchBrasilMacro(),
-  ]);
+  // WO-62: a ponte MT5 primeiro (uma chamada para todos os símbolos que o terminal tem) e a curva DI.
+  const simbolosMt5 = MACRO_SYMBOLS.filter((c) => c.mt5).map((c) => c.mt5 as string);
+  const [doMt5, di, brasil] = await Promise.all([macroMt5(simbolosMt5), curvaDiMt5(), fetchBrasilMacro()]);
+  const seriesResults = await poolAll(MACRO_SYMBOLS, (cfg) => fetchSerie(cfg, doMt5), 4);
   guardarUltimoBom(seriesResults);
+  const curvaDi = di ? montarCurvaDi(di.contratos, sessionInfo().ultimaSessao) : null;
 
   const falhas = seriesResults.filter((s) => !s.ok).map((s) => s.symbol);
   const defasados = seriesResults.filter((s) => s.ok && s.stale).map((s) => s.symbol);
   const motivos: Record<string, string> = {};
   for (const s of seriesResults) if (s.motivo) motivos[s.symbol] = s.motivo;
+  if (!curvaDi) motivos["DI1"] = "curva DI indisponível: ponte MT5 fora ou terminal deslogado";
   if (falhas.length + defasados.length > 0) {
     const resumo = Object.entries(motivos).slice(0, 3).map(([k, v]) => `${k}: ${v}`).join(" · ");
     console.warn(`[macro] Yahoo: ${falhas.length} sem dado, ${defasados.length} servidos do último dado bom — ${resumo}`);
@@ -406,6 +464,7 @@ export async function GET(_req: NextRequest) {
     falhas,
     defasados,
     motivos,
+    curvaDi,
   };
 
   cache = { body, at: Date.now() };
