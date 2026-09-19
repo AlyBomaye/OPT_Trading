@@ -61,7 +61,10 @@ skill de engenharia, cabeçalho de `lib/curvas.ts`; testes WO-62 1–4.
   ask 13,654) … DI1F40 14,34; `/macro` → IBOV 185.229, ISP$ 7.733,5, DOL$ 5.157,5, BIT$ 420.780,
   DI1$ 14,02, todos com 260 candles; VIX$ sem tick (12 candles, último em julho); símbolo
   inexistente devolve `ok: false` com motivo.
-- Produção: ver o rodapé desta seção (preenchido após o reinício).
+- Produção (build `e3f564f`, 19/09/2026): `/api/macro` em 1,9 s com 27 séries, 0 falhas; pelo MT5:
+  ^BVSP 185.229, ES=F 7.733,5, BIT$ 420.780, DOL$ 5,1575, DI1$ 14,02 (dado de 18/09); `curvaDi` com 20
+  vértices (DI1V26 13,653 % a 0,04 anos … DI1F40), variações d1/d5/d21/d63 contra 17/09, 11/09,
+  19/08 e 22/06, histórico de 3 meses completo para os 20 contratos.
 
 ### O que a máquina ensinou
 
