@@ -351,6 +351,22 @@ export default function MacroPage() {
       vazio: "Curva do Tesouro indisponível nesta execução.",
     });
 
+    // WO-62 — DI futuros (B3) pelo terminal MT5: a curva que a plataforma nunca teve. Entra depois
+    // do par Pré/Treasuries, em largura inteira (nível + variações), com o contrato na tabela.
+    const di = data?.curvaDi ?? null;
+    const linhaDi = {
+      ...daCurvaTesouro(
+        di?.vertices ?? [], di?.historico, "DI futuros (B3) — curva de juros pelo MT5", "#22d3ee",
+        "Taxa dos contratos DI1 da B3 (F = jan, J = abr, N = jul, V = out), lida do terminal MetaTrader 5 da Genial. É a curva de futuros que o Pré (Tesouro) aproxima; a variação compara com o fechamento de N pregões antes da data do dado."
+      ),
+      fonte: di?.fonte ?? "MT5 · Genial (futuros DI1 da B3)",
+      dataDoDado: di?.dataDoDado ?? null,
+      vazio: "Curva DI indisponível: ponte MT5 fora do ar ou terminal deslogado.",
+    };
+    if (di?.vertices?.length) {
+      linhaDi.tabela = { ...linhaDi.tabela, colunas: [{ chave: "contrato", rotulo: "CONTRATO", tipo: "texto" as const }, ...colunasCurva], linhas: di.vertices.map((v) => ({ contrato: v.contrato, vertice: rot(v.vencimento), taxa: v.taxa, d1: v.d1, d5: v.d5, d21: v.d21, d63: v.d63 })) };
+    }
+
     // 2 — Treasuries US: as curvas passadas são reconstruídas de `hoje − variação`, que é o
     // método que este painel já usava para desenhar "1M atrás".
     const tenores: [string, string][] = [["^IRX", "3M"], ["^FVX", "5Y"], ["^TNX", "10Y"], ["^TYX", "30Y"]];
@@ -391,6 +407,9 @@ export default function MacroPage() {
       },
       vazio: "Séries de Treasuries indisponíveis.",
     });
+
+    // 2b — DI futuros (WO-62), primeira linha em largura inteira
+    out.push(linhaDi);
 
     // 3 — Cupom cambial: derivado nas duas pontas, por isso EST.
     out.push({
@@ -991,8 +1010,9 @@ function MarketSectionGroup({
 
         return (
           <tr key={s.symbol} className="border-b border-term-line/20 hover:bg-term-line/10">
-            <td className="py-1.5 px-2 font-bold text-term-text truncate" title={`${s.nome} (${s.symbol})`}>
+            <td className="py-1.5 px-2 font-bold text-term-text truncate" title={`${s.nome} (${s.symbol})${s.fonte === "mt5" ? " · pelo terminal MetaTrader 5 (tick da sessão)" : ""}`}>
               {s.nome} <span className="text-xxs text-term-dim">({s.symbol})</span>
+              {s.fonte === "mt5" && <span className="tag bg-term-green/15 text-term-green ml-1 text-[9px]">MT5</span>}
             </td>
             <td className="py-1.5 px-1 text-term-cyan font-semibold truncate">
               {s.last != null ? (isBps ? `${fmtNum(s.last, 2)}%` : fmtNum(s.last, 2)) : "—"}
