@@ -6666,6 +6666,50 @@ Líquido para 04/09/2026 5.134,69 D`;
     else { console.log(`✘ WO-64 Teste 6 falhou: docs=${docsOk}`); failures++; }
   }
 
+  // WO-65 — Histórico: o volume ganha o próprio gráfico, com cor e indicadores simples
+  {
+    const fs65 = await import("node:fs");
+    const path65 = await import("node:path");
+    const ler65 = (rel: string) => fs65.readFileSync(path65.join(process.cwd(), rel), "utf8");
+    const V = await import("../volume-calculos");
+    const c = (date: string, close: number, volume: number, high = close + 1, low = close - 1, open = close) => ({ date, open, high, low, close, volume });
+    const serie = [c("2026-09-01", 10, 100), c("2026-09-02", 11, 200), c("2026-09-03", 11, 50), c("2026-09-04", 9, 300), c("2026-09-08", 12, 400, 0, 0)];
+    const linhas = V.linhasDeVolume(serie, 2);
+    const cores = linhas.map((l) => l.cor);
+    const coresOk = cores.join(",") === "neutra,alta,neutra,baixa,alta";
+    const tipicoOk = V.precoTipico(serie[0]) === 10 && V.precoTipico(serie[4]) === 12 && V.volumeFinanceiro(serie[1]) === 200 * 11 && V.volumeFinanceiro(c("x", 5, -3)) === 0;
+    const mm = V.mediaMovel([1, 2, 3, 4], 2);
+    const mmOk = mm[0] === null && mm[1] === 1.5 && mm[2] === 2.5 && mm[3] === 3.5 && V.mediaMovel([], 3).length === 0 && linhas[1].mediaVolume === 150 && linhas[0].mediaVolume === null;
+    const vw = V.vwap(serie, 2);
+    const vwapOk = vw != null && Math.abs(vw - (9 * 300 + 12 * 400) / 700) < 1e-9 && V.vwap([c("a", 5, 0)], 5) === null;
+    const r = V.resumoVolume(serie, 4, 12.6);
+    const resumoOk = r.janela === 4 && r.ate === "2026-09-08" && r.ultimo === 400 && r.media === (200 + 50 + 300 + 400) / 4 && r.razao != null && Math.abs(r.razao - 400 / 237.5) < 1e-9
+      && r.diasAlta === 2 && r.diasBaixa === 1 && Math.abs(r.financeiroAlta - (200 * 11 + 400 * 12)) < 1e-9 && Math.abs(r.financeiroBaixa - 300 * 9) < 1e-9
+      && r.fracaoAlta != null && Math.abs(r.fracaoAlta - (2200 + 4800) / (2200 + 550 + 2700 + 4800)) < 1e-9
+      && r.vwap != null && r.spotVsVwap != null && Math.abs(r.spotVsVwap - (12.6 / r.vwap - 1)) < 1e-12;
+    const vazio = V.resumoVolume([], 21, 10);
+    const semVol = V.resumoVolume([c("a", 5, 0), c("b", 6, 0)], 21, null);
+    const vazioOk = vazio.ultimo === null && vazio.razao === null && vazio.fracaoAlta === null && vazio.vwap === null && semVol.media === null && semVol.razao === null && semVol.fracaoAlta === null && semVol.financeiroMedio === null && semVol.diasAlta === 1;
+    if (coresOk && tipicoOk && mmOk && vwapOk && resumoOk && vazioOk) console.log("✔ WO-65 Teste 1: a cor do dia é fechamento contra o dia anterior (neutra no primeiro e no empate), o preço típico cai para o fechamento sem máx/mín, o financeiro é quantidade × típico (nunca negativo), a média móvel só existe com n observações, o VWAP pondera pela quantidade e ignora dia sem volume, o resumo conta dias e dinheiro por cor e compara o spot ao VWAP; sem dado é null, nunca zero");
+    else { console.log(`✘ WO-65 Teste 1 falhou: cores=${cores} tipico=${tipicoOk} mm=${mmOk} vwap=${vwapOk} resumo=${resumoOk} vazio=${vazioOk} ${JSON.stringify(r)}`); failures++; }
+
+    const painel = ler65("components/PriceHistoryPanel.tsx");
+    const nCharts = (painel.match(/<ComposedChart /g) ?? []).length;
+    const iPreco = painel.indexOf('name="Fechamento"');
+    const iVolume = painel.indexOf('dataKey="volume"');
+    const painelOk = nCharts === 2 && (painel.match(/syncId=\{SYNC\}/g) ?? []).length === 2 && iPreco > 0 && iVolume > iPreco
+      && /<Cell key=\{d\.date\} fill=\{COR_VOLUME\[d\.cor\]\} \/>/.test(painel) && /alta: "#00c805", baixa: "#ff3b30"/.test(painel) && /dataKey="mediaVolume"/.test(painel)
+      && !/yAxisId="vol"/.test(painel) && /linhasDeVolume\(candles, JANELA_VOLUME\)/.test(painel) && /resumoVolume\(candles, JANELA_VOLUME/.test(painel)
+      && /VWAP \{resumo\.janela\}p/.test(painel) && /em alta/.test(painel) && /a fonte não trouxe volume/.test(painel) && /aproximação, não o financeiro oficial/.test(painel)
+      && !/<Bar dataKey="volume" name="Volume" yAxisId="vol"/.test(painel);
+    const anti = ler65("ANTIGRAVITY.md");
+    const manual = ler65("lib/manual-content.ts");
+    const wo65 = ler65("WO-65-PROMPT.md");
+    const docsOk = /WO-65 Volume no Histórico/.test(anti) && /o volume tem o próprio gráfico embaixo da cotação/.test(manual) && /## Executado/.test(wo65) && !/_\(preenchido na execução\)_/.test(wo65);
+    if (painelOk && docsOk) console.log("✔ WO-65 Teste 2: o Histórico tem dois gráficos sincronizados — a cotação sem barras por cima e o volume embaixo com célula verde/vermelha por dia e a média de 21p —, o rodapé traz último ÷ média, financeiro aproximado (declarado), % em alta e VWAP contra o spot; ANTIGRAVITY, Manual e o Executado da WO-65 registram");
+    else { console.log(`✘ WO-65 Teste 2 falhou: painel=${painelOk} (charts=${nCharts}) docs=${docsOk}`); failures++; }
+  }
+
 }
 
 testesAssincronos()

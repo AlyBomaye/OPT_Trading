@@ -665,6 +665,12 @@ Comportamentos-chave:
   persistido em `localStorage` (`wb-history-open`), HV21, IV ATM live e spread IV−HV21, e **linhas
   de referência horizontais** para os strikes das pernas ativas (verde/vermelho), breakevens
   (dourado) e spot (ciano).
+- **WO-65 Volume no Histórico (21/09/2026)**: o volume saiu de cima da cotação e ganhou o
+  próprio `ComposedChart` embaixo, na mesma régua de datas (`syncId`), barras verdes (fechou
+  acima do dia anterior) e vermelhas (abaixo) com a média de 21 pregões; o rodapé ganhou os
+  indicadores simples do volume (último ÷ média, financeiro médio como quantidade × preço
+  típico — aproximação declarada —, % do dinheiro em dias de alta, VWAP 21p contra o spot).
+  `lib/volume-calculos.ts`, puro e testado. Sem cartões: decisão do operador.
 - **WO-16 Cards de Sugestão com Preview Interativo**: ao clicar em um preset, gera 3 candidatas
   ranqueadas por EV ajustado a risco (`score = ev / |maxLoss|`). Clicar em um card seleciona a
   candidata e atualiza ao vivo todos os gráficos (header, LegDiagram, KPIs, gregas, PayoffChart,
