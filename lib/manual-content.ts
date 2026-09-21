@@ -188,7 +188,7 @@ export const CHART_ATTACK = [
 export const DADOS_LIMITACOES = [
   {
     titulo: "A fonte primária: MetaTrader 5 da corretora, em tempo real",
-    texto: "A cadeia de opções, o tick do papel e o histórico diário vêm do terminal MetaTrader 5 (Genial), aberto e logado nesta máquina, lido por uma ponte local (scripts/mt5-ponte.py, só 127.0.0.1). Cada série traz bid, ask, último negócio e a hora do tick; o spot é o tick do papel na sessão corrente. A ponte não recebe credencial nenhuma: quem loga é o operador, no terminal. A barra de veracidade mostra a fonte e a hora ('MT5 · Genial · tick 16:54:57') e o chip BOOK conta as séries com bid e ask.",
+    texto: "A cadeia de opções, o tick do papel e o histórico diário vêm do terminal MetaTrader 5 (Genial), aberto e logado nesta máquina, lido por uma ponte local (scripts/mt5-ponte.py, só 127.0.0.1). Cada série traz bid, ask, último negócio e a hora do tick; o spot é o tick do papel na sessão corrente. A ponte não recebe credencial nenhuma: quem loga é o operador, no terminal. A barra de veracidade mostra a fonte e a hora ('MT5 · Genial · tick 16:54:57') e o chip BOOK conta as séries com bid e ask. Os strikes não vêm do terminal: vêm do catálogo oficial da B3 (o arquivo de instrumentos do dia, com o ajuste por proventos), porque o terminal guarda o strike original da série — a barra diz 'strikes B3 21/09', e uma série que o catálogo não tem aparece com '?' ao lado do strike na grade.",
   },
   {
     titulo: "As reservas: opcoes.net.br e COTAHIST",

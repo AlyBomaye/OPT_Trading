@@ -60,8 +60,11 @@ function localParaIso(v: string): string | null {
 function agoraLocal(): string {
   return isoParaLocal(new Date().toISOString());
 }
+/** "2,14" → 2.14; campo vazio → null (não zero). O texto digitado mora no estado da ficha; daqui só sai o número. */
 const parse = (v: string): number | null => {
-  const n = Number((v ?? "").replace(",", "."));
+  const t = (v ?? "").trim();
+  if (t === "") return null;
+  const n = Number(t.replace(",", "."));
   return Number.isFinite(n) && n >= 0 ? n : null;
 };
 
@@ -145,6 +148,11 @@ function Ficha({
   const [nota, setNota] = useState(r.nota ?? "");
   const [editandoPlano, setEditandoPlano] = useState(false);
   const [custosAbertos, setCustosAbertos] = useState<number | null>(null);
+  // 21/09/2026: o campo era `value={String(p.precoExecucao)}` com o número gravado a cada tecla —
+  // "2," virava 2 e a vírgula sumia antes do "14". O que se digita fica aqui; o número vai para a perna.
+  const [textos, setTextos] = useState<Record<string, string>>({});
+  const texto = (chave: string, valor: number | null | undefined) => textos[chave] ?? (valor != null ? String(valor) : "");
+  const digitar = (chave: string, v: string) => setTextos((t) => ({ ...t, [chave]: v }));
   const [estado, setEstado] = useState<"parado" | "guardando" | "confirmando" | "descartando">("parado");
   const [msg, setMsg] = useState<string | null>(null);
   const [confirmarDescarte, setConfirmarDescarte] = useState(false);
@@ -154,6 +162,7 @@ function Ficha({
     setPernas(r.pernas);
     setMotivo(r.motivoSaida);
     setNota(r.nota ?? "");
+    setTextos({});
   }, [r.pernas, r.motivoSaida, r.nota]);
 
   const hoje = new Date().toISOString().slice(0, 10);
@@ -265,8 +274,8 @@ function Ficha({
                       </td>
                       <td className="td text-right">
                         <input
-                          value={p.precoExecucao != null ? String(p.precoExecucao) : ""}
-                          onChange={(ev) => mudar(i, { precoExecucao: parse(ev.target.value), executadoEm: p.executadoEm ?? new Date().toISOString() })}
+                          value={texto(`preco:${i}`, p.precoExecucao)}
+                          onChange={(ev) => { digitar(`preco:${i}`, ev.target.value); mudar(i, { precoExecucao: parse(ev.target.value), executadoEm: p.executadoEm ?? new Date().toISOString() }); }}
                           inputMode="decimal"
                           placeholder="do Profit"
                           className={clsx("cell-input !w-20 text-right", semExecucao ? "border-term-gold" : "")}
@@ -293,9 +302,9 @@ function Ficha({
                               <label key={k} className="flex flex-col items-end">
                                 <span className="text-term-dim">{k === "taxaOperacional" ? "tx.op." : k.slice(0, 6)}</span>
                                 <input
-                                  value={p.custos?.[k] != null ? String(p.custos[k]) : ""}
+                                  value={texto(`custo:${i}:${k}`, p.custos?.[k])}
                                   placeholder={est ? est[k].toFixed(2) : ""}
-                                  onChange={(ev) => mudar(i, { custos: { ...(p.custos ?? {}), [k]: parse(ev.target.value) } })}
+                                  onChange={(ev) => { digitar(`custo:${i}:${k}`, ev.target.value); mudar(i, { custos: { ...(p.custos ?? {}), [k]: parse(ev.target.value) } }); }}
                                   inputMode="decimal"
                                   className="cell-input !w-14 text-right"
                                 />

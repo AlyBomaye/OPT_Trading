@@ -123,6 +123,9 @@ export function OptionChain() {
                   <CallCells o={call} spot={chain.spot} onAdd={add} />
                   <td className={clsx("td text-center font-bold bg-term-panel2/70", atm ? "text-term-cyan" : "text-term-text")}>
                     {fmtNum(strike)}
+                    {(call?.strikeFonte === "mt5" || put?.strikeFonte === "mt5") && (
+                      <span className="ml-1 text-term-gold font-normal" title="Strike do terminal MT5: a série não está no catálogo da B3 de hoje, então pode faltar o ajuste por proventos. Confira na corretora antes de operar.">?</span>
+                    )}
                   </td>
                   <PutCells o={put} spot={chain.spot} onAdd={add} />
                 </tr>

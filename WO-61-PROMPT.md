@@ -236,6 +236,12 @@ e `fonte-mt5`; README cita `MetaTrader5`; nenhum arquivo do repo contém a conta
 
 ### O que a máquina ensinou desta vez
 
+- **O strike do terminal é o original da série (21/09/2026, medido)**: `option_strike` nunca é
+  ajustado por proventos — PETR4 1,19 acima em 464 de 468 séries negociadas, VALE3 1,76 em todas,
+  ITUB4 0,02 em todas; a descrição do símbolo está velha em parte delas. Três sessões de IV,
+  gregas e moneyness saíram erradas por isso. Corrigido na WO-63: o catálogo oficial de
+  instrumentos da B3 sobrepõe o strike; o do terminal só entra rotulado.
+
 - **`session_deals`/`session_volume` vêm zerados para opções**; negócios do dia e último negócio
   só existem no candle D1 da série. `copy_rates_from_pos` custa **15 ms** para série já carregada
   e **~300 ms** na primeira vez (o terminal baixa o histórico) — e **seleciona a série no Market

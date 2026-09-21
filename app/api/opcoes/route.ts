@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { gravarCache, lerCache } from "@/lib/cache-disco";
 import { BANDA_VARREDURA_PCT, ESPERA_CADEIA_COMPLETA_MS, ESPERA_CADEIA_VARREDURA_MS, cadeiaMt5, dataEfetivaDasSeries, detalheFonteMt5, linhaDaSerie, montarExpiries, saudePonte, type LinhaCadeia } from "@/lib/fonte-mt5";
+import { aplicarCatalogo } from "@/lib/catalogo-b3";
+import { catalogoOficial, estadoCatalogo } from "@/lib/catalogo-b3-servidor";
 import { sessionInfo } from "@/lib/session";
 
 /**
@@ -281,6 +283,12 @@ export async function GET(req: NextRequest) {
       const exp = porData.get(serie.expiry);
       if (exp) options.push(linhaDaSerie(serie, viaMt5.spot, dataEfetiva, exp));
     }
+    // WO-63: o strike do terminal é o ORIGINAL da série (nunca ajustado por proventos — PETR4 estava
+    // 1,19 acima em toda série em 21/09/2026). O catálogo oficial da B3 sobrepõe strike, estilo e
+    // moneyness; sem catálogo, cada linha vai rotulada `strikeFonte: "mt5"` e a barra avisa.
+    const catalogo = await catalogoOficial();
+    const sobreposicao = aplicarCatalogo(options, catalogo, viaMt5.spot);
+    if (!catalogo) console.warn(`[opcoes] catálogo B3 indisponível para ${ticker}: strikes do terminal (${estadoCatalogo().ultimoErro ?? "sem detalhe"})`);
     let dataMaisRecente: string | null = null;
     for (const o of options) if (o.lastTradeAt && (!dataMaisRecente || o.lastTradeAt > dataMaisRecente)) dataMaisRecente = o.lastTradeAt;
     const nowIso = new Date().toISOString();
@@ -295,9 +303,10 @@ export async function GET(req: NextRequest) {
       expiries,
       options,
       sourceGreeksAvailable: false,
-      falhas: [] as string[],
+      falhas: catalogo ? ([] as string[]) : ["Catálogo de instrumentos da B3 indisponível: strikes do terminal, sem o ajuste por proventos."],
       fonte: "mt5" as const,
-      fonteDetalhe: detalheFonteMt5(viaMt5.spotTickAt, saude.servidor),
+      fonteDetalhe: `${detalheFonteMt5(viaMt5.spotTickAt, saude.servidor)}${catalogo ? ` · strikes B3 ${catalogo.data.slice(8, 10)}/${catalogo.data.slice(5, 7)}` : " · strikes do terminal (sem catálogo B3)"}`,
+      catalogoB3: catalogo ? { data: catalogo.data, ...sobreposicao } : null,
       spotTickAt: viaMt5.spotTickAt,
       spotFonte: viaMt5.spotFonte,
       // Séries cujo cache diário (negócios, último negócio) a ponte ainda está completando (linhas provisórias).

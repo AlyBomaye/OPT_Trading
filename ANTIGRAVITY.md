@@ -442,6 +442,7 @@ três como "agora" é o erro que o WO-30 eliminou.
 | Idade da marca da carteira vem do **último negócio da série**, não de `chain.updatedAt` | `markInfo()` |
 | Taxa de juros cruza fronteira sempre em **fração**; percentual é convertido na entrada | `lib/units.ts` |
 | Arredondamento só na **apresentação** (`fmtPreco`), nunca no cálculo | `lib/provenance.ts` |
+| O **strike** de uma série é o do **catálogo oficial** de instrumentos da B3 (ajustado por proventos), sobreposto à cadeia do MT5 — o `option_strike` do terminal é o original da série e nunca entra em cálculo sem essa sobreposição (WO-63) | `lib/catalogo-b3.ts`, `/api/opcoes` |
 
 Motivo medido em 04/08/2026: das 1.101 séries de PETR4 com prêmio, **486 tinham preço de
 sessões anteriores** (a mais antiga de 13/04). Calcular a IV com o spot do dia contra esses

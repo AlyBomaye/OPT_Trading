@@ -11,6 +11,12 @@ export interface OptionQuote {
   model: ExerciseModel;
   moneyness: "ITM" | "ATM" | "OTM" | null;
   strike: number;
+  /**
+   * WO-63: de onde veio o strike — "b3" (catálogo oficial de instrumentos da B3, ajustado por
+   * proventos) ou "mt5" (o `option_strike` do terminal, que é o ORIGINAL da série e não foi
+   * verificado). Ausente na fonte antiga (opcoes.net.br), que já traz o strike oficial.
+   */
+  strikeFonte?: "b3" | "mt5";
   /** K/Spot - 1 (informado pela fonte) */
   distStrikePct: number | null;
   /** Prêmio / cotação do ativo */
@@ -95,6 +101,8 @@ export interface ChainData {
   /** WO-61: de onde a grade veio e a frase da barra de veracidade ("MT5 · Genial · tick 16:54:57"). */
   fonte?: "mt5" | "opcoes.net.br";
   fonteDetalhe?: string;
+  /** WO-63: cadeia do MT5 — o catálogo da B3 que sobrepôs os strikes (data e cobertura); `null` = sem catálogo, strikes do terminal. */
+  catalogoB3?: { data: string; cobertas: number; semCatalogo: number; strikesCorrigidos: number; vencimentosDivergentes: number } | null;
   /** ISO do tick do papel que deu o spot (só MT5). */
   spotTickAt?: string | null;
   /** A rota serviu a última grade boa porque a fonte falhou. */

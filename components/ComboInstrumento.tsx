@@ -61,6 +61,8 @@ export function ComboInstrumento({ ticker, spot, opcoes, carregando, valor, onCh
   const [aberto, setAberto] = useState(false);
   const [idx, setIdx] = useState(0);
   const [manual, setManual] = useState<InstrumentoManual>({ opTicker: "", tipoOpcao: "CALL", strike: 0, vencimento: "" });
+  // 21/09/2026: o strike manual era `value={manual.strike}` (número) — "48," virava 48 e a vírgula sumia. O texto fica aqui.
+  const [strikeTexto, setStrikeTexto] = useState("");
   const [manualAberto, setManualAberto] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -173,7 +175,7 @@ export function ComboInstrumento({ ticker, spot, opcoes, carregando, valor, onCh
           </label>
           <label className="space-y-0.5">
             <div className="text-term-dim">Strike (preço de exercício)</div>
-            <input value={manual.strike || ""} onChange={(e) => { const m = { ...manual, strike: Number(e.target.value.replace(",", ".")) || 0 }; setManual(m); onChange({ modo: "manual", manual: m }); }} inputMode="decimal" placeholder="45,92" className="cell-input !w-full text-right" />
+            <input value={strikeTexto} onChange={(e) => { const v = e.target.value; setStrikeTexto(v); const m = { ...manual, strike: Number(v.trim().replace(",", ".")) || 0 }; setManual(m); onChange({ modo: "manual", manual: m }); }} inputMode="decimal" placeholder="45,92" className="cell-input !w-full text-right" />
           </label>
           <label className="space-y-0.5">
             <div className="text-term-dim">Vencimento</div>

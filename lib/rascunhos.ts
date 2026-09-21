@@ -12,6 +12,8 @@
  * sem banco) do que toca o Postgres.
  */
 
+import { detectStrategy } from "@/lib/strategy-detect";
+import type { Leg } from "@/lib/types";
 import fs from "fs";
 import path from "path";
 import type { PoolClient } from "pg";
@@ -107,6 +109,35 @@ export async function obterRascunho(id: number): Promise<Rascunho | null> {
 }
 
 /** Só em `pendente`. Troca as pernas inteiras (o cliente manda a lista editada), o motivo e a nota. */
+/**
+ * WO-63 AJ: a Estratégia dá o nome na criação; quando a Boletagem troca as pernas de uma abertura
+ * (a série executada não é a montada), o nome detectado acompanha — senão um straddle fica
+ * escrito "Strangle" no livro.
+ */
+export function nomeDetectadoDasPernas(ticker: string, pernas: PernaRascunho[]): string | null {
+  const legs = pernas
+    .filter((p) => p.papel === "abre" && p.quantidade > 0)
+    .map((p, i) => ({
+      id: String(i),
+      kind: p.kind,
+      opTicker: p.opTicker ?? undefined,
+      underlying: ticker,
+      type: p.tipoOpcao ?? undefined,
+      model: p.modelo === "A" ? "A" : "E",
+      strike: p.strike ?? undefined,
+      expiry: p.vencimento ?? undefined,
+      side: p.lado === "compra" ? 1 : -1,
+      qty: p.quantidade,
+      price: p.precoExecucao ?? p.precoMontagem ?? 0,
+    }) as Leg);
+  if (!legs.length) return null;
+  try {
+    return detectStrategy(legs)?.name ?? null;
+  } catch {
+    return null;
+  }
+}
+
 export async function atualizarRascunho(id: number, patch: { pernas?: PernaRascunho[]; motivoSaida?: MotivoSaida | null; nota?: string | null; plano?: PlanoRascunho | null }): Promise<Rascunho | null> {
   if (!(await garantirSchemaRascunhos())) return null;
   const atual = await obterRascunho(id);
@@ -115,9 +146,9 @@ export async function atualizarRascunho(id: number, patch: { pernas?: PernaRascu
   if (patch.pernas && (!Array.isArray(patch.pernas) || patch.pernas.length === 0)) throw new Error("Rascunho sem pernas.");
   const rows = await consultar<Record<string, any>>(
     `UPDATE rascunho_boleta
-        SET pernas = COALESCE($2, pernas), motivo_saida = COALESCE($3, motivo_saida), nota = COALESCE($4, nota), plano = COALESCE($5, plano), atualizado_em = now()
+        SET pernas = COALESCE($2, pernas), motivo_saida = COALESCE($3, motivo_saida), nota = COALESCE($4, nota), plano = COALESCE($5, plano), nome_detectado = COALESCE($6, nome_detectado), atualizado_em = now()
       WHERE id = $1 RETURNING *`,
-    [id, patch.pernas ? JSON.stringify(patch.pernas) : null, patch.motivoSaida ?? null, patch.nota ?? null, patch.plano ? JSON.stringify(patch.plano) : null]
+    [id, patch.pernas ? JSON.stringify(patch.pernas) : null, patch.motivoSaida ?? null, patch.nota ?? null, patch.plano ? JSON.stringify(patch.plano) : null, patch.pernas && atual.tipo === "abertura" ? nomeDetectadoDasPernas(atual.ticker, patch.pernas) : null]
   );
   return rows?.[0] ? linhaParaRascunho(rows[0]) : null;
 }

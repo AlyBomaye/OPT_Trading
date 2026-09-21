@@ -46,6 +46,12 @@ O terminal precisa estar **aberto e logado** nesta máquina; a ponte liga-se a e
 de veracidade diz de onde cada número veio. `npm run prod:status` mostra se a ponte responde e se
 o terminal está logado; o vigia avisa quando ele deslogar durante o pregão.
 
+**Strikes (WO-63):** o terminal guarda o strike *original* de cada série, sem o ajuste por
+proventos (PETR4 estava 1,19 acima em toda série em 21/09/2026). A cadeia do MT5 recebe o strike,
+o estilo e a moneyness do **catálogo oficial de instrumentos da B3**, baixado uma vez por dia
+(`lib/catalogo-b3-servidor.ts`, `data/cache/catalogo-b3-<data>.json`). A barra de veracidade
+diz "strikes B3 dd/mm"; sem catálogo, "strikes do terminal" e um `?` ao lado do strike na grade.
+
 ## Banco de dados (opcional, recomendado)
 
 A plataforma funciona sem banco — o navegador continua sendo a fonte do estado, como sempre foi.

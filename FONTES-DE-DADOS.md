@@ -12,6 +12,7 @@ demora.
 | Fonte | Rota | Tipo | Peso medido | Cadência | Fragilidade |
 |---|---|---|---|---|---|
 | **MetaTrader 5 (ponte local, WO-61)** | `/api/opcoes`, `/api/history` | JSON local (127.0.0.1:3200) | cadeia de PETR4: 1.811 séries em 2,6 s | **tempo real** | BAIXA (depende do terminal aberto e logado) |
+| **B3 — catálogo de instrumentos (WO-63)** | `/api/opcoes` (strikes da cadeia MT5) | CSV via token | **20 MB · 89 mil linhas**, 1 download/dia para o universo | 1×/dia útil, manhã (strikes do dia) | MÉDIA (mesmo token do `/api/oi`) |
 | Tesouro Transparente | `/api/curvas-br` | CSV | **13,7 MB · 174 mil linhas** | 1×/dia útil, manhã | **ALTA** |
 | B3 — posições em aberto | `/api/oi` | CSV via token | ~2.600 séries por ativo | 1×/dia útil (D-1) | **ALTA** |
 | opcoes.net.br | `/api/opcoes` | HTML | médio | intradiário | **ALTA** |
@@ -74,6 +75,25 @@ HTTP. Cache de apenas 60 s porque o dado é intradiário.
 - **Rotina:** não cabe pré-carga — o dado precisa ser do momento. O que cabe é **monitoramento**:
   se o parser voltar com zero opções para um ticker líquido, isso é sinal de layout mudado, não de
   papel sem opção. Ponto de atenção para um WO futuro.
+
+### 3b. B3 — catálogo de instrumentos — `lib/catalogo-b3-servidor.ts` (WO-63)
+
+`InstrumentsConsolidatedFile` em arquivos.b3.com.br: o cadastro oficial de todo instrumento
+listado, com o **strike vigente** (ajustado por proventos), o vencimento e o estilo de exercício
+de cada série de opção. É a verdade do strike sobre a cadeia do MT5, porque o terminal da Genial
+entrega o `option_strike` ORIGINAL da série (medido em 21/09/2026 contra o COTAHIST: PETR4 1,19
+acima em toda série negociada, VALE3 1,76, ITUB4 0,02; PETRJ493W2 = 48,17 na B3 e no Profit,
+49,36 no terminal).
+
+Mesmo mecanismo de token do `/api/oi` (`requestname` → `download?token=`), ~20 MB em ~8 s, um
+download por dia para o universo inteiro, guardado em `data/cache/catalogo-b3-<data>.json` por
+36 h. Data sem arquivo (fim de semana, feriado, madrugada antes da publicação) responde HTTP 400:
+recua um dia útil, até 6 vezes. Um download de cada vez — a varredura de 29 papéis espera o mesmo.
+
+- **Se cair:** a cadeia do MT5 sai com o strike do terminal, cada linha rotulada
+  `strikeFonte: "mt5"`, a barra de veracidade diz "strikes do terminal (sem catálogo B3)" e a
+  grade marca o strike com `?`. O opcoes.net.br (reserva) já traz o strike oficial.
+- **Rotina:** nada a agendar — o primeiro pedido do dia baixa; o disco serve o resto.
 
 ### 4. BCB Olinda — Boletim Focus — `/api/focus`
 

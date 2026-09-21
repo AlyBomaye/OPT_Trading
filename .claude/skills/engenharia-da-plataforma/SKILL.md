@@ -144,6 +144,13 @@ e diga no commit. Se a quebra não for intencional, o teste venceu.
   ganha `mt5`, `escala` (DOL$ é R$ por US$ 1.000 → 0,001) e `soMt5`; MT5 primeiro, Yahoo de reserva;
   `MacroSeries.fonte`; `MacroBody.curvaDi`. VIX$, DAX$ e WTI$ estão mortos no servidor da Genial.
 
+- **Strike (WO-63):** o `option_strike` do terminal é o original da série, nunca ajustado por
+  proventos (PETR4 estava 1,19 acima em toda série em 21/09/2026; até a descrição do símbolo
+  fica velha). `/api/opcoes` sobrepõe strike, estilo e moneyness pelo catálogo oficial da B3
+  (`lib/catalogo-b3.ts` puro, `lib/catalogo-b3-servidor.ts` baixa uma vez por dia com
+  `emCurso` para a varredura não disparar 29 downloads); linha sem catálogo vai
+  `strikeFonte: "mt5"`. Nunca calcular IV, gregas ou paridade com o strike cru do terminal.
+
 ## 6. Convenções numéricas (resumo; detalhe nas skills de domínio)
 
 `t = du/252`; vol ×√252; theta/365; vega por +1pp; Selic fração do contexto; `qty` sem lote;

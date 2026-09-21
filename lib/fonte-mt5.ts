@@ -93,6 +93,8 @@ export interface LinhaCadeia {
   model: "A" | "E";
   moneyness: "ITM" | "ATM" | "OTM" | null;
   strike: number;
+  /** WO-63: "b3" = strike do catálogo oficial (ajustado por proventos); "mt5" = o do terminal, original da série, não verificado. */
+  strikeFonte?: "b3" | "mt5";
   distStrikePct: number | null;
   premioPctCot: number | null;
   last: number | null;
@@ -241,7 +243,7 @@ export function midDe(bid: number | null | undefined, ask: number | null | undef
   return (bid + ask) / 2;
 }
 
-function moneynessDe(type: "CALL" | "PUT", strike: number, spot: number): "ITM" | "ATM" | "OTM" {
+export function moneynessDe(type: "CALL" | "PUT", strike: number, spot: number): "ITM" | "ATM" | "OTM" {
   const dist = strike / spot - 1;
   if (Math.abs(dist) <= ATM_PCT) return "ATM";
   if (type === "CALL") return strike < spot ? "ITM" : "OTM";

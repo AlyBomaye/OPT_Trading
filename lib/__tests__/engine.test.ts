@@ -6471,6 +6471,66 @@ Líquido para 04/09/2026 5.134,69 D`;
     else { console.log(`✘ WO-62 Teste 4 falhou: manual=${manualOk} docs=${docsOk}`); failures++; }
   }
 
+  // WO-63 — Catálogo oficial da B3: o strike do terminal é o original da série
+  {
+    const fs63 = await import("node:fs");
+    const path63 = await import("node:path");
+    const ler63 = (rel: string) => fs63.readFileSync(path63.join(process.cwd(), rel), "utf8");
+    const { parseCatalogoB3, aplicarCatalogo, diaUtilAnterior, numeroB3 } = await import("../catalogo-b3");
+    const cab = "RptDt;TckrSymb;Asst;AsstDesc;SgmtNm;MktNm;SctyCtgyNm;XprtnDt;XprtnCd;TradgStartDt;TradgEndDt;BaseCd;ConvsCritNm;MtrtyDtTrgtPt;ReqrdConvsInd;ISIN;CFICd;DlvryNtceStartDt;DlvryNtceEndDt;OptnTp;CtrctMltplr;AsstQtnQty;AllcnRndLot;TradgCcy;DlvryTpNm;WdrwlDays;WrkgDays;ClnrDays;RlvrBasePricNm;OpngFutrPosDay;SdTpCd1;UndrlygTckrSymb1;SdTpCd2;UndrlygTckrSymb2;PureGoldWght;ExrcPric;OptnStyle;ValTpNm;PrmUpfrntInd;OpngPosLmtDt;DstrbtnId;PricFctr;DaysToSttlm;SrsTpNm;PrtcnFlg;AutomtcExrcInd;SpcfctnCd;CrpnNm;CorpActnStartDt;CtdyTrtmntTpNm;MktCptlstn;CorpGovnLvlNm";
+    const linha = (tk: string, papel: string, cat: string, venc: string, tp: string, k: string, st: string) => `2026-09-21;${tk};${papel};${papel.slice(0, 4)};EQUITY ${tp.toUpperCase()};EQUITY-DERIVATE;${cat};${venc};;2026-07-15;${venc};;;;;BR${tk};OCASPS;;;${tp};;;100;BRL;FINANCIAL;;;;;;;;;;;${k};${st};;true;;228;1;1;SEM CORRECAO;true;false;;;;;;`;
+    const csv = ["Status do Arquivo: Parcial", cab, linha("PETRJ493", "PETR4", "OPTION ON EQUITIES", "2026-10-16", "Call", "48,11", "EURO"), linha("PETRJ493W2", "PETR4", "OPTION ON EQUITIES", "2026-10-09", "Call", "48,17", "AMER"), linha("PETRV493W2", "PETR4", "OPTION ON EQUITIES", "2026-10-09", "Put", "48,17", "EURO"), linha("IBOVJ150", "IBOV", "OPTION ON INDEX", "2026-10-16", "Call", "150000", "EURO"), "2026-09-21;PETR4;PETR4;PETR;CASH;EQUITY-CASH;SHARES;;;9999-12-31;;;;;;BRPETRACNPR6;ESVUFB;;;;;;100;BRL;;;;;;;;;;;;;;;;;;;;;;;;PETROBRAS;;;;", ""].join("\r\n");
+    const cat = parseCatalogoB3(csv);
+    const parseOk = cat.total === 3 && cat.data === "2026-09-21" && cat.status === "Parcial" && cat.series.PETRJ493W2?.strike === 48.17 && cat.series.PETRJ493W2?.modelo === "A" && cat.series.PETRV493W2?.modelo === "E" && cat.series.PETRV493W2?.tipo === "PUT" && cat.series.PETRJ493?.vencimento === "2026-10-16" && cat.series.PETRJ493W2?.lote === 100 && cat.series.PETRJ493W2?.papel === "PETR4" && !cat.series.IBOVJ150 && !cat.series.PETR4 && numeroB3("1.234,56") === 1234.56 && numeroB3("") === null && numeroB3("0") === null;
+    const semCab = parseCatalogoB3("Status do Arquivo: Parcial\nA;B;C\n1;2;3\n");
+    type L = { opTicker: string; type: "CALL" | "PUT"; strike: number; model: "A" | "E"; expiry: string; moneyness: "ITM" | "ATM" | "OTM" | null; distStrikePct: number | null; strikeFonte?: "b3" | "mt5" };
+    const linhas: L[] = [
+      { opTicker: "PETRJ493W2", type: "CALL", strike: 49.36, model: "E", expiry: "2026-10-09", moneyness: "ITM", distStrikePct: 0.028 },
+      { opTicker: "PETRV493W2_2026", type: "PUT", strike: 49.36, model: "E", expiry: "2026-10-09", moneyness: "ITM", distStrikePct: 0.028 },
+      { opTicker: "PETRJ999", type: "CALL", strike: 60, model: "E", expiry: "2026-10-16", moneyness: "OTM", distStrikePct: 0.25 },
+    ];
+    const res = aplicarCatalogo(linhas, cat, 48.02);
+    const [l0, l1, l2] = linhas;
+    const aplicaOk = res.cobertas === 2 && res.semCatalogo === 1 && res.strikesCorrigidos === 2 && res.vencimentosDivergentes === 0
+      && l0.strike === 48.17 && l0.model === "A" && l0.strikeFonte === "b3" && l0.moneyness === "ATM" && Math.abs((l0.distStrikePct ?? 0) - (48.17 / 48.02 - 1)) < 1e-9
+      && l1.strike === 48.17 && l1.strikeFonte === "b3" && l2.strike === 60 && l2.strikeFonte === "mt5" && l2.moneyness === "OTM" && l2.distStrikePct === 0.25;
+    const semCatalogo: L[] = [{ opTicker: "PETRJ493W2", type: "CALL", strike: 49.36, model: "E", expiry: "2026-10-09", moneyness: null, distStrikePct: null }];
+    const resNulo = aplicarCatalogo(semCatalogo, null, 48.02);
+    const nuloOk = resNulo.cobertas === 0 && resNulo.semCatalogo === 1 && semCatalogo[0].strike === 49.36 && semCatalogo[0].strikeFonte === "mt5";
+    const diasOk = diaUtilAnterior("2026-09-21") === "2026-09-18" && diaUtilAnterior("2026-09-22") === "2026-09-21" && diaUtilAnterior("2026-09-19") === "2026-09-18";
+    if (parseOk && semCab.total === 0 && aplicaOk && nuloOk && diasOk) console.log("✔ WO-63 Teste 1: parseCatalogoB3 acha as colunas pelo nome, lê só OPTION ON EQUITIES, strike '48,17' → 48.17, AMER → A; aplicarCatalogo sobrepõe strike, estilo, moneyness e distância pelo código da série (sem sufixo de ano), rotula b3/mt5 e conta correções; sem catálogo nada muda e tudo fica 'mt5'; diaUtilAnterior pula o fim de semana");
+    else { console.log(`✘ WO-63 Teste 1 falhou: parse=${parseOk} semCab=${semCab.total} aplica=${aplicaOk} nulo=${nuloOk} dias=${diasOk} ${JSON.stringify({ res, l0, l2 })}`); failures++; }
+
+    const rota = ler63("app/api/opcoes/route.ts");
+    const servidor = ler63("lib/catalogo-b3-servidor.ts");
+    const tipos = ler63("lib/types.ts");
+    const fm = ler63("lib/fonte-mt5.ts");
+    const grade = ler63("components/OptionChain.tsx");
+    const rasc = ler63("components/PainelRascunhos.tsx");
+    const combo = ler63("components/ComboInstrumento.tsx");
+    const rascLib = ler63("lib/rascunhos.ts");
+    const rotaOk = /import \{ catalogoOficial, estadoCatalogo \} from "@\/lib\/catalogo-b3-servidor"/.test(rota) && /const catalogo = await catalogoOficial\(\)/.test(rota) && /aplicarCatalogo\(options, catalogo, viaMt5\.spot\)/.test(rota) && /catalogoB3: catalogo \? \{ data: catalogo\.data, \.\.\.sobreposicao \} : null/.test(rota) && /strikes B3/.test(rota) && /strikes do terminal/.test(rota);
+    const servidorOk = /let emCurso: Promise<CatalogoB3 \| null> \| null = null/.test(servidor) && /if \(emCurso\) return emCurso/.test(servidor) && /lerCache<CatalogoB3>/.test(servidor) && /gravarCache\(chave\(iso\), catalogo/.test(servidor) && /InstrumentsConsolidatedFile/.test(servidor) && /diaUtilAnterior\(iso\)/.test(servidor) && /dataBrasilia\(\)/.test(servidor) && !/toISOString\(\)\.slice\(0, 10\)/.test(servidor) && /falhas\.set\(iso, Date\.now\(\)\)/.test(servidor);
+    const tiposOk = /strikeFonte\?: "b3" \| "mt5"/.test(tipos) && /catalogoB3\?: \{ data: string; cobertas: number; semCatalogo: number; strikesCorrigidos: number; vencimentosDivergentes: number \} \| null/.test(tipos) && /strikeFonte\?: "b3" \| "mt5"/.test(fm) && /export function moneynessDe/.test(fm);
+    const gradeOk = /strikeFonte === "mt5"/.test(grade);
+    const rascOk = /if \(t === ""\) return null/.test(rasc) && /const \[textos, setTextos\] = useState<Record<string, string>>\(\{\}\)/.test(rasc) && /value=\{texto\(`preco:\$\{i\}`, p\.precoExecucao\)\}/.test(rasc) && /value=\{texto\(`custo:\$\{i\}:\$\{k\}`, p\.custos\?\.\[k\]\)\}/.test(rasc) && !/value=\{p\.precoExecucao != null \? String\(p\.precoExecucao\) : ""\}/.test(rasc) && /setTextos\(\{\}\)/.test(rasc);
+    const comboOk = /const \[strikeTexto, setStrikeTexto\] = useState\(""\)/.test(combo) && /value=\{strikeTexto\}/.test(combo) && !/value=\{manual\.strike \|\| ""\}/.test(combo);
+    const nomeOk = /export function nomeDetectadoDasPernas/.test(rascLib) && /nome_detectado = COALESCE\(\$6, nome_detectado\)/.test(rascLib) && /atual\.tipo === "abertura" \? nomeDetectadoDasPernas\(atual\.ticker, patch\.pernas\) : null/.test(rascLib);
+    if (rotaOk && servidorOk && tiposOk && gradeOk && rascOk && comboOk && nomeOk) console.log("✔ WO-63 Teste 2: /api/opcoes sobrepõe o catálogo na cadeia do MT5 e declara catalogoB3/strikes B3 no corpo; o servidor baixa um de cada vez (emCurso), guarda em disco, recua dia útil, usa a data de Brasília e lembra falha; tipos e grade levam strikeFonte; a ficha do rascunho e o strike manual guardam o TEXTO digitado (vírgula não some, vazio é null); trocar as pernas refaz o nome detectado");
+    else { console.log(`✘ WO-63 Teste 2 falhou: rota=${rotaOk} servidor=${servidorOk} tipos=${tiposOk} grade=${gradeOk} rasc=${rascOk} combo=${comboOk} nome=${nomeOk}`); failures++; }
+
+    const fontes = ler63("FONTES-DE-DADOS.md");
+    const anti = ler63("ANTIGRAVITY.md");
+    const readme = ler63("README.md");
+    const manual = ler63("lib/manual-content.ts");
+    const wo63 = ler63("WO-63-PROMPT.md");
+    const wo61 = ler63("WO-61-PROMPT.md");
+    const skill = ler63(".claude/skills/engenharia-da-plataforma/SKILL.md");
+    const docsOk = /InstrumentsConsolidatedFile/.test(fontes) && /catálogo de instrumentos \(WO-63\)/.test(fontes) && /catálogo oficial/.test(anti) && /WO-63/.test(anti) && /Strikes \(WO-63\)/.test(readme) && /catálogo oficial da B3/.test(manual) && /## Executado/.test(wo63) && /WO-63/.test(wo61) && /option_strike/.test(skill) && /Strike \(WO-63\)/.test(skill);
+    if (docsOk) console.log("✔ WO-63 Teste 3: FONTES-DE-DADOS (inventário e seção 3b), ANTIGRAVITY §7.1.1, README, Manual, WO-61 (lição) e a skill de engenharia dizem que o strike vem do catálogo oficial da B3, não do terminal; WO-63-PROMPT tem a seção Executado");
+    else { console.log(`✘ WO-63 Teste 3 falhou: docs=${docsOk}`); failures++; }
+  }
+
 }
 
 testesAssincronos()
