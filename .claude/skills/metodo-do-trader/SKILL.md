@@ -31,6 +31,14 @@ pergunta certa é: em qual camada do método isso entra, e o que o trader faz co
 O semáforo (`SemaforoCriterios`) mostra as quatro camadas como critérios verificáveis. Verde não
 é recomendação; é "o método não veta". A decisão é do trader.
 
+**Camada 1 e o vento dos drivers (WO-64).** A Estratégia mostra, acima do P&L, "O que move este
+papel": as 5 séries que explicam boa parte do ticker (`lib/drivers-catalogo.ts`, escolhidas por
+pesquisa e verificadas), com correlação e beta medidos em 252 pregões e o **vento** — para onde
+os drivers empurram o papel em 21 pregões, contra o viés da estrutura. O vento entra no semáforo
+como o critério "Vento dos drivers": ok, misto ou contra. É a mesma regra da leitura das médias:
+**aviso para olhar, nunca regime, nunca veto**. Texto de tela sobre o vento diz "os drivers
+sopram contra", nunca "o regime é de baixa"; o operador escreve na tese por que vai contra o vento.
+
 ## 2. As três perguntas antes de Boletar
 
 Toda estrutura precisa responder, em números com data:

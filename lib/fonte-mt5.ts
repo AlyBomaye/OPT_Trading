@@ -308,9 +308,9 @@ export interface SerieMacroMt5 {
 }
 
 /** Índices e contratos contínuos da BMF pela ponte, indexados por símbolo. `null` sem ponte. */
-export async function macroMt5(simbolos: string[], range = "1y"): Promise<Record<string, SerieMacroMt5> | null> {
+export async function macroMt5(simbolos: string[], range = "1y", timeoutMs = TIMEOUT_MACRO_MS): Promise<Record<string, SerieMacroMt5> | null> {
   if (simbolos.length === 0) return {};
-  const j = await buscarJsonPonte<{ series: SerieMacroMt5[] }>(`/macro?simbolos=${encodeURIComponent(simbolos.join(","))}&range=${range}`, TIMEOUT_MACRO_MS);
+  const j = await buscarJsonPonte<{ series: SerieMacroMt5[] }>(`/macro?simbolos=${encodeURIComponent(simbolos.join(","))}&range=${range}`, timeoutMs);
   if (!j || !Array.isArray(j.series)) return null;
   const out: Record<string, SerieMacroMt5> = {};
   for (const s of j.series) out[s.simbolo] = s;

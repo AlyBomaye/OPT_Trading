@@ -18,6 +18,7 @@ import clsx from "clsx";
 import { julgarEstrutura, resumirCriterios, type Situacao } from "@/lib/criterios-metodo";
 import { bsGreeks } from "@/lib/black-scholes";
 import type { Leg } from "@/lib/types";
+import type { VentoDrivers } from "@/lib/drivers-calculos";
 
 const ESTILO: Record<Situacao, { icone: typeof CircleCheck; cor: string; rotulo: string }> = {
   ok: { icone: CircleCheck, cor: "text-term-up", rotulo: "dentro" },
@@ -34,9 +35,11 @@ interface Props {
   maxProfit: number | null;
   maxLoss: number | null;
   spot: number | null;
+  /** WO-64: o vento dos drivers, medido em `PainelDrivers`; ausente = critério não aparece. */
+  vento?: VentoDrivers | null;
 }
 
-export function SemaforoCriterios({ legs, r, netDebit, maxProfit, maxLoss, spot }: Props) {
+export function SemaforoCriterios({ legs, r, netDebit, maxProfit, maxLoss, spot, vento }: Props) {
   const criterios = useMemo(() => {
     const opcoes = legs.filter((l) => l.kind === "OPTION");
     if (opcoes.length === 0) return [];
@@ -69,8 +72,9 @@ export function SemaforoCriterios({ legs, r, netDebit, maxProfit, maxLoss, spot 
       deltaVendido,
       spot,
       du: dus.length ? Math.min(...dus) : null,
+      vento: vento ?? null,
     });
-  }, [legs, r, netDebit, maxProfit, maxLoss, spot]);
+  }, [legs, r, netDebit, maxProfit, maxLoss, spot, vento]);
 
   const resumo = useMemo(() => resumirCriterios(criterios), [criterios]);
 

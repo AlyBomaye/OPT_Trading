@@ -146,6 +146,27 @@ try {
 }
 
 // ---------------------------------------------------------------------------
+// WO-64 — Drivers do papel: as ~34 séries da tabela (MT5, Yahoo, BCB), 2 anos cada.
+// `aquecer=1` renova o que venceu (20 h); a Estratégia lê do disco no dia seguinte.
+// ---------------------------------------------------------------------------
+console.log("→ Drivers do papel (WO-64)");
+const tDrv = Date.now();
+try {
+  const res = await fetchAutenticado(`${BASE}/api/drivers?aquecer=1`, { signal: AbortSignal.timeout(300_000) });
+  const ms = Date.now() - tDrv;
+  if (!res.ok) {
+    console.log(`  ✘ HTTP ${res.status} em ${fmtMs(ms)}\n`);
+  } else {
+    const j = await res.json();
+    console.log(`  séries  : ${j.ok} ok · ${j.stale} do disco vencido · ${(j.falhas ?? []).length} falha(s) de ${j.total} em ${fmtMs(ms)}`);
+    for (const f of (j.falhas ?? []).slice(0, 8)) console.log(`      ${f}`);
+    console.log("");
+  }
+} catch (err) {
+  console.log(`  ✘ ${err?.message ?? err} (após ${fmtMs(Date.now() - tDrv)})\n`);
+}
+
+// ---------------------------------------------------------------------------
 // WO-42 — Snapshot diario de IV do universo.
 //
 // Vem DEPOIS das fontes porque depende da grade de opcoes ja aquecida. E o unico item da rotina

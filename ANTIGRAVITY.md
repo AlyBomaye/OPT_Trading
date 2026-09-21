@@ -670,6 +670,16 @@ Comportamentos-chave:
   candidata e atualiza ao vivo todos os gráficos (header, LegDiagram, KPIs, gregas, PayoffChart,
   SensitivityMatrix e PriceHistoryPanel). Invalidação automática ao trocar ticker ou vencimento.
 
+- **WO-64 "O que move este papel" (`PainelDrivers`, acima do P&L)**: as 5 séries que explicam
+  boa parte do ticker (`lib/drivers-catalogo.ts`, 29 × 5, verificadas em 21/09/2026: índices
+  setoriais da B3 e DI pelo MT5, futuros de commodity e ETFs pelo Yahoo cru, mensais do BCB), 2
+  anos cada, com fonte, data, correlação e beta em 252 pregões (`lib/drivers-calculos.ts`) e o
+  **vento** contra o viés da estrutura (voto por sinal(beta) × sinal(var21), |corr| ≥ 0,25), que
+  entra no `SemaforoCriterios` como critério `vento` e no agente da Estratégia como texto —
+  aviso, nunca veto. `/api/drivers` (`lib/drivers-servidor.ts`, disco 20 h, um download por série
+  de cada vez, `aquecer=1` no `dados:sync`). O `PainelPnl` recolhe (`estrategia-pnl-open`).
+  Sem projeção: a Fase 2 da WO-64 desenha a linha a termo (curva DI, dólar e commodities futuras).
+
 ### 9.4 Scanner (`/scanner`, hotkey 4)
 
 Filtros editáveis dos pozinhos + tabela ranqueada por Δ/R$ (com setor por ticker) +
@@ -894,8 +904,11 @@ smile fit; comando palette (Ctrl+K).
 
 **WO-62 [CONCLUÍDO 19/09/2026]:** Macro pelo MT5 (Ibovespa, S&P futuro, dólar futuro, Bitcoin
 futuro, DI1 por liquidez, com Yahoo de reserva) e a **curva DI pelos contratos `DI1F27…`** em
-Rates & FX. Próximos, pelo MAPA-SOFTWARE-PESSOAL.md: estado no banco e saúde visível (WO-63),
-supervisor e acesso local (WO-64), ponte em tempo real (WO-65).
+Rates & FX. **WO-63 [CONCLUÍDO 21/09/2026]:** o strike vem do catálogo oficial da B3, não do
+terminal. **WO-64 [CONCLUÍDO 21/09/2026]:** drivers do papel na Estratégia, com o vento no
+semáforo. Próximos: Fase 2 da WO-64 (projeção dos drivers pelo mercado a termo) e, pelo
+MAPA-SOFTWARE-PESSOAL.md, estado no banco e saúde visível, supervisor e acesso local, ponte em
+tempo real.
 
 **Fora de escopo permanente sem ordem explícita:** execução real de ordens em corretora.
 

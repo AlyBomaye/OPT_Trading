@@ -27,6 +27,8 @@ import { useSkewAtm } from "@/lib/hooks/useSkewAtm";
 import { PainelCadeia } from "@/components/PainelCadeia";
 import { PainelContexto } from "@/components/PainelContexto";
 import { PainelPnl } from "@/components/PainelPnl";
+import { PainelDrivers } from "@/components/PainelDrivers";
+import type { VentoDrivers } from "@/lib/drivers-calculos";
 import { SemaforoCriterios } from "@/components/SemaforoCriterios";
 import { FormularioAbertura, type DadosAbertura } from "@/components/FormularioAbertura";
 import { criarRascunhoRemoto } from "@/lib/hooks/useRascunhos";
@@ -115,6 +117,10 @@ function Workbench() {
   const [abrindo, setAbrindo] = useState(false);
   // WO-47 §2: a chain e uma linha recolhivel no topo. Chave por secao (WO-35/39).
   const [chainAberta, setChainAberta] = usePersistedState<boolean>("wb-chain-open", true);
+  // WO-64: "O que move este papel" e o P&L recolhem; o vento medido sobe para o semáforo e o agente.
+  const [driversAberto, setDriversAberto] = usePersistedState<boolean>("estrategia-drivers-open", true);
+  const [pnlAberto, setPnlAberto] = usePersistedState<boolean>("estrategia-pnl-open", true);
+  const [vento, setVento] = useState<VentoDrivers | null>(null);
   const [tnDay, setTnDay] = useState(5);
   // WO-60 E: os preços que as projeções colocam no vencimento, para os cenários do P&L da operação.
   const [precosProjetados, setPrecosProjetados] = useState<PrecoProjetado[]>([]);
@@ -356,6 +362,8 @@ function Workbench() {
           selic,
           chain,
           selectedExpiry,
+          // WO-64: o vento dos drivers, em texto — o agente lê, não recalcula.
+          ventoDrivers: vento ? { situacao: vento.situacao, vies: vento.vies, resumo: vento.resumo } : null,
         }}
       />
       {/* Sugestão orientada a decisão */}
@@ -739,8 +747,22 @@ function Workbench() {
         <div className="space-y-3">
           {/* WO-46 — P&L da operação: risco contra patrimônio, acerto necessário, preço da
               realização e cenários. É a tradução das métricas para a decisão da ordem. */}
+          {/* WO-64 — O que move este papel: as 5 séries que explicam o ticker, medidas contra ele, e o
+              vento contra o viés da estrutura montada. Acima do P&L porque vem antes da ordem. */}
+          {chain && (
+            <PainelDrivers
+              ticker={chain.ticker}
+              vies={legs.length > 0 ? detected?.bias ?? null : null}
+              aberto={driversAberto}
+              onToggle={() => setDriversAberto(!driversAberto)}
+              onVento={setVento}
+            />
+          )}
+
           {chain && metrics && legs.length > 0 && (
             <PainelPnl
+              aberto={pnlAberto}
+              onToggle={() => setPnlAberto(!pnlAberto)}
               legs={legs}
               spot={chain.spot}
               r={selic}
@@ -777,6 +799,7 @@ function Workbench() {
                     maxProfit={metrics.maxProfit}
                     maxLoss={metrics.maxLoss}
                     spot={chain.spot}
+                    vento={vento}
                   />
                 )}
               </div>

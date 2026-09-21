@@ -99,7 +99,7 @@ Duas formas, mesmo efeito: rebuscar as fontes pesadas antes do pregão.
 | `4` | **Cockpit** | Diagnóstico matinal: choque do portfólio, skew e movimento esperado, regime GEX, foco do dia |
 | `5` | **Watchlist** | Corte transversal do universo: IV, HV21, skew e spread por papel |
 | `6` | **Scanner** | Pozinhos: filtros de prêmio, distância e volume; ranking por convexidade Δ/R$ e orçamento ¼-Kelly |
-| `7` | **Estratégia** | 13 presets (travas, backspreads, straddle, strangle, condor, borboleta, calendário, coberto, protetora), editor multi-perna, payoff, breakevens, PoP e matriz Spot×Vol |
+| `7` | **Estratégia** | 13 presets (travas, backspreads, straddle, strangle, condor, borboleta, calendário, coberto, protetora), editor multi-perna, payoff, breakevens, PoP e matriz Spot×Vol; **"O que move este papel"** (WO-64): os 5 drivers do ticker com 2 anos, correlação/beta e o vento no semáforo |
 | `8` | **Chain** | Grade ao vivo por vencimento, IV e gregas recalculadas, smile de volatilidade |
 | `9` | **Histórico** | Séries do ativo, cone de volatilidade, IV contra HV realizada |
 | `0` | **Manual** | Glossário e método — a fonte única das definições que os agentes citam |

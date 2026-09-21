@@ -151,6 +151,27 @@ e diga no commit. Se a quebra não for intencional, o teste venceu.
   `emCurso` para a varredura não disparar 29 downloads); linha sem catálogo vai
   `strikeFonte: "mt5"`. Nunca calcular IV, gregas ou paridade com o strike cru do terminal.
 
+## 5.3 Drivers do papel (WO-64)
+
+- **Catálogo** `lib/drivers-catalogo.ts` (puro): `SERIES` (código → fonte, símbolo, unidade,
+  cadência, descrição, `escala`, `proxyDe`) e `DRIVERS_POR_PAPEL` (29 × 5 com o "por quê").
+  `validarCatalogoDrivers(universo)` é o teste: 5 por papel, sem repetição, ≥ 3 diários. Série
+  nova só entra com sondagem registrada na WO — nunca de memória.
+- **Servidor** `lib/drivers-servidor.ts`: MT5 via `macroMt5(simbolos, "2y")` (lotes de 40),
+  Yahoo com símbolo cru (sem `.SA`, hosts query1/query2), BCB SGS (`ultimos/30`, data dd/mm/aaaa
+  → ISO). Disco `driver-<codigo>` por 20 h, memória, `emCurso` por série. Sem rede: disco vencido
+  rotulado `stale`, nunca vazio sem rótulo. `/api/drivers?aquecer=1` é o passo do `dados:sync`.
+- **Cálculo** `lib/drivers-calculos.ts` (puro): retorno log para preço/índice, diferença em
+  pontos para taxa e percentual; datas casadas por interseção; correlação e beta em 252 pregões
+  com mínimo de 120 pares (senão `null`); `ventoDosDrivers` vota por sinal(beta) × sinal(var21)
+  com |corr| ≥ 0,25; mensais não votam. Situações: ok / atencao / fora / indefinido (as mesmas
+  de `criterios-metodo`).
+- **Tela** `components/PainelDrivers.tsx`: busca `/api/drivers?ticker=`, mede o vento no cliente
+  (depende do viés da estrutura) e o entrega à página por `onVento`; a página o passa ao
+  `SemaforoCriterios` (critério `vento`) e ao `AgentPanel` (`agentContext.ventoDrivers`, texto).
+  Estado recolhido em `estrategia-drivers-open`; o `PainelPnl` recolhe com `aberto`/`onToggle`
+  (`estrategia-pnl-open`).
+
 ## 6. Convenções numéricas (resumo; detalhe nas skills de domínio)
 
 `t = du/252`; vol ×√252; theta/365; vega por +1pp; Selic fração do contexto; `qty` sem lote;

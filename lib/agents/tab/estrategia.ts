@@ -18,6 +18,10 @@ export async function runEstrategia(ctx: unknown): Promise<AgentReport> {
   const limitacoes: string[] = [];
 
   const capitalTotal = Number(c.capitalTotal ?? 100000);
+  // WO-64: o vento dos drivers chega medido da tela (situacao, vies, resumo); o agente só o lê.
+  const vento = c.ventoDrivers && typeof c.ventoDrivers === "object" ? (c.ventoDrivers as { situacao?: string; vies?: string; resumo?: string }) : null;
+  if (vento?.situacao === "fora") limitacoes.push(`Vento dos drivers CONTRA a estrutura montada (${vento.resumo ?? "sem detalhe"}): a tese precisa dizer por que o papel vai contra Brent, dólar, DI ou o que o explica — veja "O que move este papel".`);
+  else if (vento?.situacao === "atencao") limitacoes.push(`Vento dos drivers misto ou não medido (${vento.resumo ?? "sem detalhe"}).`);
 
   // 1. Diagnóstico do Balde de Risco Atual
   const alocacao = alocacaoPorBalde(positions, capitalTotal);

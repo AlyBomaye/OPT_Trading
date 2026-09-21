@@ -23,6 +23,7 @@ import {
   JANELA_DU,
   PAYOFF_MINIMO_TRAVA,
 } from "./metodo";
+import type { VentoDrivers } from "./drivers-calculos";
 
 export type Situacao = "ok" | "atencao" | "fora" | "indefinido";
 
@@ -51,6 +52,8 @@ export interface EstruturaParaJulgar {
   deltaVendido: number | null;
   spot: number | null;
   du: number | null;
+  /** WO-64: o vento dos drivers do papel contra o viés da estrutura; ausente = não medido. */
+  vento?: VentoDrivers | null;
 }
 
 function fmt(n: number, casas = 2): string {
@@ -170,6 +173,20 @@ export function julgarEstrutura(e: EstruturaParaJulgar): Criterio[] {
       exigido: "1:1",
       porQue:
         "Lote desigual deixa uma ponta descoberta: se você rolar só a comprada, sobra uma venda solta com risco aberto.",
+    });
+  }
+
+  /* --- WO-64: o vento dos drivers — camada 1 (regime). Informa; nunca veta. ------------- */
+  if (e.vento) {
+    const v = e.vento;
+    criterios.push({
+      chave: "vento",
+      rotulo: `Vento dos drivers (${v.janela} pregões)`,
+      situacao: v.situacao,
+      medido: v.resumo,
+      exigido: v.vies === "NEUTRA" ? "estrutura sem lado: só leitura" : "≥ 2 drivers a favor e ≤ 1 contra",
+      porQue:
+        "As cinco séries que explicam o papel (Brent, dólar, DI, minério…) empurram o preço antes da tese. Tese contra o vento medido é aviso para olhar e escrever o motivo no plano — não é veto: o regime quem marca é o operador.",
     });
   }
 

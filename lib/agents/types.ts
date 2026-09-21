@@ -61,6 +61,8 @@ export interface AgentReport {
 /** Contexto completo enviado pelas 10 abas e pelo Consultor aos agentes (WO-28 A.1). */
 export interface AgentContext {
   ticker: string | null;
+  /** WO-64: o vento dos drivers do papel, já medido na Estratégia (texto; o agente lê, não recalcula). */
+  ventoDrivers?: { situacao: string; vies: string; resumo: string } | null;
   selic?: number;
   chain?: any | null;
   selectedExpiry?: string | null;

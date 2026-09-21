@@ -110,7 +110,7 @@ export const RESUMO_TELAS = [
   {
     modulo: "8. Estratégia",
     pergunta: "Como montar, medir líquido de custos e Boletar uma estrutura?",
-    resposta: "Três modos: Montagem (cadeia recolhível com bid/ask ao vivo pela ponte MT5 e a marca pelo mid quando o spread é razoável, pernas, Histórico, Projeções — onde o preço pode estar no vencimento por três caminhos: mercado com a banda da IV, bootstrap histórico e reversão à média —, payoff, P&L da operação líquido de custos e já como ordem: régua de preço, prêmio-alvo da estrutura, datas de rolar e zerar, spread, caixa depois, cenários nos preços projetados; semáforo do método, sensibilidade e a porta das 3 perguntas — Boletar cria um rascunho na Boletagem, com o preço da montagem; a boleta só nasce lá, com o preço da execução), Cadeia (grade completa, paridade put-call como qualidade, smile e estrutura a termo) e Contexto (tendência, vol realizada, IV×HV e cone).",
+    resposta: "Três modos: Montagem (cadeia recolhível com bid/ask ao vivo pela ponte MT5 e a marca pelo mid quando o spread é razoável, pernas, Histórico, Projeções — onde o preço pode estar no vencimento por três caminhos: mercado com a banda da IV, bootstrap histórico e reversão à média —, payoff, P&L da operação líquido de custos e já como ordem: régua de preço, prêmio-alvo da estrutura, datas de rolar e zerar, spread, caixa depois, cenários nos preços projetados; semáforo do método, sensibilidade e a porta das 3 perguntas — Boletar cria um rascunho na Boletagem, com o preço da montagem; a boleta só nasce lá, com o preço da execução), Cadeia (grade completa, paridade put-call como qualidade, smile e estrutura a termo) e Contexto (tendência, vol realizada, IV×HV e cone). Acima do P&L, 'O que move este papel' (WO-64): as 5 séries que explicam boa parte do preço do ticker — Brent, dólar, curva DI, minério, índices setoriais, séries do BCB —, 2 anos de histórico cada, com fonte e data, quanto o papel as seguiu (correlação e beta em 252 pregões) e o vento contra o viés da estrutura montada, que entra no semáforo como aviso, nunca como veto; nada ali é previsão. Essa seção e o P&L da Operação recolhem.",
   },
   {
     modulo: "9. Manual",
@@ -214,6 +214,10 @@ export const DADOS_LIMITACOES = [
     titulo: "Aviso Legal & Educacional",
     texto: "Esta ferramenta é estritamente educacional e de apoio à decisão quantitativa. Não constitui recomendação de investimento ou oferta de compra/venda de ativos. Valide todas as operações antes de executar no home broker.",
   },
+  {
+    titulo: "Drivers do papel: séries verificadas, proxies declarados",
+    texto: "As 5 séries de cada papel (WO-64) vêm do terminal MT5 (índices setoriais da B3, ETFs, dólar e S&P futuros, contratos de DI jan/28 e jan/31, rolados em janeiro), do Yahoo com o símbolo cru (Brent, minério, aço, cobre, açúcar, boi, milho, soja, ETFs setoriais, China, VIX) e do BCB (IPCA, desemprego, varejo, inadimplência, INCC — mensais, que informam mas não votam). Tudo foi sondado em 21/09/2026. O que não existe de graça em série diária — celulose, nafta, crack spread, hidrologia — entra por proxy, escrito no cartão. Um aquecimento por dia no dados:sync; sem rede, o cartão mostra o disco vencido com o chip STALE. Nada ali é previsão: a projeção dos drivers é a Fase 2.",
+  },
 ];
 
 export const MAPA_INFORMACOES: LinhaMapa[] = [
@@ -243,6 +247,16 @@ export const MAPA_INFORMACOES: LinhaMapa[] = [
 ];
 
 export const GLOSSARIO: Termo[] = [
+  {
+    termo: "Driver do papel",
+    definicao: "Uma série de mercado que explica boa parte do movimento do ticker: Brent para a Petrobras, minério e China para a Vale, curva DI e inadimplência para o varejo. A plataforma guarda 5 por papel (WO-64), com fonte, data e 2 anos de histórico; quem as escolheu foi a pesquisa da WO, não um modelo. Onde não há série gratuita (celulose, nafta), a tela diz 'proxy'.",
+    ondeAparece: "Estratégia — 'O que move este papel'; semáforo do método; agente da Estratégia",
+  },
+  {
+    termo: "Vento dos drivers",
+    definicao: "Para onde os drivers empurram o papel em 21 pregões: cada driver diário com correlação de pelo menos 0,25 em 252 pregões vota pelo sinal do beta vezes o sinal da própria variação. Dois ou mais a favor e no máximo um contra é 'a favor'; o inverso é 'contra'; o resto é misto. Mensais informam, não votam. É aviso para olhar, não veto — o regime quem marca é o operador.",
+    ondeAparece: "Estratégia — cabeçalho de 'O que move este papel' e critério 'Vento dos drivers' no semáforo",
+  },
   /* --- WO-61: a fonte de mercado ------------------------------------------- */
   {
     termo: "Ponte MT5",

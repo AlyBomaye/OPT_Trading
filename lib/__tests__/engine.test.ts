@@ -6535,6 +6535,137 @@ Líquido para 04/09/2026 5.134,69 D`;
     else { console.log(`✘ WO-63 Teste 3 falhou: docs=${docsOk}`); failures++; }
   }
 
+  // WO-64 — Drivers do papel: as 5 séries que explicam cada ticker, na Estratégia
+  {
+    const fs64 = await import("node:fs");
+    const path64 = await import("node:path");
+    const ler64 = (rel: string) => fs64.readFileSync(path64.join(process.cwd(), rel), "utf8");
+    const { SERIES, DRIVERS_POR_PAPEL, driversDoPapel, seriesUsadas, validarCatalogoDrivers } = await import("../drivers-catalogo");
+    const { UNIVERSE } = await import("../universe");
+    const universo = UNIVERSE.map((u: { ticker: string }) => u.ticker);
+    const problemas = validarCatalogoDrivers(universo);
+    const usadas = seriesUsadas();
+    const fontesOk = Object.values(SERIES).every((x) => ["mt5", "yahoo", "bcb"].includes(x.fonte) && x.simbolo && x.descricao.length > 10);
+    const catOk = problemas.length === 0 && universo.length === 29 && Object.keys(DRIVERS_POR_PAPEL).length === 29 && usadas.length >= 30 && usadas.length <= 40 && usadas.every((c) => SERIES[c])
+      && SERIES.DI_CURTO.simbolo === "DI1F28" && SERIES.DI_LONGO.simbolo === "DI1F31" && SERIES.DOLAR.escala === 0.001 && Boolean(SERIES.WOOD.proxyDe) && SERIES.MINERIO.simbolo === "TIO=F"
+      && driversDoPapel("PETR4")[0].serie === "BRENT" && driversDoPapel("VALE3")[0].serie === "MINERIO" && driversDoPapel("CASH3")[0].serie === "BITCOIN" && driversDoPapel("SUZB3")[0].serie === "DOLAR"
+      && driversDoPapel("XXXX9").length === 0 && !Object.values(SERIES).some((x) => x.fonte === "yahoo" && x.simbolo.endsWith(".SA"))
+      && validarCatalogoDrivers([...universo, "ZZZZ3"]).some((p) => p.startsWith("ZZZZ3")) && fontesOk;
+    if (catOk) console.log("✔ WO-64 Teste 1: o catálogo tem 29 papéis × 5 drivers (sem repetição, ≥ 3 diários, todos no catálogo de ~34 séries verificadas), DI jan/28 e jan/31, dólar com escala, WOOD declarado proxy, Yahoo sem .SA; PETR4 abre com Brent, VALE3 com minério, CASH3 com Bitcoin, SUZB3 com dólar; papel fora do universo é apontado");
+    else { console.log(`✘ WO-64 Teste 1 falhou: problemas=${JSON.stringify(problemas)} usadas=${usadas.length} universo=${universo.length} fontes=${fontesOk}`); failures++; }
+
+    const C = await import("../drivers-calculos");
+    // Séries sintéticas com resposta conhecida (gerador determinístico, sem Math.random)
+    let semente = 12345;
+    const rnd = () => { semente = (semente * 1103515245 + 12345) % 2147483648; return semente / 2147483648 - 0.5; };
+    const datas: string[] = [];
+    const d0 = new Date("2025-09-01T12:00:00Z");
+    while (datas.length < 320) { if (d0.getUTCDay() !== 0 && d0.getUTCDay() !== 6) datas.push(d0.toISOString().slice(0, 10)); d0.setUTCDate(d0.getUTCDate() + 1); }
+    const driver: { date: string; valor: number }[] = [];
+    const copia: { date: string; valor: number }[] = [];
+    const dobro: { date: string; valor: number }[] = [];
+    const ruido: { date: string; valor: number }[] = [];
+    let pd = 100, pc = 50, pdb = 20, pr = 30;
+    for (const date of datas) {
+      const r = rnd() * 0.04;
+      pd *= Math.exp(r); pc *= Math.exp(r); pdb *= Math.exp(2 * r); pr *= Math.exp(rnd() * 0.04);
+      driver.push({ date, valor: pd }); copia.push({ date, valor: pc }); dobro.push({ date, valor: pdb }); ruido.push({ date, valor: pr });
+    }
+    const mCopia = C.medirDriver(copia, driver, "usd", "diaria");
+    const mDobro = C.medirDriver(dobro, driver, "usd", "diaria");
+    const mRuido = C.medirDriver(ruido, driver, "usd", "diaria");
+    const mCurto = C.medirDriver(copia.slice(-50), driver, "usd", "diaria");
+    const taxa = datas.map((date, i) => ({ date, valor: 13 + i * 0.01 }));
+    const rt = C.retornos(taxa, "taxa");
+    const mMensal = C.medirDriver(copia, taxa.slice(0, 30), "pct", "mensal");
+    const pares = C.casar([{ date: "2026-01-02", valor: 1 }, { date: "2026-01-05", valor: 2 }, { date: "2026-01-06", valor: 3 }], [{ date: "2026-01-06", valor: 9 }, { date: "2026-01-02", valor: 7 }]);
+    const calcOk = mCopia.pares === 252 && mCopia.corr != null && Math.abs(mCopia.corr - 1) < 1e-9 && mCopia.beta != null && Math.abs(mCopia.beta - 1) < 1e-9 && mCopia.ate === datas[datas.length - 1]
+      && mDobro.beta != null && Math.abs(mDobro.beta - 2) < 1e-9 && mRuido.corr != null && Math.abs(mRuido.corr) < 0.2
+      && mCurto.corr == null && mCurto.beta == null && mCurto.pares === 49
+      && rt.length === taxa.length - 1 && Math.abs(rt[0].valor - 0.01) < 1e-9 && C.variacaoEm(taxa, 21, "taxa") != null && Math.abs((C.variacaoEm(taxa, 21, "taxa") ?? 0) - 0.21) < 1e-9
+      && C.variacaoEm(driver, 21, "usd") != null && Math.abs((C.variacaoEm(driver, 21, "usd") ?? 0) - (driver[driver.length - 1].valor / driver[driver.length - 22].valor - 1)) < 1e-12
+      && C.variacaoEm(driver, 1000, "usd") == null && C.zScore(taxa) != null && (C.zScore(taxa) ?? 0) > 1
+      && mMensal.corr == null && mMensal.var3m != null && Math.abs((mMensal.var3m ?? 0) - 0.03) < 1e-9 && mMensal.var21 == null
+      && pares.length === 2 && pares[0].date === "2026-01-02" && pares[0].x === 1 && pares[0].y === 7 && pares[1].y === 9
+      && C.viesDaEstrutura("ALTA") === "ALTA" && C.viesDaEstrutura("VOL COMPRADA") === "NEUTRA" && C.viesDaEstrutura(null) === "NEUTRA";
+    const medida = (corr: number | null, betaV: number | null, var21: number | null, z = 0): import("../drivers-calculos").MedidaDriver => ({ pares: 252, corr, beta: betaV, ate: "2026-09-18", var21, var63: null, var252: null, var3m: null, var12m: null, z, ultimo: 1, dataUltimo: "2026-09-18" });
+    const item = (codigo: string, cadencia: "diaria" | "mensal", m: import("../drivers-calculos").MedidaDriver) => ({ codigo, nome: codigo, cadencia, medida: m });
+    const aFavorAlta = item("A", "diaria", medida(0.6, 0.8, 0.05));      // sobe com beta + → empurra ↑
+    const contraAlta = item("B", "diaria", medida(0.5, -0.7, 0.05));     // sobe com beta − → empurra ↓
+    const contraAlta2 = item("C", "diaria", medida(0.4, 0.9, -0.03));    // cai com beta + → empurra ↓
+    const fraco = item("D", "diaria", medida(0.1, 0.9, 0.05));           // correlação abaixo do limiar: não vota
+    const mensal = item("E", "mensal", medida(null, null, null, 1.5));
+    const vOk = C.ventoDosDrivers([aFavorAlta, item("A2", "diaria", medida(0.3, 0.5, 0.02)), contraAlta, fraco, mensal], "ALTA");
+    const vFora = C.ventoDosDrivers([aFavorAlta, contraAlta, contraAlta2, fraco, mensal], "ALTA");
+    const vBaixa = C.ventoDosDrivers([aFavorAlta, contraAlta, contraAlta2, fraco, mensal], "BAIXA");
+    const vMisto = C.ventoDosDrivers([aFavorAlta, contraAlta, fraco, fraco, mensal], "ALTA");
+    const vPoucos = C.ventoDosDrivers([aFavorAlta, fraco, fraco, fraco, mensal], "ALTA");
+    const vNeutro = C.ventoDosDrivers([aFavorAlta, contraAlta, contraAlta2, fraco, mensal], "NEUTRA");
+    const votoA = C.votoDriver(aFavorAlta, "ALTA");
+    const ventoOk = vOk.situacao === "ok" && vOk.aFavor === 2 && vOk.contra === 1 && vOk.neutros === 1 && vOk.mensais === 1
+      && vFora.situacao === "fora" && vFora.aFavor === 1 && vFora.contra === 2
+      && vBaixa.situacao === "ok" && vBaixa.aFavor === 2 && vBaixa.contra === 1
+      && vMisto.situacao === "atencao" && vPoucos.situacao === "atencao" && /não dá para medir/.test(vPoucos.resumo)
+      && vNeutro.situacao === "indefinido" && vNeutro.emMovimento === 1 && vNeutro.votos.every((v) => v.aFavor === null)
+      && votoA.direcao === 1 && votoA.aFavor === true && C.votoDriver(fraco, "ALTA").direcao === 0 && C.votoDriver(mensal, "ALTA").motivo.includes("mensal")
+      && vOk.janela === 21 && vOk.ate === "2026-09-18";
+    if (calcOk && ventoOk) console.log("✔ WO-64 Teste 2: contra uma cópia a correlação e o beta são 1 (252 pares, data medida), contra o dobro o beta é 2, contra ruído a correlação fica perto de 0, com menos de 120 pares é null; taxa varia em pontos, preço em fração, mensal só tem variação 3m/12m; o vento vota por sinal(beta)×sinal(var21) com |corr| ≥ 0,25 (mensal e fraco não votam): 2 a favor e 1 contra = ok, 2 contra e 1 a favor = fora, o mesmo cenário em BAIXA inverte, misto = atenção, < 2 com correlação = atenção, NEUTRA = indefinido contando os em movimento");
+    else { console.log(`✘ WO-64 Teste 2 falhou: calc=${calcOk} vento=${ventoOk} ${JSON.stringify({ mCopia, mDobro: mDobro.beta, mRuido: mRuido.corr, mCurto: mCurto.pares, vOk: vOk.resumo, vFora: vFora.resumo, vBaixa: vBaixa.resumo, vMisto: vMisto.situacao, vPoucos: vPoucos.situacao, vNeutro: vNeutro.resumo })}`); failures++; }
+
+    const srv = ler64("lib/drivers-servidor.ts");
+    const rota = ler64("app/api/drivers/route.ts");
+    const sync = ler64("scripts/dados-sync.mjs");
+    const srvOk = /const emCurso = new Map<string, Promise<SerieBaixada>>\(\)/.test(srv) && /lerCache<PontoSerie\[\]>\(chave\(codigo\), TTL_DRIVER_MS\)/.test(srv) && /gravarCache\(chave\(codigo\), pontos/.test(srv)
+      && /const LOTE_MT5 = 40/.test(srv) && /const RANGE = "2y"/.test(srv) && /macroMt5\(lote\.map\(\(s\) => s\.simbolo\), RANGE, TIMEOUT_MT5_LOTE_MS\)/.test(srv) && /const TIMEOUT_MT5_LOTE_MS = 60_000/.test(srv) && /faltamMt5\.push\(s\)/.test(srv) && /await fetch\(url, \{ headers: HEADERS, cache: "no-store", signal: AbortSignal\.timeout\(TIMEOUT_BCB_MS\) \}\)/.test(srv) && !/\}\.SA\?range=/.test(srv) && /api\.bcb\.gov\.br\/dados\/serie\/bcdata\.sgs\.\$\{codigo\}\/dados\?formato=json&dataInicial=/.test(srv) && !/ultimos\//.test(srv.replace(/\/\*\*[\s\S]*?\*\//g, ""))
+      && /Boolean\(vencido\?\.length\), motivo, buscadoEm \?\? undefined\)/.test(srv) && /export async function aquecerDrivers/.test(srv) && /TTL_DRIVER_MS = 20 \* 3_600_000/.test(srv) && /baixarHistorico\(ticker\.toUpperCase\(\), RANGE\)/.test(srv);
+    const rotaOk = /searchParams\.get\("aquecer"\) === "1"/.test(rota) && /medirDriver\(papel\.pontos, s\.pontos, d\.info\.unidade, d\.info\.cadencia\)/.test(rota) && /Promise\.all\(\[fechamentosDoPapel\(ticker\), seriesDrivers\(/.test(rota) && /status: 404/.test(rota);
+    const syncOk = /\/api\/drivers\?aquecer=1/.test(sync) && /fetchAutenticado\(`\$\{BASE\}\/api\/drivers\?aquecer=1`/.test(sync) && !/await fetch\(/.test(sync);
+    if (srvOk && rotaOk && syncOk) console.log("✔ WO-64 Teste 3: o servidor dos drivers guarda em disco por 20 h, baixa uma série de cada vez (emCurso), pede ao MT5 o que falta NUM LOTE só (até 40, range 2y, 60 s — 15 pedidos paralelos estouravam a ponte), Yahoo sem .SA, BCB pelo SGS por intervalo de datas (ultimos/N > 13 devolve erro), serve disco vencido rotulado stale; a rota mede contra o papel, responde 404 fora da tabela e tem aquecer=1; o dados:sync chama o aquecimento com fetchAutenticado");
+    else { console.log(`✘ WO-64 Teste 3 falhou: srv=${srvOk} rota=${rotaOk} sync=${syncOk}`); failures++; }
+
+    const { julgarEstrutura } = await import("../criterios-metodo");
+    const base = { netDebit: 100, maxProfit: 200, maxLoss: -100, strikes: [48, 50], quantidades: [100, 100], deltaVendido: -0.3, spot: 48, du: 19 };
+    const semVento = julgarEstrutura(base);
+    const comVento = julgarEstrutura({ ...base, vento: vFora });
+    const comNeutro = julgarEstrutura({ ...base, vento: vNeutro });
+    const critVento = comVento.find((c) => c.chave === "vento");
+    const critNeutro = comNeutro.find((c) => c.chave === "vento");
+    const sem = ler64("components/SemaforoCriterios.tsx");
+    const semaforoOk = !semVento.some((c) => c.chave === "vento") && critVento?.situacao === "fora" && critVento.medido === vFora.resumo && /≥ 2 drivers a favor/.test(critVento.exigido) && /não é veto/.test(critVento.porQue) && /21 pregões/.test(critVento.rotulo)
+      && critNeutro?.situacao === "indefinido" && /só leitura/.test(critNeutro.exigido)
+      && /vento\?: VentoDrivers \| null;/.test(sem) && /vento: vento \?\? null,/.test(sem) && /\[legs, r, netDebit, maxProfit, maxLoss, spot, vento\]/.test(sem);
+    if (semaforoOk) console.log("✔ WO-64 Teste 4: julgarEstrutura só acrescenta o critério 'vento' quando o vento vem medido; contra = fora com o resumo medido e o 'por quê' dizendo que não é veto; estrutura sem lado = indefinido (só leitura); SemaforoCriterios recebe e repassa o vento");
+    else { console.log(`✘ WO-64 Teste 4 falhou: ${JSON.stringify({ semVento: semVento.map((c) => c.chave), critVento, critNeutro })}`); failures++; }
+
+    const painel = ler64("components/PainelDrivers.tsx");
+    const pagina = ler64("app/estrategia/page.tsx");
+    const pnl = ler64("components/PainelPnl.tsx");
+    const agente = ler64("lib/agents/tab/estrategia.ts");
+    const tiposAg = ler64("lib/agents/types.ts");
+    const iDrivers = pagina.indexOf("<PainelDrivers");
+    const iPnl = pagina.indexOf("<PainelPnl");
+    const telaOk = /fetch\(`\/api\/drivers\?ticker=\$\{encodeURIComponent\(ticker\)\}`/.test(painel) && /ventoDosDrivers\(/.test(painel) && /onVento\?\.\(vento\)/.test(painel) && /nada aqui é previsão/.test(painel) && /STALE/.test(painel) && /proxy/.test(painel) && /O que move este papel/.test(painel)
+      && iDrivers > 0 && iPnl > iDrivers && /"estrategia-drivers-open"/.test(pagina) && /"estrategia-pnl-open"/.test(pagina) && /vento=\{vento\}/.test(pagina) && /ventoDrivers: vento \?/.test(pagina) && /onVento=\{setVento\}/.test(pagina)
+      && /aberto\?: boolean;/.test(pnl) && /onToggle\?: \(\) => void;/.test(pnl) && /if \(onToggle && aberto === false\) return <div className="panel">\{cabecalho\}<\/div>;/.test(pnl)
+      && /c\.ventoDrivers/.test(agente) && /limitacoes\.push\(`Vento dos drivers CONTRA/.test(agente) && /ventoDrivers\?: \{ situacao: string; vies: string; resumo: string \} \| null;/.test(tiposAg);
+    if (telaOk) console.log("✔ WO-64 Teste 5: PainelDrivers busca /api/drivers, mede o vento no cliente e o sobe por onVento, diz STALE/proxy e que nada é previsão; a página o põe ACIMA do PainelPnl, recolhe os dois com estado persistido e entrega o vento ao semáforo e ao agente (texto, tipado em AgentContext); PainelPnl recolhe por aberto/onToggle sem mudar o comportamento antigo");
+    else { console.log(`✘ WO-64 Teste 5 falhou: iDrivers=${iDrivers} iPnl=${iPnl}`); failures++; }
+
+    const manual = ler64("lib/manual-content.ts");
+    const skillM = ler64(".claude/skills/metodo-do-trader/SKILL.md");
+    const skillE = ler64(".claude/skills/engenharia-da-plataforma/SKILL.md");
+    const anti = ler64("ANTIGRAVITY.md");
+    const fontes = ler64("FONTES-DE-DADOS.md");
+    const readme = ler64("README.md");
+    const wo64 = ler64("WO-64-PROMPT.md");
+    const docsOk = /O que move este papel/.test(manual) && /termo: "Vento dos drivers"/.test(manual) && /termo: "Driver do papel"/.test(manual) && /Drivers do papel: séries verificadas, proxies declarados/.test(manual)
+      && /Camada 1 e o vento dos drivers \(WO-64\)/.test(skillM) && /nunca regime, nunca veto/.test(skillM) && /## 5\.3 Drivers do papel \(WO-64\)/.test(skillE)
+      && /WO-64 "O que move este papel"/.test(anti) && /WO-64 \[CONCLUÍDO/.test(anti) && /### 3c\. Drivers do papel/.test(fontes) && /Drivers do papel \(WO-64\)/.test(fontes) && /O que move este papel/.test(readme)
+      && /## Executado/.test(wo64) && /Verificado/.test(wo64) && !/_\(preenchido na execução\)_/.test(wo64);
+    if (docsOk) console.log("✔ WO-64 Teste 6: Manual (Estratégia, glossário: driver e vento, limitações), skills (método: aviso nunca veto; engenharia §5.3), ANTIGRAVITY (§9.3 e roadmap), FONTES-DE-DADOS (inventário e §3c), README e o Executado da WO-64 dizem o que a tela faz e de onde vem cada série");
+    else { console.log(`✘ WO-64 Teste 6 falhou: docs=${docsOk}`); failures++; }
+  }
+
 }
 
 testesAssincronos()

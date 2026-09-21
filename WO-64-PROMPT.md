@@ -261,6 +261,69 @@ Quando o operador quiser a projeção, ela nasce do que já existe e é rotulada
 A Fase 2 acrescenta ao cartão a linha a termo até o vencimento da estrutura e a diferença entre o
 nível atual e o que o mercado paga pelo futuro. Nenhuma estatística vira "previsão" sem o rótulo.
 
-## Executado
+## Executado — 21/09/2026
 
-_(preenchido na execução)_
+### O que ficou de pé
+
+- **A — Catálogo** `lib/drivers-catalogo.ts`: 36 séries (15 MT5, 16 Yahoo, 5 BCB), 29 × 5 com o
+  "por quê"; `validarCatalogoDrivers` é o teste. A série de veículos (SGS 7384) ficou de fora
+  (descritor não confirmado): RENT3 recebeu INDX.
+- **B — Servidor e rota** `lib/drivers-servidor.ts`, `/api/drivers` (`?ticker=`, `?aquecer=1`):
+  disco 20 h por série, memória, fila por série, o MT5 **num lote só** (até 40), Yahoo cru, BCB
+  por intervalo de datas; `dados:sync` ganhou o passo "Drivers do papel".
+- **C — Cálculo** `lib/drivers-calculos.ts`: retornos, casamento por data, correlação, beta,
+  variações, z-score, voto e vento; tipos do corpo da rota (`DriverBody`, `DriversBody`).
+- **D — Semáforo**: critério `vento` em `julgarEstrutura` (só quando medido), `SemaforoCriterios`
+  recebe `vento`; o agente da Estratégia lê `agentContext.ventoDrivers` (texto) e escreve a
+  limitação quando o vento sopra contra ou está misto.
+- **E — Tela** `components/PainelDrivers.tsx` acima do `PainelPnl`, 5 cartões (gráfico de 2
+  anos, último valor com data, chip MT5/Yahoo/BCB/STALE, proxy, z, variações, corr/β, voto);
+  `PainelPnl` recolhe (`aberto`/`onToggle`); estados `estrategia-drivers-open` e
+  `estrategia-pnl-open`.
+- **F — Docs e testes**: Manual (Estratégia, glossário "Driver do papel" e "Vento dos drivers",
+  limitações), skills (método §1 e engenharia §5.3), ANTIGRAVITY (§9.3 e roadmap),
+  FONTES-DE-DADOS (inventário e §3c), README; testes WO-64 1–6.
+
+### Verificado ao vivo (produção, 21/09/2026, 14:50–15:20)
+
+- `/api/drivers?aquecer=1`: **36 de 36 séries** ok, 0 stale, 0 falhas, em 0,8 s com o disco
+  quente (o primeiro aquecimento do dia levou ~6 s: lote MT5 de 15 símbolos frio ~4 s, Yahoo e
+  BCB em paralelo).
+- PETR4 em 1,7 s: Brent corr 0,58 (β 0,28), XLE corr 0,61 (β 0,74), EWZ corr 0,26, dólar corr
+  −0,13, DI jan/31 corr 0,08 — 252 pares até 21/09.
+- MGLU3: SMLL corr 0,64 (β 1,70), ICON 0,58 (β 1,44), DI longo **−0,48**; inadimplência PF 4,88 %
+  (+0,92 pp em 12 m), varejo PMC 105,07 (−3,3 % em 3 m) — mensais, só informam.
+- CMIG4: IEEX corr 0,74, IBOV 0,71, DI longo −0,44, IMAB11 z 2,2 (juro real caindo), IPCA 12 m
+  4,22 % (−0,91 pp em 12 m).
+- VALE3: PICK corr 0,66, cobre 0,37, dólar **−0,34** (β −0,82), China 0,25, minério **0,10**.
+- SUZB3: IMAT 0,53, WOOD 0,44, dólar **0,01**, China 0,09, DI longo −0,10.
+- BHIA3: ICON 0,26, DI curto e longo ≈ −0,18.
+
+### O que a máquina ensinou
+
+- **O driver econômico não é o driver estatístico do dia a dia.** Suzano é "100 % dólar" no
+  balanço, mas a correlação diária de 252 pregões com o dólar é 0,01; Vale com o minério, 0,10.
+  O que responde no diário é o setor em reais (IMAT, PICK, IEEX) e a curva DI. A tabela fica
+  como pesquisa (é o que explica o negócio); a medida fica na tela para o operador ver que, em
+  21 pregões, o que empurra o preço é outra coisa. Por isso o limiar de 0,25 tira o dólar do
+  voto para SUZB3 e VALE3 — e o cartão diz "sem voto: correlação 0,01".
+- **`ultimos/N` do SGS é limitado a 13 observações**: acima disso o BCB devolve um JSON de erro,
+  às vezes com HTTP 200 (o `curl` com User-Agent "passava" e enganava). O intervalo
+  `dataInicial/dataFinal` responde sempre.
+- **A ponte atende um pedido de cada vez**: 15 pedidos paralelos de um símbolo cada estouravam
+  os 12 s do cliente (`ponte MT5 sem resposta`); um lote com os 15 símbolos leva ~4 s frio.
+- Um input controlado por número e um `fetch` sem lote são o mesmo erro: parecem funcionar na
+  primeira vez e falham quando o volume chega.
+
+### Limites declarados
+
+- Sem projeção (Fase 2). Sem série de veículos, celulose, nafta, crack spread e hidrologia
+  (proxies escritos nos cartões).
+- Os contratos de DI são fixos (jan/28, jan/31): rolagem manual no catálogo em janeiro.
+- O vento usa 21 pregões e correlação de 252: em papel ilíquido ou recém-listado, "sem voto" é
+  a resposta honesta, não um defeito.
+- Tela conferida no dev aberto (porta 3000, 21/09/2026 15:30): PETR4 sem pernas mostra os 5
+  cartões com gráfico, último valor com data, chips Yahoo/MT5, z, variações, corr/β e "empurra ↑/↓"
+  ou "sem voto", cabeçalho "vento só leitura · 2 em movimento"; com "Compra a Seco de Call" o XLE
+  vira "contra", o semaforo ganha "Vento dos drivers (21 pregões)" em verde ("2 a favor · 1 contra
+  · 2 sem voto") e o P&L recolhe numa linha ao clicar no cabeçalho.

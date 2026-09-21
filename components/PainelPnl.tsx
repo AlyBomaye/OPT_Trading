@@ -25,7 +25,7 @@
  */
 
 import { useMemo } from "react";
-import { Target, TriangleAlert, Scale, Percent } from "lucide-react";
+import { Target, TriangleAlert, Scale, Percent, ChevronDown, ChevronRight } from "lucide-react";
 import clsx from "clsx";
 import { fmtBRL, fmtDateBR, fmtNum, fmtPct } from "@/lib/format";
 import { analisarPnl, caixaDepoisDaOrdem, cenariosProjetados, custoExecucaoSpread, datasDasRegras, leituraEvPop, premioAlvo, type PrecoProjetado } from "@/lib/pnl-operacao";
@@ -61,6 +61,9 @@ interface Props {
   expiryIso?: string | null;
   /** WO-60 E: os preços que as projeções colocam no vencimento. */
   precosProjetados?: PrecoProjetado[];
+  /** WO-64: a seção recolhe (estado vive na página). Sem `onToggle`, comporta-se como antes. */
+  aberto?: boolean;
+  onToggle?: () => void;
 }
 
 export function PainelPnl({
@@ -81,6 +84,8 @@ export function PainelPnl({
   capitalLivre = null,
   expiryIso = null,
   precosProjetados = [],
+  aberto,
+  onToggle,
 }: Props) {
   const a = useMemo(
     () => analisarPnl({ legs, spot, r, maxProfit, maxLoss, netDebit, sigma, patrimonio, custos: custos ?? 0 }),
@@ -114,9 +119,12 @@ export function PainelPnl({
 
   if (legs.length === 0) return null;
 
-  return (
-    <div className="panel">
-      <div className="panel-title flex items-center gap-2">
+  const cabecalho = (
+    <div
+      className={clsx("panel-title flex items-center gap-2", onToggle && "cursor-pointer select-none")}
+      onClick={onToggle}
+    >
+      {onToggle ? (aberto === false ? <ChevronRight size={14} /> : <ChevronDown size={14} />) : null}
         <Scale size={14} className="text-term-cyan" />
         <span className="font-bold">P&amp;L da operação — o que decide a ordem</span>
         {custos != null && custos > 0 ? (
@@ -128,7 +136,13 @@ export function PainelPnl({
             bruto — sem custos
           </span>
         )}
-      </div>
+    </div>
+  );
+  if (onToggle && aberto === false) return <div className="panel">{cabecalho}</div>;
+
+  return (
+    <div className="panel">
+      {cabecalho}
 
       <div className="p-3 space-y-3">
         {/* ---- WO-60 E: régua de preço ---- */}

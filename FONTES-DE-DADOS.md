@@ -13,6 +13,7 @@ demora.
 |---|---|---|---|---|---|
 | **MetaTrader 5 (ponte local, WO-61)** | `/api/opcoes`, `/api/history` | JSON local (127.0.0.1:3200) | cadeia de PETR4: 1.811 séries em 2,6 s | **tempo real** | BAIXA (depende do terminal aberto e logado) |
 | **B3 — catálogo de instrumentos (WO-63)** | `/api/opcoes` (strikes da cadeia MT5) | CSV via token | **20 MB · 89 mil linhas**, 1 download/dia para o universo | 1×/dia útil, manhã (strikes do dia) | MÉDIA (mesmo token do `/api/oi`) |
+| **Drivers do papel (WO-64)** | `/api/drivers` | JSON local (MT5) · JSON (Yahoo cru, BCB SGS) | ~34 séries × 2 anos, 1 aquecimento/dia | diário (BCB mensal) | MÉDIA (Yahoo 429; depende da ponte) |
 | Tesouro Transparente | `/api/curvas-br` | CSV | **13,7 MB · 174 mil linhas** | 1×/dia útil, manhã | **ALTA** |
 | B3 — posições em aberto | `/api/oi` | CSV via token | ~2.600 séries por ativo | 1×/dia útil (D-1) | **ALTA** |
 | opcoes.net.br | `/api/opcoes` | HTML | médio | intradiário | **ALTA** |
@@ -94,6 +95,24 @@ recua um dia útil, até 6 vezes. Um download de cada vez — a varredura de 29 
   `strikeFonte: "mt5"`, a barra de veracidade diz "strikes do terminal (sem catálogo B3)" e a
   grade marca o strike com `?`. O opcoes.net.br (reserva) já traz o strike oficial.
 - **Rotina:** nada a agendar — o primeiro pedido do dia baixa; o disco serve o resto.
+
+### 3c. Drivers do papel — `/api/drivers` (WO-64)
+
+As 5 séries que explicam cada um dos 29 papéis (`lib/drivers-catalogo.ts`), ~34 distintas: índices
+setoriais da B3 (IMOB, ICON, IFNC, IMAT, INDX, IEEX, SMLL, IFIX), IMAB11, dólar e S&P futuros,
+Bitcoin futuro e DI jan/28 e jan/31 pelo **MT5** (`/macro?range=2y`); Brent, minério 62 %, aço
+HRC, cobre, açúcar, boi, milho, farelo, soja, EWZ, XLE, SLX, PICK, WOOD, FXI e VIX pelo **Yahoo**
+com o símbolo cru; IPCA 12 m, desemprego, varejo (PMC), inadimplência PF e INCC pelo **BCB SGS**
+(mensais). Sondagem completa em 21/09/2026 registrada em WO-64-PROMPT.md §2.
+
+Disco `data/cache/driver-<codigo>.json` por 20 h; um download por série de cada vez; sem rede,
+o disco vencido é servido com `stale` e o motivo. `/api/drivers?aquecer=1` é o passo do
+`dados:sync` das 18:30.
+
+- **Se cair:** o cartão mostra o último dado guardado com o chip STALE; sem disco, o cartão diz o
+  erro e o vento fica "não medido" (o semáforo marca atenção, nunca reprova por falta de dado).
+- **Rotina:** o `dados:sync`. Em janeiro, rolar os contratos de DI (F28 → F29, F31 → F32) no
+  catálogo — é uma constante, declarada na tela.
 
 ### 4. BCB Olinda — Boletim Focus — `/api/focus`
 
