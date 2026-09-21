@@ -47,11 +47,15 @@ export interface CatalogoB3 {
 export interface ResultadoCatalogo {
   /** Séries encontradas no catálogo (strike, estilo e moneyness sobrepostos). */
   cobertas: number;
-  /** Séries que o catálogo não tem: ficam com o strike do terminal, rotuladas `strikeFonte: "mt5"`. */
+  /**
+   * Séries que o catálogo não tem: rotuladas `strikeFonte: "mt5"`. Com catálogo, `/api/opcoes` as
+   * DESCARTA (a B3 não as lista hoje, logo não negociam — BHIA3 trazia 314 de antes do grupamento);
+   * sem catálogo, ficam todas, rotuladas.
+   */
   semCatalogo: number;
   /** Entre as cobertas, quantas tinham strike diferente do terminal. */
   strikesCorrigidos: number;
-  /** Entre as cobertas, quantas têm vencimento diferente do terminal (o do terminal é mantido; é sinal). */
+  /** Entre as cobertas, quantas tinham vencimento diferente do terminal (o do catálogo vence: BHIA3 trazia sábado 20/02/2027 em vez de 19/02). */
   vencimentosDivergentes: number;
 }
 
@@ -131,9 +135,10 @@ export interface LinhaComStrike {
 }
 
 /**
- * Sobrepõe strike, estilo, moneyness e distância ao dinheiro pelo catálogo — em cada linha, no
- * lugar. Sem catálogo (`null`), nada muda e toda linha fica rotulada `strikeFonte: "mt5"`, para a
- * tela avisar. O vencimento do terminal é mantido (é ele que agrupa a grade); divergência só conta.
+ * Sobrepõe strike, estilo, vencimento, moneyness e distância ao dinheiro pelo catálogo — em cada
+ * linha, no lugar. Sem catálogo (`null`), nada muda e toda linha fica rotulada `strikeFonte: "mt5"`,
+ * para a tela avisar. Quem troca o vencimento precisa regrupar a grade (a rota refaz `expiries`,
+ * `du` e `dte` depois desta chamada).
  */
 export function aplicarCatalogo(linhas: LinhaComStrike[], catalogo: CatalogoB3 | null, spot: number | null): ResultadoCatalogo {
   const r: ResultadoCatalogo = { cobertas: 0, semCatalogo: 0, strikesCorrigidos: 0, vencimentosDivergentes: 0 };
@@ -146,7 +151,10 @@ export function aplicarCatalogo(linhas: LinhaComStrike[], catalogo: CatalogoB3 |
     }
     r.cobertas++;
     if (Math.abs(oficial.strike - l.strike) > 0.0001) r.strikesCorrigidos++;
-    if (oficial.vencimento && oficial.vencimento !== l.expiry) r.vencimentosDivergentes++;
+    if (oficial.vencimento && oficial.vencimento !== l.expiry) {
+      r.vencimentosDivergentes++;
+      l.expiry = oficial.vencimento;
+    }
     l.strike = oficial.strike;
     l.model = oficial.modelo;
     l.strikeFonte = "b3";

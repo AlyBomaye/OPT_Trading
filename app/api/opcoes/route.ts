@@ -273,12 +273,13 @@ export async function GET(req: NextRequest) {
   if (respostaMt5 && !viaMt5) console.warn(`[opcoes] MT5 com ${respostaMt5.options.length} série(s) para ${ticker} (catálogo da corretora incompleto) — usando opcoes.net.br`);
   if (viaMt5) {
     const sess = sessionInfo();
-    const expiries = montarExpiries(viaMt5.expiries, sess.ultimaSessao);
+    let expiries = montarExpiries(viaMt5.expiries, sess.ultimaSessao);
     const porData = new Map(expiries.map((e) => [e.date, e]));
-    // 21/09/2026: a data efetiva é a moda das datas de último negócio (antes da abertura de segunda
-    // é sexta), nunca a data do tick — o terminal carimba tick em tudo às 06:25.
+    // 21/09/2026: a data efetiva é a data mais recente com negócio (antes da abertura de segunda
+    // é sexta), nunca a data do tick — o terminal carimba tick em tudo às 06:25 — e nunca a moda
+    // (numa cadeia ilíquida como BHIA3 a moda é uma data velha).
     const dataEfetiva = dataEfetivaDasSeries(viaMt5.options, sess.ultimaSessao);
-    const options: CleanRow[] = [];
+    let options: CleanRow[] = [];
     for (const serie of viaMt5.options) {
       const exp = porData.get(serie.expiry);
       if (exp) options.push(linhaDaSerie(serie, viaMt5.spot, dataEfetiva, exp));
@@ -288,6 +289,23 @@ export async function GET(req: NextRequest) {
     // moneyness; sem catálogo, cada linha vai rotulada `strikeFonte: "mt5"` e a barra avisa.
     const catalogo = await catalogoOficial();
     const sobreposicao = aplicarCatalogo(options, catalogo, viaMt5.spot);
+    // Série que a B3 não lista hoje não negocia: sai da grade (BHIA3 trazia 314 séries de antes do
+    // grupamento, strikes de R$ 10 numa ação de R$ 0,82). Sem catálogo, tudo fica, rotulado "mt5".
+    if (catalogo && sobreposicao.semCatalogo > 0) {
+      const foraComOferta = options.filter((o) => o.strikeFonte === "mt5" && o.bid != null && o.ask != null).length;
+      if (foraComOferta > 0) console.warn(`[opcoes] ${ticker}: ${foraComOferta} série(s) com oferta fora do catálogo B3 de ${catalogo.data} — catálogo incompleto?`);
+      options = options.filter((o) => o.strikeFonte !== "mt5");
+    }
+    // O catálogo também manda no vencimento (o terminal trazia sábado 20/02/2027 em séries longas de
+    // BHIA3): regrupa a grade pelas datas que sobraram e refaz du/dte de cada linha.
+    if (catalogo && sobreposicao.vencimentosDivergentes > 0) {
+      expiries = montarExpiries(Array.from(new Set(options.map((o) => o.expiry))).sort(), sess.ultimaSessao);
+      const porDataOficial = new Map(expiries.map((e) => [e.date, e]));
+      options = options.flatMap((o) => {
+        const e = porDataOficial.get(o.expiry);
+        return e ? [{ ...o, du: e.du, dte: e.dte }] : [];
+      });
+    }
     if (!catalogo) console.warn(`[opcoes] catálogo B3 indisponível para ${ticker}: strikes do terminal (${estadoCatalogo().ultimoErro ?? "sem detalhe"})`);
     let dataMaisRecente: string | null = null;
     for (const o of options) if (o.lastTradeAt && (!dataMaisRecente || o.lastTradeAt > dataMaisRecente)) dataMaisRecente = o.lastTradeAt;
@@ -419,7 +437,7 @@ export async function GET(req: NextRequest) {
       .sort((a, b) => a - b);
     const spot = spots.length ? spots[Math.floor(spots.length / 2)] : null;
 
-    // Data efetiva (moda) e data mais recente dos negócios no chain
+    // Data efetiva (a sessão mais frequente na fonte antiga) e data mais recente dos negócios no chain
     const validTradeDates = options
       .filter((o) => o.last != null && o.last > 0 && o.lastTradeAt != null)
       .map((o) => o.lastTradeAt as string);

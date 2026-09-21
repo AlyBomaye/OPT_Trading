@@ -101,7 +101,7 @@ export interface ChainData {
   /** WO-61: de onde a grade veio e a frase da barra de veracidade ("MT5 · Genial · tick 16:54:57"). */
   fonte?: "mt5" | "opcoes.net.br";
   fonteDetalhe?: string;
-  /** WO-63: cadeia do MT5 — o catálogo da B3 que sobrepôs os strikes (data e cobertura); `null` = sem catálogo, strikes do terminal. */
+  /** WO-63: cadeia do MT5 — o catálogo da B3 que sobrepôs os strikes (data, cobertura, `semCatalogo` = séries do terminal descartadas por não existirem na B3); `null` = sem catálogo, strikes do terminal. */
   catalogoB3?: { data: string; cobertas: number; semCatalogo: number; strikesCorrigidos: number; vencimentosDivergentes: number } | null;
   /** ISO do tick do papel que deu o spot (só MT5). */
   spotTickAt?: string | null;

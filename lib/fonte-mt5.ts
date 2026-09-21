@@ -215,25 +215,21 @@ export function montarExpiries(datas: string[], hojeIso: string, agora = new Dat
  * terminal carimba um tick em todos os símbolos (rolagem do dia), então "a sessão do tick" era
  * 21/09 enquanto o último negócio de cada série era 18/09: "negociou na sessão" dava falso para
  * tudo, os negócios do dia viravam 0 e a Watchlist descartava a grade inteira. A data efetiva da
- * cadeia NÃO é a data do tick: é a **moda das datas de último negócio** das séries com prêmio, sem
- * passar da última sessão do calendário da plataforma — a mesma regra que a fonte antiga sempre
- * usou. Antes da abertura de segunda ela é sexta; depois que as séries começam a negociar, vira o
- * próprio dia. Sem série negociada, é a última sessão.
+ * cadeia NÃO é a data do tick: é a **data mais recente com negócio** entre as séries com prêmio,
+ * sem passar da última sessão do calendário da plataforma. Antes da abertura de segunda ela é
+ * sexta; assim que uma série negocia hoje, vira o próprio dia. Sem série negociada, é a última
+ * sessão. O carimbo das 06:25 não cria candle D1 com negócio, então a data mais recente é segura.
+ *
+ * 21/09/2026 (13:20, BHIA3) — a primeira versão usava a MODA das datas. Numa cadeia ilíquida a
+ * moda é uma data velha (17/09 com 14 séries, contra 8 de sexta e 4 de hoje): os negócios do dia
+ * ficavam em 0 para as séries de hoje e a Estratégia perdia a grade. Nunca mais a moda.
  */
 export function dataEfetivaDasSeries(series: Pick<SerieMt5, "last" | "ultimoNegocioEm">[], ultimaSessao: string): string {
-  const contagem = new Map<string, number>();
+  let melhor: string | null = null;
   for (const s of series) {
     if (s.last == null || !(s.last > 0) || !s.ultimoNegocioEm || s.ultimoNegocioEm > ultimaSessao) continue;
-    contagem.set(s.ultimoNegocioEm, (contagem.get(s.ultimoNegocioEm) ?? 0) + 1);
+    if (melhor == null || s.ultimoNegocioEm > melhor) melhor = s.ultimoNegocioEm;
   }
-  let melhor: string | null = null;
-  let n = 0;
-  contagem.forEach((c, d) => {
-    if (c > n || (c === n && melhor != null && d > melhor)) {
-      melhor = d;
-      n = c;
-    }
-  });
   return melhor ?? ultimaSessao;
 }
 

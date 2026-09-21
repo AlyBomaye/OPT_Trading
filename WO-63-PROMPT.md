@@ -27,8 +27,8 @@
 
 | # | decisão | escolha |
 |---|---|---|
-| 1 | Verdade do strike na cadeia do MT5 | O catálogo oficial da B3 do dia, sobreposto em `/api/opcoes` (`aplicarCatalogo`): strike, estilo de exercício, moneyness e distância ao dinheiro. O vencimento do terminal é mantido (é ele que agrupa a grade); divergência só é contada. |
-| 2 | Série que o catálogo não tem | Fica com o strike do terminal, rotulada `strikeFonte: "mt5"`; a grade mostra `?` ao lado do strike com o motivo no título. |
+| 1 | Verdade do strike na cadeia do MT5 | O catálogo oficial da B3 do dia, sobreposto em `/api/opcoes` (`aplicarCatalogo`): strike, estilo de exercício, **vencimento**, moneyness e distância ao dinheiro. Quando o vencimento muda (o terminal trazia sábado 20/02/2027 em séries longas de BHIA3), a rota regrupa `expiries` e refaz `du`/`dte`. |
+| 2 | Série que o catálogo não tem | **Com catálogo, é descartada** — a B3 não a lista hoje, logo não negocia (BHIA3: 314 das 485 séries do terminal eram de antes do grupamento, strikes de R$ 10 numa ação de R$ 0,82); `catalogoB3.semCatalogo` conta, e uma série descartada COM oferta vai para o log como suspeita de catálogo incompleto. Sem catálogo, fica com o strike do terminal, rotulada `strikeFonte: "mt5"`, e a grade mostra `?`. |
 | 3 | Sem catálogo (rede, B3 fora) | A cadeia sai assim mesmo, toda rotulada `mt5`, `catalogoB3: null`, `falhas` com o aviso e a barra de veracidade dizendo "strikes do terminal (sem catálogo B3)". Dado velho rotulado é melhor que tela vazia — mas nunca sem rótulo. |
 | 4 | Custo | Um download por dia para o universo inteiro, em disco por 36 h (`data/cache/catalogo-b3-<data>.json`), memória por processo, **um download de cada vez** (`emCurso`): a varredura pede 29 cadeias em paralelo e todas esperam o mesmo. Falha de uma data lembrada por 10 min; se veio o arquivo de outra data (o de hoje ainda não saiu), tenta de novo em 10 min. |
 | 5 | Qual data | A data civil de Brasília (`dataBrasilia`), nunca `toISOString().slice(0, 10)`; recua dia útil até 6 vezes. O arquivo do dia já traz o ajuste de uma ex-data de hoje. |
@@ -69,6 +69,27 @@ WO-61 (lição), skill de engenharia; testes WO-63 1–3.
   (antes 464, 426 e 345). Barra: "MT5 · Genial · tick 11:12:58 · strikes B3 21/09".
 - Rascunho #1 (o straddle executado) consertado pela API: pernas PETRJ493W2/PETRV493W2 a 48,17,
   vencimento 09/10, execução 2,14 e 1,98 às 10:19:57; o nome detectado virou "Straddle Comprado".
+
+### AJ — 21/09/2026, 13:30: BHIA3 sem grade na Estratégia
+
+- Sintoma: a Estratégia não montava a cadeia de BHIA3, enquanto a Watchlist tinha IV. A varredura
+  (1º mensal) recebia só 2 séries do MT5 e caía no opcoes.net.br (data efetiva 18/09, 36 séries
+  negociadas); a cadeia completa vinha do MT5 com 485 séries e **data efetiva 17/09**.
+- Causa 1: `dataEfetivaDasSeries` usava a **moda** das datas de último negócio. Em BHIA3 (56
+  séries com prêmio) a moda era 17/09 (14 séries), contra 8 de sexta e 4 de hoje: as séries de hoje
+  ficavam com negócios do dia = 0 e a MiniChain (que exige negócio na sessão) ficava vazia. Regra
+  nova: a **data mais recente com negócio**, sem passar da última sessão. O carimbo das 06:25 não
+  cria candle D1 com negócio, então é seguro.
+- Causa 2: 314 das 485 séries do terminal **não existem no catálogo da B3** (BHIAJ105…J125 a
+  R$ 10–12,50 numa ação de R$ 0,82; vencimentos em sábado). Agora, com catálogo, série fora dele é
+  descartada; `semCatalogo` conta.
+- Causa 3 (menor): duas séries longas de BHIA3 vinham do terminal com vencimento em sábado
+  (20/02/2027 e 16/10/2027) e viravam vencimentos "W3" fantasmas na lista; o catálogo passa a mandar
+  também no vencimento, e a grade é regrupada.
+- Verificado (produção, 21/09/2026 13:40): BHIA3 pelo MT5 com **171 séries** (314 descartadas),
+  data efetiva **21/09**, 52 séries negociadas hoje, BHIAJ80/BHIAV80 (K 0,80) com 4 e 3 negócios —
+  a Estratégia monta. MGLU3 descartou 114; PETR4, VALE3, ITUB4 e B3SA3 descartaram 0; nenhuma
+  série descartada tinha oferta.
 
 ### O que a máquina ensinou
 
