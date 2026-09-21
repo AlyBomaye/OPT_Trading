@@ -208,6 +208,33 @@ export function montarExpiries(datas: string[], hojeIso: string, agora = new Dat
   });
 }
 
+/**
+ * 21/09/2026 (segunda, 09:27) — a varredura saiu sem IV para todo papel vindo do MT5. Às 06:25 o
+ * terminal carimba um tick em todos os símbolos (rolagem do dia), então "a sessão do tick" era
+ * 21/09 enquanto o último negócio de cada série era 18/09: "negociou na sessão" dava falso para
+ * tudo, os negócios do dia viravam 0 e a Watchlist descartava a grade inteira. A data efetiva da
+ * cadeia NÃO é a data do tick: é a **moda das datas de último negócio** das séries com prêmio, sem
+ * passar da última sessão do calendário da plataforma — a mesma regra que a fonte antiga sempre
+ * usou. Antes da abertura de segunda ela é sexta; depois que as séries começam a negociar, vira o
+ * próprio dia. Sem série negociada, é a última sessão.
+ */
+export function dataEfetivaDasSeries(series: Pick<SerieMt5, "last" | "ultimoNegocioEm">[], ultimaSessao: string): string {
+  const contagem = new Map<string, number>();
+  for (const s of series) {
+    if (s.last == null || !(s.last > 0) || !s.ultimoNegocioEm || s.ultimoNegocioEm > ultimaSessao) continue;
+    contagem.set(s.ultimoNegocioEm, (contagem.get(s.ultimoNegocioEm) ?? 0) + 1);
+  }
+  let melhor: string | null = null;
+  let n = 0;
+  contagem.forEach((c, d) => {
+    if (c > n || (c === n && melhor != null && d > melhor)) {
+      melhor = d;
+      n = c;
+    }
+  });
+  return melhor ?? ultimaSessao;
+}
+
 /** Mid só com as duas ofertas, positivas e coerentes (`ask >= bid > 0`). */
 export function midDe(bid: number | null | undefined, ask: number | null | undefined): number | null {
   if (bid == null || ask == null || !(bid > 0) || !(ask > 0) || ask < bid) return null;
@@ -223,9 +250,9 @@ function moneynessDe(type: "CALL" | "PUT", strike: number, spot: number): "ITM" 
 
 /**
  * Uma série da ponte → uma linha de `/api/opcoes`.
- * Negócios e volume financeiro são DO DIA da sessão: se o último negócio foi noutra data, são 0
- * (como a fonte antiga). Volume financeiro = quantidade × fechamento do dia — aproximação,
- * declarada no Manual.
+ * Negócios e volume financeiro são da DATA EFETIVA da cadeia (`sessao` = `dataEfetivaDasSeries`,
+ * nunca a data do tick): se o último negócio foi noutra data, são 0 (como a fonte antiga). Volume
+ * financeiro = quantidade × fechamento do dia — aproximação, declarada no Manual.
  *
  * Cache diário pendente na ponte (a série acabou de entrar no Market Watch e o candle D1 ainda
  * não veio): a linha sai PROVISÓRIA em vez de sumir da Chain — tick na sessão e último > 0 ⇒

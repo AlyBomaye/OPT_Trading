@@ -256,6 +256,11 @@ e `fonte-mt5`; README cita `MetaTrader5`; nenhum arquivo do repo contém a conta
   a varredura pegava esse "1º mensal" com du 0 e a Watchlist inteira saía sem IV. Ponte e conversão
   passaram a descartar a série que vence na sessão corrente — o 1º mensal do dia do vencimento é o
   do mês seguinte (16/10, du 20).
+- **Segunda antes da abertura (21/09/2026, 09:27, medido)**: o terminal carimba um tick em todos
+  os símbolos às 06:25 (rolagem do dia). A cadeia usava a data do tick como sessão e comparava com o
+  último negócio (sexta): negócios do dia = 0 em toda série, a Watchlist descartava tudo e só os
+  cinco papéis servidos pelo opcoes.net.br tinham IV. A data efetiva passou a ser a **moda das datas
+  de último negócio** (`dataEfetivaDasSeries`), nunca a data do tick — a regra da fonte antiga.
 - **Catálogo do terminal incompleto (18/09/2026, medido)**: CSNA3 tinha 4 das 138 séries de 16/10 que o
   opcoes.net.br lista (e as 4 eram registros velhos, com a própria série como base); PETR4 tinha 371
   contra 448; `symbols_total` não mudou entre 17 e 18/09. É do lado do terminal/corretora (ressincronizar

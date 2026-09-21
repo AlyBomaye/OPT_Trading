@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { gravarCache, lerCache } from "@/lib/cache-disco";
-import { BANDA_VARREDURA_PCT, ESPERA_CADEIA_COMPLETA_MS, ESPERA_CADEIA_VARREDURA_MS, cadeiaMt5, detalheFonteMt5, linhaDaSerie, montarExpiries, saudePonte, type LinhaCadeia } from "@/lib/fonte-mt5";
+import { BANDA_VARREDURA_PCT, ESPERA_CADEIA_COMPLETA_MS, ESPERA_CADEIA_VARREDURA_MS, cadeiaMt5, dataEfetivaDasSeries, detalheFonteMt5, linhaDaSerie, montarExpiries, saudePonte, type LinhaCadeia } from "@/lib/fonte-mt5";
 import { sessionInfo } from "@/lib/session";
 
 /**
@@ -273,10 +273,13 @@ export async function GET(req: NextRequest) {
     const sess = sessionInfo();
     const expiries = montarExpiries(viaMt5.expiries, sess.ultimaSessao);
     const porData = new Map(expiries.map((e) => [e.date, e]));
+    // 21/09/2026: a data efetiva é a moda das datas de último negócio (antes da abertura de segunda
+    // é sexta), nunca a data do tick — o terminal carimba tick em tudo às 06:25.
+    const dataEfetiva = dataEfetivaDasSeries(viaMt5.options, sess.ultimaSessao);
     const options: CleanRow[] = [];
     for (const serie of viaMt5.options) {
       const exp = porData.get(serie.expiry);
-      if (exp) options.push(linhaDaSerie(serie, viaMt5.spot, viaMt5.sessao, exp));
+      if (exp) options.push(linhaDaSerie(serie, viaMt5.spot, dataEfetiva, exp));
     }
     let dataMaisRecente: string | null = null;
     for (const o of options) if (o.lastTradeAt && (!dataMaisRecente || o.lastTradeAt > dataMaisRecente)) dataMaisRecente = o.lastTradeAt;
@@ -287,7 +290,7 @@ export async function GET(req: NextRequest) {
       spot: viaMt5.spot,
       updatedAt: nowIso,
       fetchedAt: nowIso,
-      dataEfetiva: viaMt5.sessao,
+      dataEfetiva,
       dataMaisRecente,
       expiries,
       options,
@@ -302,7 +305,7 @@ export async function GET(req: NextRequest) {
       bandaPct: viaMt5.bandaPct ?? null,
     };
     cache.set(chaveMem, { at: Date.now(), body, ttl: viaMt5.diario.pendentes > 0 ? CACHE_TTL_MT5_PENDENTE_MS : CACHE_TTL_MT5_MS });
-    if (options.length > 0 && !soMensal && maxExp >= 8) gravarCache(CHAVE_DISCO(ticker), body, viaMt5.sessao);
+    if (options.length > 0 && !soMensal && maxExp >= 8) gravarCache(CHAVE_DISCO(ticker), body, dataEfetiva);
     return NextResponse.json(body, { headers: { "x-cache": "MISS", "x-fonte": "mt5", "x-upstream": "0", "x-ponte-ms": String(viaMt5.duracaoMs) } });
   }
 

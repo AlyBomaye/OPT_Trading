@@ -6266,7 +6266,7 @@ Líquido para 04/09/2026 5.134,69 D`;
     const path61 = await import("node:path");
     const ler61 = (rel: string) => fs61.readFileSync(path61.join(process.cwd(), rel), "utf8");
     const FM = await import("../fonte-mt5");
-    const { terceiraSexta, ehMensal, montarExpiries, midDe, linhaDaSerie, detalheFonteMt5 } = FM;
+    const { terceiraSexta, ehMensal, montarExpiries, midDe, linhaDaSerie, detalheFonteMt5, dataEfetivaDasSeries } = FM;
 
     // ---- Teste 1: a ponte é local, sem credencial, só leitura; a conversão pura acerta mensal/semanal, du, mid e a linha
     const ponte = ler61("scripts/mt5-ponte.py");
@@ -6301,17 +6301,23 @@ Líquido para 04/09/2026 5.134,69 D`;
       && l3b.trades === 0 && l3b.lastTradeAt === "2026-09-11" && l3b.diarioProvisorio === true && l3c.trades === 0 && l3c.lastTradeAt === null && !l3c.diarioProvisorio && !l1.diarioProvisorio
       && l4.moneyness === "ITM" && l4.premioPctCot === null && l4.last === null;
     const detOk = detalheFonteMt5("2026-09-17T16:54:57-03:00", "GenialInvestimentos-PRD") === "MT5 · Genial · tick 16:54:57" && detalheFonteMt5(null, null) === "MT5 · corretora";
-    if (ponteOk && sondaOk && mensalOk && expOk && midOk && linhaOk && detOk) console.log("✔ WO-61 Teste 1: a ponte escuta só em 127.0.0.1, liga-se ao terminal sem credencial (initialize() vazio; sem login/password/order_send), filtra base == papel e vencimento ≥ agora, tira negócios do candle D1 sob lock, administra o Market Watch (4.800) e lê os horários como Brasília; ehMensal acerta a terceira sexta e a véspera de feriado (19/11/2026); montarExpiries dá du/dte/W4 e deixa de fora a série que vence na sessão corrente (18/09 no dia 18/09: 1º mensal vira 16/10); mid só com ask ≥ bid > 0; a linha traz negócios do dia (0 quando o último negócio é de outra data; provisória pelo tick — ~1 na sessão, 0 com data do tick — quando o cache diário está pendente)");
-    else { console.log(`✘ WO-61 Teste 1 falhou: ponte=${ponteOk} sonda=${sondaOk} mensal=${mensalOk} exp=${expOk} mid=${midOk} linha=${linhaOk} det=${detOk}`); failures++; }
+    // 21/09/2026: segunda antes da abertura — tick de hoje em tudo, negócios de sexta: a data efetiva é sexta (moda), não o tick
+    const seg = [{ last: 3.24, ultimoNegocioEm: "2026-09-18" }, { last: 2.96, ultimoNegocioEm: "2026-09-18" }, { last: 0.05, ultimoNegocioEm: "2026-09-11" }, { last: null, ultimoNegocioEm: "2026-09-21" }, { last: 1, ultimoNegocioEm: null }];
+    const dataOk = dataEfetivaDasSeries(seg, "2026-09-18") === "2026-09-18" && dataEfetivaDasSeries(seg, "2026-09-21") === "2026-09-18"
+      && dataEfetivaDasSeries([...seg, { last: 1, ultimoNegocioEm: "2026-09-21" }, { last: 1, ultimoNegocioEm: "2026-09-21" }, { last: 1, ultimoNegocioEm: "2026-09-21" }], "2026-09-21") === "2026-09-21"
+      && dataEfetivaDasSeries([{ last: 1, ultimoNegocioEm: "2026-09-22" }], "2026-09-21") === "2026-09-21" && dataEfetivaDasSeries([], "2026-09-18") === "2026-09-18"
+      && dataEfetivaDasSeries([{ last: 1, ultimoNegocioEm: "2026-09-17" }, { last: 1, ultimoNegocioEm: "2026-09-18" }], "2026-09-18") === "2026-09-18";
+    if (ponteOk && sondaOk && mensalOk && expOk && midOk && linhaOk && detOk && dataOk) console.log("✔ WO-61 Teste 1: a ponte escuta só em 127.0.0.1, liga-se ao terminal sem credencial (initialize() vazio; sem login/password/order_send), filtra base == papel e vencimento ≥ agora, tira negócios do candle D1 sob lock, administra o Market Watch (4.800) e lê os horários como Brasília; ehMensal acerta a terceira sexta e a véspera de feriado (19/11/2026); montarExpiries dá du/dte/W4 e deixa de fora a série que vence na sessão corrente (18/09 no dia 18/09: 1º mensal vira 16/10); mid só com ask ≥ bid > 0; a linha traz negócios do dia (0 quando o último negócio é de outra data; provisória pelo tick — ~1 na sessão, 0 com data do tick — quando o cache diário está pendente); a data efetiva é a moda das datas de último negócio (segunda antes da abertura = sexta), nunca a data do tick");
+    else { console.log(`✘ WO-61 Teste 1 falhou: ponte=${ponteOk} sonda=${sondaOk} mensal=${mensalOk} exp=${expOk} mid=${midOk} linha=${linhaOk} det=${detOk} data=${dataOk}`); failures++; }
 
     // ---- Teste 2: /api/opcoes tenta a ponte antes do opcoes.net.br (intacto); enrich repassa o book; codigoSerie em toda comparação
     const rotaO = ler61("app/api/opcoes/route.ts");
     const fm = ler61("lib/fonte-mt5.ts");
     const iMt5 = rotaO.indexOf("await cadeiaMt5(");
     const iRodada = rotaO.indexOf("for (let rodada = 1");
-    const rotaOk = /from "@\/lib\/fonte-mt5"/.test(rotaO) && iMt5 > 0 && iRodada > iMt5 && /respostaMt5\.options\.length >= MINIMO_SERIES_MT5 \? respostaMt5 : null/.test(rotaO) && /MINIMO_SERIES_MT5 = 6/.test(rotaO) && /varredura \? BANDA_VARREDURA_PCT : undefined/.test(rotaO) && /BANDA_VARREDURA_PCT = 12/.test(fm) && /fonte: "mt5" as const/.test(rotaO) && /fonte: "opcoes\.net\.br" as const/.test(rotaO) && /"x-fonte": "mt5"/.test(rotaO)
+    const rotaOk = /from "@\/lib\/fonte-mt5"/.test(rotaO) && iMt5 > 0 && iRodada > iMt5 && /respostaMt5\.options\.length >= MINIMO_SERIES_MT5 \? respostaMt5 : null/.test(rotaO) && /MINIMO_SERIES_MT5 = 6/.test(rotaO) && /const dataEfetiva = dataEfetivaDasSeries\(viaMt5\.options, sess\.ultimaSessao\)/.test(rotaO) && /linhaDaSerie\(serie, viaMt5\.spot, dataEfetiva, exp\)/.test(rotaO) && !/dataEfetiva: viaMt5\.sessao/.test(rotaO) && /varredura \? BANDA_VARREDURA_PCT : undefined/.test(rotaO) && /BANDA_VARREDURA_PCT = 12/.test(fm) && /fonte: "mt5" as const/.test(rotaO) && /fonte: "opcoes\.net\.br" as const/.test(rotaO) && /"x-fonte": "mt5"/.test(rotaO)
       && /class ErroPausa extends Error/.test(rotaO) && /PAUSA_INLINE_MAX_S = 15/.test(rotaO) && /PAUSA_CURTA_MAX_S = 180/.test(rotaO) && /cotacoes: "true" \},\s*CATALOGO_TIMEOUT_MS/.test(rotaO) && /diagnostico: "layout-mudou"/.test(rotaO)
-      && /CACHE_TTL_MT5_MS = 15_000/.test(rotaO) && /CACHE_TTL_MT5_PENDENTE_MS = 5_000/.test(rotaO) && /gravarCache\(CHAVE_DISCO\(ticker\), body, viaMt5\.sessao\)/.test(rotaO) && /gravarCache\(CHAVE_DISCO\(ticker\), body, dataEfetiva\)/.test(rotaO);
+      && /CACHE_TTL_MT5_MS = 15_000/.test(rotaO) && /CACHE_TTL_MT5_PENDENTE_MS = 5_000/.test(rotaO) && (rotaO.match(/gravarCache\(CHAVE_DISCO\(ticker\), body, dataEfetiva\)/g) ?? []).length === 2 && /gravarCache\(CHAVE_DISCO\(ticker\), body, dataEfetiva\)/.test(rotaO);
     const enrichSrc = ler61("lib/enrich-chain.ts");
     const enrichOk = /bid: o\.bid \?\? null/.test(enrichSrc) && /tickAt: o\.tickAt \?\? null/.test(enrichSrc) && /fonte: body\.fonte/.test(enrichSrc) && /fonteDetalhe\?: string/.test(enrichSrc);
     const { codigoSerie, mesmaSerie } = await import("../marcacao");
