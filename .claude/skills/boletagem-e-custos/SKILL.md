@@ -41,7 +41,10 @@ que sabe. Regras que valem para qualquer código novo:
 
 1. **Boleta é append-only.** Erro não se edita: registra-se uma boleta de `ajuste` que estorna
    a original (`estorna_id`) e, se for o caso, outra com o valor certo. A auditoria precisa ver
-   o erro e a correção.
+   o erro e a correção. Desde a **WO-68** isso tem tela: **Corrigir**, na fita da Boletagem, abre a
+   boleta preenchida e grava o par (estorno + boleta certa) numa transação só — `corrigirBoleta`
+   em `lib/boletas.ts`. Nenhum `UPDATE boleta` nem `DELETE FROM boleta` existe no código, e não
+   pode passar a existir.
 2. **Projeção na mesma transação.** `registrarBoleta` grava a boleta e atualiza `posicao` e
    `estrutura` dentro de `emTransacao`. Se qualquer passo falhar, nada fica gravado. O
    `?simular=1` executa tudo e lança o sentinela `Simulacao` para forçar rollback — é assim que a
@@ -172,6 +175,32 @@ brasileiro lê; não converta para serial.
 4. Se a boleta estava errada, `ajuste` com `estorna_id` — nunca DELETE no banco.
 5. Para posições provisórias (pré-confirmação), boletar e depois estornar é o caminho correto —
    a trilha fica.
+
+## 7.6 Corrigir uma boleta (WO-68)
+
+Boletou errado? Na fita (`UltimasBoletas`), cada linha tem **corrigir**. O formulário
+(`CorrigirBoleta`) abre preenchido com a boleta como está; o operador muda o que estiver errado e
+confirma. `POST /api/boletas/corrigir { id, nova }` grava o estorno da original e a boleta certa na
+mesma transação — ou as duas, ou nenhuma. `?simular=1` mostra o efeito antes (é o que o botão
+"Prévia" faz).
+
+O que esta rota tem de particular, e que qualquer mexida precisa preservar:
+
+- **O estorno herda o `executado_em` da original**, não a hora da correção. `executado_em` governa a
+  apuração mensal (§1.3): carimbar o estorno com a data de hoje jogaria a reversão para outro mês e
+  distorceria o ganho líquido dos dois.
+- **A estrutura reabre entre os dois passos.** O estorno de uma abertura que zera a última perna
+  fecha a estrutura; sem reabrir, a boleta certa bateria em "Estrutura já fechada". A reabertura
+  acontece dentro da transação, então uma correção recusada não deixa estrutura reaberta.
+- **A boleta certa volta para a MESMA perna**, mesmo zerada pelo estorno (`e.posicaoId` na abertura
+  procura a perna por id, sem o filtro `quantidade > 0`). Sem isso nascia uma perna duplicada, com a
+  antiga morta na estrutura e as referências fiscais dos fechamentos apontando para a órfã. O alvo
+  explícito só vale quando instrumento, tipo e lado batem — quem trocou a série está abrindo outra
+  coisa, e aí perna nova é o certo.
+- **Campos livres, inclusive instrumento, lado e tipo** (decisão do operador em 22/09/2026). A defesa
+  é a prévia: o diff campo a campo (`camposAlterados`), com a troca estrutural em âmbar.
+- **A fita mostra o que vale**, com a trilha recolhida (`colapsarFita`, ligada por `boleta.corrige_id`).
+  Nada some do banco nem do Excel.
 
 ## 7.1 Recomeçar do zero (a exceção deliberada ao append-only)
 

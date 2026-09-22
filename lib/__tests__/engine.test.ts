@@ -6936,6 +6936,108 @@ Líquido para 04/09/2026 5.134,69 D`;
     else { console.log(`✘ WO-67 Teste 3 falhou: docs=${docsOk}`); failures++; }
   }
 
+  // ---------------------------------------------------------------------------------------------
+  // WO-68 — corrigir uma boleta: estorno + boleta certa, sem quebrar o append-only
+  // ---------------------------------------------------------------------------------------------
+  {
+    const C = await import("../correcao-boleta");
+    type BR = import("../boletas").BoletaRegistrada;
+    const boleta = (over: Partial<BR> = {}): BR => ({
+      id: 3, criadoEm: "2026-09-22T10:00:00Z", executadoEm: "2026-10-09T13:19:57Z", tipo: "abertura", origem: "manual",
+      estruturaId: 1, posicaoId: 1, ticker: "PETR4", opTicker: "PETRJ493W2", kind: "OPTION", tipoOpcao: "CALL",
+      strike: 48.17, vencimento: "2026-10-09", lado: 1, quantidade: 100, preco: 2.14,
+      corretagem: 1.09, emolumentos: 0.08, liquidacao: 0.06, registro: 0.15, taxaOperacional: 0, custosTotal: 1.38,
+      motivoSaida: null, precoMedioRef: null, custosAberturaRef: null, estornaId: null, corrigeId: null, nota: null,
+      ...over,
+    });
+
+    // A boleta vira entrada pré-preenchida, com os custos EXPLÍCITOS (o que a corretora cobrou de
+    // verdade; recalcular pela tabela ao corrigir a hora reescreveria a nota já conferida).
+    const b = boleta();
+    const base = C.entradaDaCorrecao(b);
+    const baseOk = base.tipo === "abertura" && base.origem === "manual" && base.preco === 2.14 && base.corretagem === 1.09
+      && base.estruturaId === 1 && base.posicaoId === 1 && base.lado === 1;
+    const semMudanca = C.camposAlterados(b, base).length === 0;
+
+    const soPreco = C.camposAlterados(b, { ...base, preco: 2.41 });
+    const precoOk = soPreco.length === 1 && soPreco[0].campo === "preco" && soPreco[0].de === "2.14" && soPreco[0].para === "2.41" && soPreco[0].estrutural === false;
+    // Trocar a série é mudança ESTRUTURAL — permitida (o operador pediu), mas marcada.
+    const trocaSerie = C.camposAlterados(b, { ...base, opTicker: "PETRJ503W2", strike: 50.17 });
+    const estruturalOk = trocaSerie.length === 2 && trocaSerie.every((m) => m.estrutural) && trocaSerie.some((m) => m.campo === "opTicker");
+    const ladoOk = (() => {
+      const m = C.camposAlterados(b, { ...base, lado: -1 });
+      return m.length === 1 && m[0].de === "C" && m[0].para === "V" && m[0].estrutural;
+    })();
+
+    const podeOk = C.motivoDeNaoPoderCorrigir(b, { jaEstornada: false, ehEstorno: false }) === null
+      && /já foi estornada/.test(C.motivoDeNaoPoderCorrigir(b, { jaEstornada: true, ehEstorno: false }) ?? "")
+      && /é um estorno/.test(C.motivoDeNaoPoderCorrigir(b, { jaEstornada: false, ehEstorno: true }) ?? "")
+      && /é um estorno/.test(C.motivoDeNaoPoderCorrigir(boleta({ tipo: "ajuste" }), { jaEstornada: false, ehEstorno: false }) ?? "");
+
+    // A fita: original (3), estorno (4, estorna 3) e a certa (5, corrige 3) viram UMA linha.
+    const fita = [
+      boleta({ id: 5, preco: 2.41, corrigeId: 3, criadoEm: "2026-09-22T16:40:00Z" }),
+      boleta({ id: 4, tipo: "ajuste", estornaId: 3, preco: 2.14 }),
+      boleta({ id: 3 }),
+      boleta({ id: 2, opTicker: "PETRV493W2", tipoOpcao: "PUT", posicaoId: 2 }),
+    ];
+    const linhas = C.colapsarFita(fita);
+    const colapsoOk = linhas.length === 2 && linhas[0].vigente.id === 5 && linhas[0].vigente.preco === 2.41
+      && linhas[0].trilha.map((t) => t.id).join(",") === "3,4" && linhas[0].corrigidaEm === "2026-09-22T16:40:00Z"
+      && linhas[1].vigente.id === 2 && linhas[1].trilha.length === 0 && linhas[1].corrigidaEm === null;
+    // Sem correção, a fita passa inteira (nada some da tela por engano).
+    const semCorrecaoOk = C.colapsarFita([boleta({ id: 3 }), boleta({ id: 2 })]).length === 2;
+
+    if (baseOk && semMudanca && precoOk && estruturalOk && ladoOk && podeOk && colapsoOk && semCorrecaoOk) console.log("✔ WO-68 Teste 1: a boleta vira entrada pré-preenchida com os custos que a corretora cobrou; camposAlterados devolve só o que mudou e marca como ESTRUTURAL a troca de série, lado ou tipo; estorno e boleta já estornada não são corrigíveis (a versão que vale é outra linha); colapsarFita mostra a vigente com a original e o estorno na trilha, e deixa passar quem nunca foi corrigido");
+    else { console.log(`✘ WO-68 Teste 1 falhou: base=${baseOk} sem=${semMudanca} preco=${precoOk} estrut=${estruturalOk} lado=${ladoOk} pode=${podeOk} colapso=${colapsoOk} semCorrecao=${semCorrecaoOk}`); failures++; }
+  }
+
+  {
+    const fs68 = await import("node:fs");
+    const path68 = await import("node:path");
+    const ler68 = (rel: string) => fs68.readFileSync(path68.join(process.cwd(), rel), "utf8");
+    const motor = ler68("lib/boletas.ts");
+    const sql = ler68("db/002_boletagem.sql");
+    const rota = ler68("app/api/boletas/corrigir/route.ts");
+    const tela = ler68("components/UltimasBoletas.tsx");
+    const form = ler68("components/CorrigirBoleta.tsx");
+
+    // Append-only de verdade: a correção NÃO altera nem apaga boleta nenhuma.
+    const appendOnly = !/UPDATE boleta/.test(motor) && !/DELETE FROM boleta/.test(motor);
+    // O par entra junto, e o estorno herda o executado_em da original (a apuração mensal não pode mudar de mês).
+    const parOk = /export async function corrigirBoleta/.test(motor)
+      && /executadoEm: original\.executadoEm,/.test(motor)
+      && /estornaId: original\.id,/.test(motor)
+      && /corrigeId: original\.id/.test(motor)
+      && /if \(!opcoes\.simular\) return emTransacao\(executar\);/.test(motor);
+    // A estrutura fechada pelo estorno reabre ENTRE os dois passos, dentro da mesma transação.
+    const reabreOk = /UPDATE estrutura SET fechada_em = NULL WHERE id = \$1/.test(motor) && /estavaAberta/.test(motor);
+    // A boleta certa volta para a MESMA perna (zerada pelo estorno) — e só se o instrumento bater.
+    const mesmaPernaOk = /e\.posicaoId != null/.test(motor) && /WHERE id = \$1 AND estrutura_id = \$2 AND kind = \$3 AND lado = \$4/.test(motor)
+      && /custos_acumulados = custos_acumulados \+ \$5, fechada_em = NULL/.test(motor);
+    const sqlOk = /ADD COLUMN corrige_id bigint REFERENCES boleta\(id\)/.test(sql) && /boleta_corrige_idx/.test(sql);
+    const rotaOk = /corrigirBoleta\(id, nova, \{ simular \}\)/.test(rota) && /simular=1/.test(rota) === false ? /searchParams\.get\("simular"\) === "1"/.test(rota) : /searchParams\.get\("simular"\) === "1"/.test(rota);
+    const telaOk = /colapsarFita/.test(tela) && /motivoDeNaoPoderCorrigir/.test(tela) && /corrigida \{aberta \? "▴" : "▾"\}/.test(tela);
+    const formOk = /camposAlterados/.test(form) && /estruturais\.length > 0/.test(form) && /\/api\/boletas\/corrigir\$\{gravar \? "" : "\?simular=1"\}/.test(form);
+
+    if (appendOnly && parOk && reabreOk && mesmaPernaOk && sqlOk && rotaOk && telaOk && formOk) console.log("✔ WO-68 Teste 2: corrigir é estorno + boleta certa na MESMA transação, sem um único UPDATE ou DELETE de boleta; o estorno herda o executado_em da original (a apuração não muda de mês), a estrutura fechada pelo estorno reabre entre os dois passos e a boleta certa volta para a MESMA perna — só quando o instrumento, o tipo e o lado batem; a rota simula, a fita recolhe a trilha e o formulário avisa a troca estrutural");
+    else { console.log(`✘ WO-68 Teste 2 falhou: append=${appendOnly} par=${parOk} reabre=${reabreOk} perna=${mesmaPernaOk} sql=${sqlOk} rota=${rotaOk} tela=${telaOk} form=${formOk}`); failures++; }
+  }
+
+  {
+    const fs68 = await import("node:fs");
+    const path68 = await import("node:path");
+    const ler68 = (rel: string) => fs68.readFileSync(path68.join(process.cwd(), rel), "utf8");
+    const skill = ler68(".claude/skills/boletagem-e-custos/SKILL.md");
+    const manual = ler68("lib/manual-content.ts");
+    const anti = ler68("ANTIGRAVITY.md");
+    const wo68 = ler68("WO-68-PROMPT.md");
+    const docsOk = /WO-68/.test(skill) && /Corrigir/.test(skill) && /corrigir a boleta/i.test(manual)
+      && /WO-68/.test(anti) && /## Executado/.test(wo68) && !/_\(preenchido após a conferência\)_/.test(wo68);
+    if (docsOk) console.log("✔ WO-68 Teste 3: a skill de boletagem, o Manual, o ANTIGRAVITY e a WO-68 dizem que corrigir é estorno + boleta certa, e que o append-only continua de pé");
+    else { console.log(`✘ WO-68 Teste 3 falhou: docs=${docsOk}`); failures++; }
+  }
+
 }
 
 testesAssincronos()

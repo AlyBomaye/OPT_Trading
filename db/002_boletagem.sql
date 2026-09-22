@@ -120,6 +120,19 @@ BEGIN
 END $$;
 
 -- ---------------------------------------------------------------------------
+-- WO-68: a boleta que CORRIGE outra aponta para ela. O livro continua append-only (a correção são
+-- duas linhas novas: o estorno e a boleta certa); esta coluna só permite que a fita mostre a versão
+-- vigente com a trilha recolhida, em vez de três linhas soltas.
+-- ---------------------------------------------------------------------------
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'boleta' AND column_name = 'corrige_id') THEN
+    ALTER TABLE boleta ADD COLUMN corrige_id bigint REFERENCES boleta(id);
+  END IF;
+END $$;
+CREATE INDEX IF NOT EXISTS boleta_corrige_idx ON boleta (corrige_id);
+
+-- ---------------------------------------------------------------------------
 -- Reparo idempotente da projeção: estrutura sem nenhuma perna aberta fica fechada.
 -- (Um ajuste que zerava a última perna não fechava a estrutura antes de 02/09/2026.)
 -- ---------------------------------------------------------------------------

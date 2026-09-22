@@ -98,6 +98,8 @@ export interface EntradaBoleta {
   motivoSaida?: MotivoSaida | null;
   /** Ajuste: qual boleta estorna. */
   estornaId?: number | null;
+  /** WO-68: esta boleta é a versão certa da boleta N (que foi estornada na mesma transação). */
+  corrigeId?: number | null;
   ivEntrada?: number | null;
   gregasEntrada?: Position["entryGreeks"] | null;
   nota?: string | null;
@@ -130,6 +132,8 @@ export interface BoletaRegistrada {
   precoMedioRef: number | null;
   custosAberturaRef: number | null;
   estornaId: number | null;
+  /** WO-68: esta boleta é a versão certa da boleta N (a original foi estornada na mesma transação). */
+  corrigeId: number | null;
   nota: string | null;
 }
 
@@ -314,15 +318,15 @@ async function inserirBoleta(
     `INSERT INTO boleta
        (executado_em, tipo, origem, estrutura_id, posicao_id, ticker, op_ticker, kind, tipo_opcao,
         strike, vencimento, lado, quantidade, preco, corretagem, emolumentos, liquidacao, registro, taxa_operacional,
-        motivo_saida, preco_medio_ref, custos_abertura_ref, estorna_id, nota)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24)
+        motivo_saida, preco_medio_ref, custos_abertura_ref, estorna_id, corrige_id, nota)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25)
      RETURNING id`,
     [
       e.executadoEm, e.tipo, e.origem, extras.estruturaId, extras.posicaoId,
       e.ticker.toUpperCase(), e.opTicker ?? null, e.kind, e.tipoOpcao ?? null,
       e.strike ?? null, e.vencimento ?? null, e.lado ?? null, e.quantidade, e.preco,
       extras.corretagem, extras.emolumentos, extras.liquidacao, extras.registro, extras.taxaOperacional,
-      e.motivoSaida ?? null, extras.precoMedioRef, extras.custosAberturaRef, e.estornaId ?? null, e.nota ?? null,
+      e.motivoSaida ?? null, extras.precoMedioRef, extras.custosAberturaRef, e.estornaId ?? null, e.corrigeId ?? null, e.nota ?? null,
     ]
   );
   return Number(r.rows[0].id);
@@ -405,14 +409,28 @@ async function prepararExecucao(e: EntradaBoleta): Promise<(c: PoolClient) => Pr
 
         // Perna: mesma estrutura + mesmo instrumento + mesmo lado = aumento (preço médio).
         const chaveInstr = e.kind === "STOCK" ? null : (e.opTicker ?? null);
-        const existente = await c.query(
-          `SELECT id, quantidade, preco_medio, custos_acumulados
-             FROM posicao
-            WHERE estrutura_id = $1 AND kind = $2 AND lado = $3 AND quantidade > 0
-              AND ((kind = 'STOCK' AND ticker = $4) OR (kind = 'OPTION' AND op_ticker = $5))
-            LIMIT 1`,
-          [estruturaId, e.kind, e.lado, e.ticker.toUpperCase(), chaveInstr]
-        );
+        // WO-68: a correção diz em QUAL perna a boleta certa entra. O estorno da abertura acabou de
+        // zerar a perna original, e a busca normal (quantidade > 0) não a acharia — nasceria uma
+        // perna duplicada, com a antiga morta na estrutura e as referências fiscais dos fechamentos
+        // apontando para a órfã. O alvo explícito só vale se o instrumento, o tipo e o lado baterem:
+        // quem trocou a série na correção está abrindo outra coisa, e aí a perna nova é o certo.
+        const existente = e.posicaoId != null
+          ? await c.query(
+              `SELECT id, quantidade, preco_medio, custos_acumulados
+                 FROM posicao
+                WHERE id = $1 AND estrutura_id = $2 AND kind = $3 AND lado = $4
+                  AND ((kind = 'STOCK' AND ticker = $5) OR (kind = 'OPTION' AND op_ticker = $6))
+                LIMIT 1`,
+              [e.posicaoId, estruturaId, e.kind, e.lado, e.ticker.toUpperCase(), chaveInstr]
+            )
+          : await c.query(
+              `SELECT id, quantidade, preco_medio, custos_acumulados
+                 FROM posicao
+                WHERE estrutura_id = $1 AND kind = $2 AND lado = $3 AND quantidade > 0
+                  AND ((kind = 'STOCK' AND ticker = $4) OR (kind = 'OPTION' AND op_ticker = $5))
+                LIMIT 1`,
+              [estruturaId, e.kind, e.lado, e.ticker.toUpperCase(), chaveInstr]
+            );
 
         let posicaoId: number;
         if (existente.rows[0]) {
@@ -421,8 +439,10 @@ async function prepararExecucao(e: EntradaBoleta): Promise<(c: PoolClient) => Pr
           const qNova = qAnt + e.quantidade;
           const medio = precoMedioAposAumento(qAnt, Number(p.preco_medio), e.quantidade, e.preco);
           await c.query(
+            // A perna revive: uma abertura sempre deixa quantidade > 0, então `fechada_em` volta a
+            // ser nula (o caso é a correção, que reabre a perna zerada pelo estorno).
             `UPDATE posicao SET quantidade = $2, quantidade_inicial = quantidade_inicial + $3,
-                    preco_medio = $4, custos_acumulados = custos_acumulados + $5
+                    preco_medio = $4, custos_acumulados = custos_acumulados + $5, fechada_em = NULL
               WHERE id = $1`,
             [p.id, qNova, e.quantidade, medio, custosTotal]
           );
@@ -629,6 +649,78 @@ export async function registrarBoletasJuntas(lista: EntradaBoleta[], opcoes: { s
   return capturado;
 }
 
+/** Uma boleta do livro pelo id — `null` quando não existe. */
+export async function boletaPorId(id: number): Promise<BoletaRegistrada | null> {
+  if (!(await garantirSchema())) return null;
+  const r = await emTransacao(async (c) => c.query(`SELECT * FROM boleta WHERE id = $1`, [id]));
+  const linha = r?.rows?.[0];
+  return linha ? linhaParaBoleta(linha) : null;
+}
+
+/**
+ * WO-68 — corrigir uma boleta: o ESTORNO da original e a BOLETA CERTA, na mesma transação.
+ *
+ * O livro segue append-only: nada é apagado nem alterado, a correção são duas linhas novas. Quem
+ * chama passa a boleta como ela deveria ter sido (o formulário abre preenchida com a atual); o que
+ * mudou é problema da tela, não daqui.
+ *
+ * Dois cuidados que só existem neste par:
+ *
+ *   1. O estorno herda o `executado_em` da ORIGINAL, não a hora de agora. `executado_em` é o que
+ *      governa a apuração mensal (skill §1.3): carimbar o estorno com a data da correção jogaria a
+ *      reversão para outro mês e distorceria o ganho líquido dos dois.
+ *   2. O estorno de uma abertura que zera a última perna FECHA a estrutura. A boleta certa entraria
+ *      então em "Estrutura já fechada — abra outra". Por isso, quando a estrutura estava aberta
+ *      antes do estorno, ela é reaberta entre os dois passos — dentro da mesma transação, de modo
+ *      que uma correção recusada não deixa estrutura reaberta no banco.
+ */
+export async function corrigirBoleta(
+  id: number,
+  nova: EntradaBoleta,
+  opcoes: { simular?: boolean } = {}
+): Promise<{ estorno: ResultadoRegistro; corrigida: ResultadoRegistro } | null> {
+  if (!(await garantirSchema())) return null;
+  const original = await boletaPorId(id);
+  if (!original) throw new Error("Boleta não encontrada.");
+  if (original.tipo === "ajuste") throw new Error("Esta linha é um estorno — corrija a boleta de origem, não o estorno.");
+
+  const estorno: EntradaBoleta = {
+    tipo: "ajuste",
+    origem: "manual",
+    executadoEm: original.executadoEm,
+    ticker: original.ticker,
+    kind: original.kind as EntradaBoleta["kind"],
+    quantidade: original.quantidade,
+    preco: original.preco,
+    estornaId: original.id,
+    nota: `estorno da boleta #${original.id} (correção)`,
+  };
+
+  const executar = async (c: PoolClient) => {
+    const estruturaAlvo = nova.tipo === "abertura" ? nova.estruturaId ?? original.estruturaId : null;
+    let estavaAberta = false;
+    if (estruturaAlvo != null) {
+      const r = await c.query(`SELECT fechada_em FROM estrutura WHERE id = $1`, [estruturaAlvo]);
+      estavaAberta = Boolean(r.rows[0]) && r.rows[0].fechada_em == null;
+    }
+    const rEstorno = await (await prepararExecucao(estorno))(c);
+    if (estruturaAlvo != null && estavaAberta) {
+      await c.query(`UPDATE estrutura SET fechada_em = NULL WHERE id = $1`, [estruturaAlvo]);
+    }
+    const rCorrigida = await (await prepararExecucao({ ...nova, corrigeId: original.id }))(c);
+    return { estorno: rEstorno, corrigida: rCorrigida };
+  };
+
+  if (!opcoes.simular) return emTransacao(executar);
+  let capturado: { estorno: ResultadoRegistro; corrigida: ResultadoRegistro } | null = null;
+  await emTransacao(async (c) => {
+    const r = await executar(c);
+    capturado = r;
+    throw new Simulacao(r.corrigida);
+  });
+  return capturado;
+}
+
 /* ========================================================================== *
  * Leitura — o estado do livro no formato que a plataforma já consome
  * ========================================================================== */
@@ -663,6 +755,7 @@ function linhaParaBoleta(r: Record<string, any>): BoletaRegistrada {
     precoMedioRef: r.preco_medio_ref != null ? Number(r.preco_medio_ref) : null,
     custosAberturaRef: r.custos_abertura_ref != null ? Number(r.custos_abertura_ref) : null,
     estornaId: r.estorna_id != null ? Number(r.estorna_id) : null,
+    corrigeId: r.corrige_id != null ? Number(r.corrige_id) : null,
     nota: r.nota ?? null,
   };
 }

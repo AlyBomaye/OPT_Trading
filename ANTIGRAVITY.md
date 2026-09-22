@@ -707,6 +707,16 @@ com VaR95/ES rotulados + export CSV/JSON + export/import do arquivo de snapshots
 - **Bloco B (Analytics de performance)**: Agrupamento de pernas abertas no mesmo instante em estruturas (`groupTrades`), KPIs avançados de journal (`performanceStats`: Profit Factor, Expectancy R$ e R, Holding médio V/P, streaks, melhor/pior trade) e atribuição de P&L de 1ª ordem ($\Delta$, $\text{Vega}$, $\Theta$, resíduo).
 - **Bloco C (Gráficos e riscos)**: Suíte Recharts (`PerformanceCharts`) com Curva de patrimônio + Underwater (Drawdown), P&L mensal, Histograma de distribuição de P&L, P&L por estratégia, Alocação por setor vs limite de concentração, Perfil de risco acumulado por ativo objeto (payoffs do book) e Calendário de vencimentos.
 
+**WO-68 Corrigir boleta (22/09/2026)**: a fita da Boletagem ganhou "corrigir" por linha
+(`UltimasBoletas` → `CorrigirBoleta`). `corrigirBoleta` (`lib/boletas.ts`) grava o ESTORNO da
+original e a boleta certa na mesma transação — o livro continua append-only, sem um único
+`UPDATE`/`DELETE` de boleta. O estorno herda o `executado_em` da original (a apuração não muda
+de mês); a estrutura fechada pelo estorno reabre entre os dois passos; a boleta certa volta para
+a mesma perna (`e.posicaoId` na abertura, sem o filtro `quantidade > 0`) quando instrumento, tipo
+e lado batem. `lib/correcao-boleta.ts` (puro) faz o diff campo a campo — troca de série, lado ou
+tipo sai marcada como estrutural — e `colapsarFita` mostra a versão vigente com a trilha recolhida
+(coluna nova `boleta.corrige_id`). `POST /api/boletas/corrigir` com `?simular=1` para a prévia.
+
 **WO-67 Cadeia completada (22/09/2026)**: o feed MT5 da Genial não publica as séries criadas
 desde 01/08/2026 (7,4% delas chegam, contra 47,9% das antigas; ITUB4 0/792, VALE3 0/464,
 PRIO3 0/338), e o que falta é a faixa no dinheiro. `lib/completar-cadeia.ts` (puro) cruza a
@@ -933,7 +943,9 @@ Rates & FX. **WO-63 [CONCLUÍDO 21/09/2026]:** o strike vem do catálogo oficial
 terminal. **WO-64 [CONCLUÍDO 21/09/2026]:** drivers do papel na Estratégia, com o vento no
 semáforo. **WO-65 [CONCLUÍDO 21/09/2026]:** volume no Histórico. **WO-66 [CONCLUÍDO
 22/09/2026]:** os 3 drivers de cada ativo no Perfil de Risco do Portfolio. **WO-67 [CONCLUÍDO
-22/09/2026]:** a cadeia completada com as séries que o terminal da corretora não carrega. Próximos: Fase 2 da WO-64 (projeção dos drivers pelo mercado a termo) e, pelo
+22/09/2026]:** a cadeia completada com as séries que o terminal da corretora não carrega.
+**WO-68 [CONCLUÍDO 22/09/2026]:** corrigir uma boleta pela fita, com estorno e boleta certa na mesma
+transação. Próximos: Fase 2 da WO-64 (projeção dos drivers pelo mercado a termo) e, pelo
 MAPA-SOFTWARE-PESSOAL.md, estado no banco e saúde visível, supervisor e acesso local, ponte em
 tempo real.
 
