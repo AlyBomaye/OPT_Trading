@@ -31,6 +31,24 @@ Abre em `http://localhost:3000`. Em desenvolvimento, `APP_PASSWORD` em branco li
 | `npm run setup:db` | Cria banco e usuário no PostgreSQL e grava a `DATABASE_URL` (uma vez só) |
 | `npm run reset:senha-db` | Redefine a senha do superusuário `postgres` (só se você não a souber) |
 
+### Produção (porta 3100)
+
+`npm run prod:build` compila em `.next-prod` (o dev segue em `.next`, na 3000, sem conflito),
+`prod:start` sobe a ponte MT5 e a plataforma, `prod:stop` derruba as duas e `prod:status` diz o
+build no ar e o estado do terminal.
+
+**Suba a produção fora de uma sessão de agente.** No Windows, os terminais que o app Claude abre
+ficam num *job object* que mata todos os descendentes quando o app fecha ou reinicia — e leva
+junto a 3100, a ponte na 3200 e o próprio `terminal64.exe` (a ponte relança o MetaTrader ao
+iniciar, então ele entra na mesma árvore). Para isso existe a tarefa agendada
+**`opcoes-terminal producao`**, registrada no Agendador do Windows: ela roda `prod:start` no logon
+do usuário, com o processo pendurado no Agendador e não na sessão. Para subir na mão sem esperar
+o logon:
+
+```powershell
+Start-ScheduledTask -TaskName "opcoes-terminal producao"
+```
+
 ## MetaTrader 5 (a fonte primária de mercado)
 
 A cadeia de opções, o tick do papel e o histórico vêm do terminal **MetaTrader 5** da corretora

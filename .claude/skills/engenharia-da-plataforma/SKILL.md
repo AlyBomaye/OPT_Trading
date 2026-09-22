@@ -135,6 +135,16 @@ e diga no commit. Se a quebra não for intencional, o teste venceu.
   terminal logado`; `/api/saude` devolve `ponteMt5: { ok, logado }` (só isso — é a rota sem
   senha); o vigia avisa "MT5 deslogado" em PRE/ABERTO, uma vez por dia. Em dev: `npm run ponte`.
   Diagnóstico: `python scripts/mt5-sonda.py PETR4 +VALE3`.
+- **A produção não pode ser subida de dentro de uma sessão de agente** (medido em 22/09/2026): os
+  terminais que o app Claude abre ficam num job object com kill-on-close, e o
+  `Start-Process -WindowStyle Hidden` do `producao.ps1` não escapa dele — quando o app reinicia,
+  caem juntos a 3100, a ponte na 3200 e o `terminal64.exe`. Sintomas: porta sem resposta com os
+  PID files de `data/run/` ainda no lugar (o `stop` os apaga, então a presença deles significa que
+  ninguém parou nada) e a última linha de `data/logs/ponte-mt5-<data>.log` minutos antes do
+  `StartTime` dos processos `claude`. Use a tarefa agendada `opcoes-terminal producao`
+  (`Start-ScheduledTask -TaskName "opcoes-terminal producao"`), que roda `prod:start` pelo
+  Agendador do Windows, fora da árvore da sessão; confira com a cadeia de pais do PID que escuta a
+  3100 — nenhum `claude` pode aparecer nela.
 - Universo (WO-61): MRFG3 → MBRF3; AZUL4 e GOLL4 saíram (`RETIRADOS_DO_UNIVERSO`). Nada apagado
   do banco.
 - Macro (WO-62): a ponte expõe `/macro?simbolos=` (índices e contínuos `$` da BMF: tick + 260
