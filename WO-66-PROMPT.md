@@ -135,6 +135,56 @@ movimento) e registrar em "Executado".
 6. **Cartões no Portfolio**: os 5 por estrutura, sob demanda ("ver"). Alternativa: só a tabela e a
    lista, com link para a Estratégia do papel.
 
-## Executado
+## Executado — 22/09/2026
 
-_(preenchido na execução)_
+### O que ficou de pé
+
+- **A — Puro** `lib/drivers-book.ts`: `direcoesDaEstrutura`, `ventoDaEstrutura`, `exposicaoPorDriver`
+  (comprados, vendidos, líquido, bruto, 21p do driver, vento do líquido, "sem lado" só nos drivers
+  que o papel de fato segue, STALE, data), `concentracaoDeDriver`, `resumoDoBook`.
+- **B — Flags** `lib/position-flags.ts`: `VENTO_CONTRA` (na primeira perna) e `DRIVER_CONCENTRADO`
+  (book); `flagsDosDrivers` exportada, `evaluateFlags` com o parâmetro opcional `drivers`,
+  `ordenarFlags` exportada. `ActionFlags` ganhou `extras` — monta as próprias flags e não recebia
+  as dos drivers; a página passa `driverFlags`.
+- **C — Tela** `lib/hooks/useDriversDoBook.ts` (só os papéis abertos, memória por sessão),
+  `components/CartaoDriver.tsx` (o cartão saiu de `PainelDrivers` e os dois painéis o usam),
+  `components/PainelDriversBook.tsx` (tabela de exposição + lista por estrutura com os 5 cartões
+  sob demanda, `#drivers-book`, `portfolio-drivers-open`); Portfolio monta depois da Correlação,
+  usa a **mesma** `alocacao()` da tela para o peso, entrega `flagsComDrivers` às fichas e às
+  linhas e `driversBook` ao agente.
+- **D — Agente** `lib/agents/tab/carteira.ts`: `CarteiraInputContext.driversBook`; achados
+  "O book é, em boa parte, uma aposta só" e "os drivers sopram contra a estrutura" com link
+  `carteira.drivers` (`/portfolio#drivers-book`).
+- **E — Docs e testes**: Manual (Portfolio, glossário "Exposição por driver"), skills (risco §7b,
+  método §1), ANTIGRAVITY (§9.5 e roadmap), README, WO-64 (Fase 2); testes WO-66 1–5 (WO-64 · 5
+  passou a checar STALE/proxy no cartão extraído).
+
+### Verificado ao vivo (dev aberto com o book real, 22/09/2026, 10:40)
+
+- "O que move o book — 3 papel(is) · 6 estrutura(s)": PRIO3, PETR4 e BHIA3, cada um com uma
+  compra a seco de call e uma de put. Resumo: **"nenhum driver concentra a aposta direcional · 1
+  estrutura(s) contra o vento"** — com call e put do mesmo papel, o comprado e o vendido se
+  anulam no driver, e a tabela mostra isso (Brent: comprado via PRIO3 R$ 208 e PETR4 R$ 214,
+  vendido via as puts).
+- Por estrutura: PETR4 Compra a Seco de Put (baixa) → **vento contra · 1 a favor · 2 contra**,
+  contra Brent e EWZ; as demais mistas ou a favor; medida até 21/09/2026.
+- Ação do dia: a flag "Drivers contra a estrutura" aparece na PETR4 put depois do ajuste do
+  `extras` (antes o painel calculava as próprias flags e ignorava as dos drivers).
+- Suíte verde depois das correções; `typecheck` limpo.
+
+### O que a máquina ensinou
+
+- Duas compras a seco opostas no mesmo papel são, para o driver, uma aposta neutra — a tabela
+  de exposição diz isso antes que o operador precise deduzir. O que sobra é o vento por
+  estrutura: a put de PETR4 está contra Brent e EWZ, a call a favor.
+- "Sem lado" só faz sentido nos drivers que o papel segue: o straddle de PETR4 não é "exposto
+  ao dólar" se a correlação com o dólar é 0,13. A primeira versão listava todos; corrigido.
+- Painel que calcula as próprias flags (`ActionFlags`) não vê o que a página mediu: a lista
+  precisa de uma porta (`extras`), senão a flag nova fica só nas fichas.
+
+### Limites declarados
+
+- Peso por prêmio em risco: estrutura sem risco medido (perna sem teto e sem VaR) não pesa e a
+  seção diz quantas são.
+- Concentração exige ≥ 2 estruturas na mesma direção: um book de uma estrutura nunca "concentra".
+- A tabela é larga: em tela estreita rola na horizontal (o Portfolio é tela de desktop).

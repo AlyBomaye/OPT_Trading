@@ -85,7 +85,7 @@ export const RESUMO_TELAS = [
   {
     modulo: "3. Portfolio",
     pergunta: "O que tenho aberto, o que o método manda fazer, onde está concentrado o risco?",
-    resposta: "Só gestão e análise — nada é gravado aqui. Ação do dia, as fichas por estrutura (as três perguntas do método respondidas hoje, com veredito), estruturas (Fechar e Rolar mandam um rascunho para a Boletagem), capital e baldes, limites com vigência, alocação e concentração (por setor, vencimento, tipo de estrutura, comprado × vendido), correlação entre os papéis do book (VaR direcional somado × diversificado), gregas líquidas, pernas, stress, VaR da grade e VaR histórico, journal, apuração fiscal, curva de patrimônio, arquivo de IV e encerradas.",
+    resposta: "Só gestão e análise — nada é gravado aqui. Ação do dia, as fichas por estrutura (as três perguntas do método respondidas hoje, com veredito), estruturas (Fechar e Rolar mandam um rascunho para a Boletagem), capital e baldes, limites com vigência, alocação e concentração (por setor, vencimento, tipo de estrutura, comprado × vendido), correlação entre os papéis do book (VaR direcional somado × diversificado), gregas líquidas, pernas, stress, VaR da grade e VaR histórico, journal, apuração fiscal, curva de patrimônio, arquivo de IV e encerradas. Abaixo do bloco de risco, 'O que move o book' (WO-66): cruza o viés de cada estrutura com os drivers do papel e mostra em que o book está comprado ou vendido — Brent, dólar, DI, minério —, pesado pelo prêmio em risco; três estruturas em três papéis podem ser uma aposta só, e a tela diz. Uma flag quando um driver concentra a aposta e outra quando os drivers sopram contra uma estrutura: aviso, nunca veto.",
   },
   {
     modulo: "4. Chart Attack",
@@ -247,6 +247,11 @@ export const MAPA_INFORMACOES: LinhaMapa[] = [
 ];
 
 export const GLOSSARIO: Termo[] = [
+  {
+    termo: "Exposição por driver",
+    definicao: "Em que o book está comprado ou vendido, pelo que explica cada papel: direção = sinal do beta × viés da estrutura (alta ou baixa), só para driver com correlação de pelo menos 0,25 em 252 pregões, pesada pelo prêmio em risco (o mesmo da Alocação). Estrutura sem lado (vol) não tem direção. Concentração quando um driver carrega metade ou mais do prêmio direcional com duas ou mais estruturas na mesma direção. Não é hedge sugerido nem veto.",
+    ondeAparece: "Portfolio — 'O que move o book'; flags 'Aposta concentrada' e 'Drivers contra a estrutura'; agente da Carteira",
+  },
   {
     termo: "Driver do papel",
     definicao: "Uma série de mercado que explica boa parte do movimento do ticker: Brent para a Petrobras, minério e China para a Vale, curva DI e inadimplência para o varejo. A plataforma guarda 5 por papel (WO-64), com fonte, data e 2 anos de histórico; quem as escolheu foi a pesquisa da WO, não um modelo. Onde não há série gratuita (celulose, nafta), a tela diz 'proxy'.",

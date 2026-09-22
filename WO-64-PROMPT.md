@@ -260,6 +260,8 @@ Quando o operador quiser a projeção, ela nasce do que já existe e é rotulada
 
 A Fase 2 acrescenta ao cartão a linha a termo até o vencimento da estrutura e a diferença entre o
 nível atual e o que o mercado paga pelo futuro. Nenhuma estatística vira "previsão" sem o rótulo.
+O Portfolio usa a mesma medida desde a WO-66 ("O que move o book": exposição por driver e vento
+por estrutura); a projeção, quando vier, aparece nos dois lugares pelo mesmo cartão.
 
 ## Executado — 21/09/2026
 

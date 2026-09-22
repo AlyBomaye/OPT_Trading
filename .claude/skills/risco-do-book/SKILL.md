@@ -143,6 +143,19 @@ de perder. A tradução para esta plataforma:
   coluna `motivo_saida` em `estrutura`): a apuração por motivo é o que ensina se o método está
   sendo seguido.
 
+## 7b. Concentração por driver — o book como uma aposta só (WO-66)
+
+A Alocação mede concentração por papel, setor, vencimento e lado. Falta a pergunta que mais
+machuca um book pequeno: **três estruturas em três papéis são a mesma aposta?** PETR4, PRIO3 e
+VBBR3 são, em boa parte, Brent; MGLU3, BHIA3 e MRVE3 são DI longo. `lib/drivers-book.ts` cruza o
+viés de cada estrutura (`detectStrategy` → ALTA/BAIXA/NEUTRA) com o beta do papel a cada driver
+(WO-64, |corr| ≥ 0,25 em 252 pregões) e soma, pesado pelo **prêmio em risco** da Alocação:
+comprado, vendido, líquido por driver. Concentração = um driver com ≥ 50 % do prêmio direcional,
+na mesma direção, com ≥ 2 estruturas → flag de book `DRIVER_CONCENTRADO`. Estrutura com vento
+`fora` → flag `VENTO_CONTRA` na primeira perna. As duas informam; nenhuma muda take profit, stop
+ou rolagem. Peso por delta em reais foi descartado: muda a cada tick e confunde aposta com
+sensibilidade. Nunca transformar "comprado em Brent" em hedge sugerido — é outra WO.
+
 ## 8. Ao mudar código de risco
 
 - Reutilize `pnlAtDay` para reavaliação; não escreva outro BSM.

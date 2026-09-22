@@ -3,6 +3,7 @@ import type { Position } from "../../types";
 import { alocacaoPorBalde } from "../risk";
 import { link } from "../deeplinks";
 import { montarAchado } from "../didatica";
+import { fmtBRL } from "@/lib/format";
 
 export interface CarteiraInputContext {
   positions: Position[];
@@ -12,6 +13,13 @@ export interface CarteiraInputContext {
   varGrid: { var95: number; es: number };
   journalStats: { n: number; winRate: number; payoffRatio: number; realizedKelly: number };
   flags?: Array<{ posId: string; type: string; severity: "urgente" | "atencao" | "info"; message: string }>;
+  /** WO-66: o que move o book, já medido na tela (texto e números). O agente lê; não recalcula. */
+  driversBook?: {
+    resumo: string;
+    concentracao: { codigo: string; nome: string; fracao: number; estruturas: number; direcao: "comprado" | "vendido"; liquido: number } | null;
+    exposicao: Array<{ driver: string; liquido: number; comprados: string[]; vendidos: string[]; vento: string; var21: number | null }>;
+    ventos: Array<{ chave: string; ticker: string; estrutura: string | null; vies: string; situacao: string; resumo: string; contra: string[] }>;
+  } | null;
 }
 
 export function buildCarteiraReport(ctx: CarteiraInputContext): AgentReport {
@@ -147,6 +155,33 @@ export function buildCarteiraReport(ctx: CarteiraInputContext): AgentReport {
   }
 
   // Fallback de achado padronizado se nada crítico for disparado
+  // WO-66 — o que move o book: concentração por driver e estruturas contra o vento, medidos na tela.
+  const db = ctx.driversBook;
+  if (db?.concentracao) {
+    const c = db.concentracao;
+    achados.push(montarAchado({
+      id: "cart-driver-concentrado",
+      titulo: `O book é, em boa parte, uma aposta só: ${c.nome}`,
+      leitura: `${c.estruturas} estruturas ${c.direcao === "comprado" ? "compradas" : "vendidas"} em ${c.nome} somam ${Math.round(c.fracao * 100)}% do prêmio em risco direcional do book.`,
+      porQueImporta: "Papéis diferentes com o mesmo driver caem juntos quando o driver vira. O tamanho da aposta é o do driver, não o de cada papel — e é assim que o limite de 1% por operação deveria ser lido.",
+      exemplo: `Líquido de ${fmtBRL(c.liquido, 0)} exposto a ${c.nome}. ${db.resumo}`,
+      severidade: "atencao",
+      evidencias: [{ metrica: "Fração do prêmio direcional", valor: c.fracao, fonte: "lib/drivers-book.ts exposicaoPorDriver", asOf }],
+      deepLink: link("carteira.drivers"),
+    }));
+  }
+  for (const v of (db?.ventos ?? []).filter((x) => x.situacao === "fora")) {
+    achados.push(montarAchado({
+      id: `cart-vento-contra-${v.chave}`,
+      titulo: `${v.ticker}: os drivers sopram contra a estrutura${v.estrutura ? ` ${v.estrutura}` : ""}`,
+      leitura: `Vento em 21 pregões: ${v.resumo}. Contra: ${v.contra.join(", ") || "—"}.`,
+      porQueImporta: "Tese contra o que explica o papel não é veto — é motivo para reler a tese antes de rolar ou aumentar, e escrever por que o papel vai contra o vento.",
+      severidade: "atencao",
+      evidencias: [{ metrica: "Drivers contra", valor: v.contra.length, fonte: "lib/drivers-calculos.ts ventoDosDrivers", asOf }],
+      deepLink: link("carteira.drivers"),
+    }));
+  }
+
   if (achados.length === 0) {
     achados.push(montarAchado({
       id: "cart-info-01",

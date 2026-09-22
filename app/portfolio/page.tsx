@@ -33,7 +33,7 @@ import { skewInfo } from "@/lib/scanner";
 import { ArquivoIv } from "@/components/ArquivoIv";
 import { divsBeforeExpiry, effectiveDividends, useDividends } from "@/lib/dividends";
 import { downloadText, fmtBRL, fmtDateBR, fmtNum, fmtPct, pnlColor } from "@/lib/format";
-import { evaluateFlags, useFlagSettings } from "@/lib/position-flags";
+import { evaluateFlags, flagsDosDrivers, ordenarFlags, useFlagSettings } from "@/lib/position-flags";
 import { groupTrades, performanceStats } from "@/lib/performance";
 import { PainelApuracao } from "@/components/PainelApuracao";
 import { PainelEstruturas } from "@/components/PainelEstruturas";
@@ -42,6 +42,13 @@ import { PainelVarHistorico } from "@/components/PainelVarHistorico";
 import { FichasEstruturas } from "@/components/FichasEstruturas";
 import { PainelAlocacao } from "@/components/PainelAlocacao";
 import { PainelCorrelacao } from "@/components/PainelCorrelacao";
+import { PainelDriversBook } from "@/components/PainelDriversBook";
+import { useDriversDoBook } from "@/lib/hooks/useDriversDoBook";
+import { exposicaoPorDriver, resumoDoBook, type EstruturaParaDrivers } from "@/lib/drivers-book";
+import { viesDaEstrutura } from "@/lib/drivers-calculos";
+import { detectStrategy } from "@/lib/strategy-detect";
+import { alocacao } from "@/lib/alocacao";
+import { sectorOf } from "@/lib/universe";
 import { estruturasAbertas } from "@/lib/position-flags";
 import { strategyMetrics } from "@/lib/payoff";
 import { CUSTOS_SUGERIDOS_PADRAO } from "@/lib/custos-sugeridos";
@@ -169,9 +176,33 @@ export default function PortfolioPage() {
   );
   const stress = chain && positions.length ? stressBook(positions, chain, selic) : [];
 
+  // WO-66 — o que move o book: cada estrutura aberta com viés e peso (prêmio em risco, o mesmo da
+  // Alocação), os drivers dos papéis do book (só os do book) e a exposição por driver. As flags
+  // dos drivers e o agente da Carteira leem daqui; nada é recalculado lá.
+  const estruturasDrivers = useMemo<EstruturaParaDrivers[]>(() => {
+    const abertas = estruturasAbertas(positions, chainCache, selic);
+    const paraAlocacao = abertas.map((e) => {
+      const spot = chainCache[e.underlying]?.spot ?? null;
+      const m = spot != null ? strategyMetrics(e.pernas, spot, selic) : null;
+      const d = detectStrategy(e.pernas);
+      return { chave: e.chave, underlying: e.underlying, pernas: e.pernas, nome: d?.name ?? null, maxLoss: m?.maxLoss ?? e.maxLoss, netDebit: m?.netDebit ?? null, bias: d?.bias ?? null };
+    });
+    const a = alocacao({ estruturas: paraAlocacao, varDoTicker: (t) => risk?.porTicker?.[t]?.var95 ?? null, setorDe: (t) => sectorOf(t), capitalTotal });
+    const riscoPorChave = new Map(a.estruturas.map((r) => [r.chave, r.risco]));
+    return paraAlocacao.map((e) => ({ chave: e.chave, underlying: e.underlying, nome: e.nome, vies: viesDaEstrutura(e.bias), premioEmRisco: riscoPorChave.get(e.chave) ?? null, positionIds: e.pernas.map((p) => p.id) }));
+  }, [positions, chainCache, selic, capitalTotal, risk]);
+  const papeisDoBook = useMemo(() => Array.from(new Set(estruturasDrivers.map((e) => e.underlying))), [estruturasDrivers]);
+  const driversDoBook = useDriversDoBook(papeisDoBook);
+  const exposicaoBook = useMemo(
+    () => exposicaoPorDriver(estruturasDrivers, Object.fromEntries(Object.entries(driversDoBook.porPapel).map(([t, b]) => [t, b.drivers]))),
+    [estruturasDrivers, driversDoBook.porPapel]
+  );
+  const driverFlags = useMemo(() => flagsDosDrivers(estruturasDrivers, exposicaoBook), [estruturasDrivers, exposicaoBook]);
+  const flagsComDrivers = useMemo(() => ordenarFlags([...allFlags, ...driverFlags]), [allFlags, driverFlags]);
+
   const rows = positions.map((p) => {
     const mark = markInfo(p, chainCache);
-    const posFlags = allFlags.filter((f) => f.positionId === p.id);
+    const posFlags = flagsComDrivers.filter((f) => f.positionId === p.id);
     return { p, cp: mark.price, mark, pnl: unrealizedPnl(p, mark.price), posFlags };
   });
 
@@ -286,6 +317,16 @@ export default function PortfolioPage() {
           netGreeks: greeks,
           varGrid: risk ?? { var95: 0, es: 0 },
           journalStats: journal ?? { n: 0, winRate: 0, payoffRatio: 0, realizedKelly: 0 },
+          // WO-66: o que move o book, já medido — o agente lê, não recalcula.
+          driversBook: {
+            resumo: resumoDoBook(exposicaoBook, estruturasDrivers.length),
+            concentracao: exposicaoBook.concentracao,
+            exposicao: exposicaoBook.exposicoes.map((x) => ({ driver: x.nome, liquido: x.liquido, comprados: x.comprados.map((p) => p.underlying), vendidos: x.vendidos.map((p) => p.underlying), vento: x.vento, var21: x.var21 })),
+            ventos: estruturasDrivers.flatMap((e) => {
+              const v = exposicaoBook.ventos[e.chave];
+              return v ? [{ chave: e.chave, ticker: e.underlying, estrutura: e.nome, vies: e.vies, situacao: v.situacao, resumo: v.resumo, contra: v.votos.filter((x) => x.aFavor === false).map((x) => x.nome) }] : [];
+            }),
+          },
         }}
       />
 
@@ -304,6 +345,7 @@ export default function PortfolioPage() {
           chainCache={chainCache}
           divsByTicker={divsByTicker}
           capitalTotal={capitalTotal}
+          extras={driverFlags}
         />
       </div>
 
@@ -312,7 +354,7 @@ export default function PortfolioPage() {
 
       {/* WO-47 §5.2 — o Portfolio pensa por estrutura (WO-53: rolagem e zeragem; WO-58: Fechar e Rolar viram rascunho). */}
       <div id="estruturas">
-        <PainelEstruturas flags={allFlags} regimes={regimes} tabelaCustos={tabelaCustos} />
+        <PainelEstruturas flags={flagsComDrivers} regimes={regimes} tabelaCustos={tabelaCustos} />
       </div>
 
       {/* WO-11: capital & desempenho (Dashboard da planilha) */}
@@ -360,6 +402,8 @@ export default function PortfolioPage() {
       {/* WO-58 — onde o risco está concentrado, e quanto dele é a mesma aposta */}
       <PainelAlocacao positions={positions} chainCache={chainCache} selic={selic} capitalTotal={capitalTotal} varPorTicker={risk?.porTicker ?? null} />
       <PainelCorrelacao positions={positions} chainCache={chainCache} selic={selic} />
+      {/* WO-66 — fecha o bloco de perfil de risco: o que está em risco, quanto se move junto, e por quê. */}
+      <PainelDriversBook estruturas={estruturasDrivers} porPapel={driversDoBook.porPapel} erros={driversDoBook.erros} carregando={driversDoBook.carregando} exposicao={exposicaoBook} />
 
       {/* Gregas líquidas do book */}
       <div className="grid grid-cols-2 md:grid-cols-6 gap-2">

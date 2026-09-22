@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import type { EstruturaParaDrivers, ExposicaoBook } from "./drivers-book";
 import { persist } from "zustand/middleware";
 import type { ChainData, Position } from "./types";
 import type { DividendEvent } from "./universe";
@@ -23,7 +24,11 @@ export type FlagKind =
   | "VOL_CRUSH"
   | "LIQUIDEZ"
   | "STALE"
-  | "CONCENTRACAO";
+  | "CONCENTRACAO"
+  /** WO-66: os drivers do papel sopram contra a estrutura (vento `fora`). */
+  | "VENTO_CONTRA"
+  /** WO-66: um driver concentra ≥ 50 % do prêmio em risco direcional do book (flag de book). */
+  | "DRIVER_CONCENTRADO";
 
 export interface PositionFlag {
   kind: FlagKind;
@@ -162,7 +167,9 @@ export function evaluateFlags(
    */
   regimePorTicker: Record<string, "alta" | "baixa" | "lateral" | "indefinido"> = {},
   /** Taxa livre de risco em fração, do contexto. Sem ela a régua por estrutura fica desligada. */
-  selic: number | null = null
+  selic: number | null = null,
+  /** WO-66: a exposição do book por driver, já medida (`lib/drivers-book.ts`). Sem ela, nada muda. */
+  drivers: { estruturas: EstruturaParaDrivers[]; exposicao: ExposicaoBook } | null = null
 ): PositionFlag[] {
   const flags: PositionFlag[] = [];
 
@@ -460,11 +467,55 @@ export function evaluateFlags(
     }
   }
 
-  // Ordenação: Severidade (urgente -> atencao -> info) e depois Ticker alfabeticamente
-  return flags.sort((a, b) => {
+  if (drivers) flags.push(...flagsDosDrivers(drivers.estruturas, drivers.exposicao));
+
+  return ordenarFlags(flags);
+}
+
+/** Severidade (urgente → atenção → info) e depois ticker. */
+export function ordenarFlags(flags: PositionFlag[]): PositionFlag[] {
+  return [...flags].sort((a, b) => {
     if (SEVERITY_RANK[a.severity] !== SEVERITY_RANK[b.severity]) {
       return SEVERITY_RANK[a.severity] - SEVERITY_RANK[b.severity];
     }
     return a.ticker.localeCompare(b.ticker);
   });
+}
+
+/**
+ * WO-66 — as flags dos drivers: uma por estrutura com vento `fora` (cai na primeira perna da
+ * estrutura) e uma de book quando um driver concentra a aposta direcional. Informam; não mudam
+ * nenhum critério de saída (realizar, stop, rolar): quem decide o regime é o operador.
+ */
+export function flagsDosDrivers(estruturas: EstruturaParaDrivers[], exposicao: ExposicaoBook): PositionFlag[] {
+  const flags: PositionFlag[] = [];
+  const porChave = new Map(estruturas.map((e) => [e.chave, e]));
+  for (const chave of exposicao.contraOVento) {
+    const e = porChave.get(chave);
+    const vento = exposicao.ventos[chave];
+    if (!e || !vento) continue;
+    const contra = vento.votos.filter((v) => v.aFavor === false).map((v) => v.nome);
+    flags.push({
+      kind: "VENTO_CONTRA",
+      severity: "atencao",
+      positionId: e.positionIds[0] ?? null,
+      ticker: e.underlying,
+      titulo: "Drivers contra a estrutura",
+      detalhe: `${e.nome ?? "Estrutura"} (${e.vies === "ALTA" ? "alta" : "baixa"}): ${vento.resumo}${contra.length ? `; contra: ${contra.join(", ")}` : ""}.`,
+      acao: "Releia a tese antes de rolar ou aumentar: o que explica o papel anda contra ela. Não é veto — veja 'O que move o book'.",
+    });
+  }
+  const c = exposicao.concentracao;
+  if (c) {
+    flags.push({
+      kind: "DRIVER_CONCENTRADO",
+      severity: "atencao",
+      positionId: null,
+      ticker: "PORTFÓLIO",
+      titulo: `Aposta concentrada em ${c.nome}`,
+      detalhe: `${c.estruturas} estruturas ${c.direcao === "comprado" ? "compradas" : "vendidas"} em ${c.nome} somam ${fmtPct(c.fracao)} do prêmio em risco direcional (líquido ${fmtBRL(c.liquido, 0)}).`,
+      acao: "Papéis diferentes, uma aposta: dimensione pelo driver, não pelo papel.",
+    });
+  }
+  return flags;
 }

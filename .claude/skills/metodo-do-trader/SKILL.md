@@ -38,6 +38,8 @@ os drivers empurram o papel em 21 pregões, contra o viés da estrutura. O vento
 como o critério "Vento dos drivers": ok, misto ou contra. É a mesma regra da leitura das médias:
 **aviso para olhar, nunca regime, nunca veto**. Texto de tela sobre o vento diz "os drivers
 sopram contra", nunca "o regime é de baixa"; o operador escreve na tese por que vai contra o vento.
+No Portfolio (WO-66) o mesmo vento aparece por estrutura, e a **exposição do book por driver** diz
+quando três papéis são uma aposta só — também aviso, nunca veto, e nunca hedge sugerido.
 
 ## 2. As três perguntas antes de Boletar
 
