@@ -262,17 +262,23 @@ function linhasDe(rows: RawRow[], exp: { date: string; du: number; dte: number }
     .filter((x): x is CleanRow => x != null);
 }
 
-/** WO-67 — as linhas da reserva para os vencimentos com lacuna, uma requisição por vencimento. */
+/**
+ * WO-67 — as linhas da reserva para os vencimentos com lacuna, uma requisição por vencimento.
+ *
+ * Quando a fonte pede pausa (429) o último bom vale mais que buraco na tela: a cadeia volta com as
+ * séries completadas de minutos atrás, marcadas como defasadas, em vez de perder de novo os strikes
+ * no dinheiro. Só quando nunca houve complementação nesta chave é que o erro sobe.
+ */
 async function linhasDaReserva(
   ticker: string,
   expiries: Array<{ date: string; du: number; dte: number }>,
   datas: string[]
-): Promise<LinhaCadeia[]> {
+): Promise<{ linhas: LinhaCadeia[]; de: number; defasada: boolean }> {
   const chave = `${ticker}|${datas.join(",")}`;
   const hit = completarCache.get(chave);
-  if (hit && Date.now() - hit.at < CACHE_COMPLETAR_MS) return hit.linhas;
+  if (hit && Date.now() - hit.at < CACHE_COMPLETAR_MS) return { linhas: hit.linhas, de: hit.at, defasada: false };
   const emCurso = completarEmCurso.get(chave);
-  if (emCurso) return emCurso;
+  if (emCurso) return emCurso.then((linhas) => ({ linhas, de: Date.now(), defasada: false }));
   const porData = new Map(expiries.map((e) => [e.date, e]));
   const promessa = (async () => {
     const partes = await Promise.all(
@@ -289,7 +295,11 @@ async function linhasDaReserva(
   })();
   completarEmCurso.set(chave, promessa);
   try {
-    return await promessa;
+    return { linhas: await promessa, de: Date.now(), defasada: false };
+  } catch (err) {
+    const velho = completarCache.get(chave);
+    if (velho) return { linhas: velho.linhas, de: velho.at, defasada: true };
+    throw err;
   } finally {
     completarEmCurso.delete(chave);
   }
@@ -366,9 +376,12 @@ export async function GET(req: NextRequest) {
       } else {
         try {
           const daReserva = await linhasDaReserva(ticker, expiries, vencimentosACompletar(lacuna));
-          const mesclado = mesclarCompletadas(options, daReserva, faltantes, viaMt5.spot);
+          const mesclado = mesclarCompletadas(options, daReserva.linhas, faltantes, viaMt5.spot);
           options = mesclado.options;
           completadas = mesclado.completadas;
+          if (daReserva.defasada && completadas > 0) {
+            avisosCompletar.push(`As ${completadas} série(s) completadas são de ${new Date(daReserva.de).toLocaleTimeString("pt-BR")} — a fonte pediu pausa e a última complementação boa foi reaproveitada.`);
+          }
           if (completadas < faltantes.length) {
             avisosCompletar.push(`${faltantes.length - completadas} série(s) ausentes no terminal da corretora continuam sem preço (fora dos ${vencimentosACompletar(lacuna).length} vencimento(s) completados ou sem linha na reserva).`);
           }

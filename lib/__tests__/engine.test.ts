@@ -6903,7 +6903,9 @@ Líquido para 04/09/2026 5.134,69 D`;
     const cacheOk = /const CACHE_COMPLETAR_MS = 5 \* 60_000;/.test(rota) && /completarCache/.test(rota) && /completarEmCurso/.test(rota)
       && /completarEmCurso\.set\(chave, promessa\)/.test(rota) && /completarEmCurso\.delete\(chave\)/.test(rota);
     // Bloqueio da fonte respeitado e falha nunca derruba a resposta do MT5.
-    const defesaOk = /const bloqueio = bloqueioVigente\(\);/.test(rota) && /avisosCompletar\.push/.test(rota) && /catch \(err: any\) \{\s*\n\s*avisosCompletar\.push/.test(rota);
+    const defesaOk = /const bloqueio = bloqueioVigente\(\);/.test(rota) && /avisosCompletar\.push/.test(rota) && /catch \(err: any\) \{\s*\n\s*avisosCompletar\.push/.test(rota)
+      // 429 na reserva não devolve o buraco: reaproveita a última complementação boa, marcada como defasada.
+      && /const velho = completarCache\.get\(chave\);/.test(rota) && /return \{ linhas: velho\.linhas, de: velho\.at, defasada: true \};/.test(rota) && /daReserva\.defasada && completadas > 0/.test(rota);
     // O corpo declara a lacuna e a procedência aparece na barra.
     const corpoOk = /completar: lacuna \? \{ faltavam: lacuna\.total, completadas, fonte: "opcoes\.net\.br" as const, vencimentos: lacuna\.porVencimento \} : null,/.test(rota)
       && /\$\{completadas \? ` · \+\$\{completadas\} séries opcoes\.net\.br` : ""\}/.test(rota)
