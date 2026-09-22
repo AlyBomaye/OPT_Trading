@@ -195,6 +195,10 @@ export const DADOS_LIMITACOES = [
     texto: "Com o terminal fechado ou deslogado, a cadeia volta a vir do proxy anônimo do opcoes.net.br (último negócio com atraso de minutos, sem book) e as ofertas passam a ser as de fechamento do arquivo COTAHIST da B3; o histórico cai para Yahoo e brapi. Nada zera: a barra de veracidade diz de onde cada número veio, e a última grade boa fica guardada em disco para o caso de todas as fontes falharem (STALE, com a data).",
   },
   {
+    titulo: "Séries que o terminal da corretora não carrega (WO-67)",
+    texto: "Medido em 22/09/2026: o feed MT5 da Genial não traz as séries de opção criadas a partir de 01/08/2026 — entre os 196 papéis que o terminal serve, dessas séries novas só 7,4% chegam, contra 47,9% das anteriores. Como strike novo nasce conforme o papel anda, o que falta é justamente a faixa negociável: PRIO3 a 60,51 no vencimento 25/09 pulava de 57 direto para 61. A plataforma conserta comparando a cadeia com o catálogo oficial da B3 e completando o que falta com o opcoes.net.br, perto do dinheiro (±15%) e nos 4 vencimentos mais curtos com lacuna. A série completada pelo opcoes.net.br aparece com um '+' ao lado do strike e é contada no rodapé da Chain: tem último negócio, negócios e volume, mas NÃO tem bid/ask — a marcação dela usa o último negócio, nunca o mid. O que fica sem completar é declarado na barra de falhas, com o motivo.",
+  },
+  {
     titulo: "O que o MT5 não entrega (e como a plataforma preenche)",
     texto: "IV e gregas: não vêm da fonte — o engine local calcula (regra abaixo). Negócios do dia e data do último negócio de cada série: vêm do candle diário da série, que a ponte completa em segundo plano; enquanto uma série ainda não tem esse candle, a Chain a mostra como provisória ('~1/—': houve tick na sessão) em vez de escondê-la, e o próximo pedido traz o número certo. Volume financeiro por série: aproximação (quantidade negociada × fechamento do dia), declarada como tal. Posições em aberto: continuam vindo do arquivo diário da B3.",
   },

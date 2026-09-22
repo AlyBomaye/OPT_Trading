@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { gravarCache, lerCache } from "@/lib/cache-disco";
 import { BANDA_VARREDURA_PCT, ESPERA_CADEIA_COMPLETA_MS, ESPERA_CADEIA_VARREDURA_MS, cadeiaMt5, dataEfetivaDasSeries, detalheFonteMt5, linhaDaSerie, montarExpiries, saudePonte, type LinhaCadeia } from "@/lib/fonte-mt5";
 import { aplicarCatalogo } from "@/lib/catalogo-b3";
+import { faltantesDoCatalogo, lacunaDaCadeia, mesclarCompletadas, vencimentosACompletar, type LacunaCadeia } from "@/lib/completar-cadeia";
 import { catalogoOficial, estadoCatalogo } from "@/lib/catalogo-b3-servidor";
 import { sessionInfo } from "@/lib/session";
 
@@ -32,6 +33,15 @@ const CACHE_TTL_MT5_PENDENTE_MS = 5_000;
  * a reserva vale. Reiniciar o terminal não muda o catálogo (testado).
  */
 const MINIMO_SERIES_MT5 = 6;
+
+/**
+ * WO-67 — a grade MT5 recarrega a cada 15 s; a reserva que completa os buracos, não. Cache próprio
+ * de 5 min por (papel, vencimentos pedidos), com uma requisição em curso por chave: sem isto, uma
+ * tela aberta bastaria para bater na fonte 4 vezes por minuto e comprar o bloqueio de IP da WO-37.
+ */
+const CACHE_COMPLETAR_MS = 5 * 60_000;
+const completarCache = new Map<string, { at: number; linhas: LinhaCadeia[] }>();
+const completarEmCurso = new Map<string, Promise<LinhaCadeia[]>>();
 
 /**
  * WO-37 §B: esta rota não tinha timeout algum.
@@ -252,6 +262,39 @@ function linhasDe(rows: RawRow[], exp: { date: string; du: number; dte: number }
     .filter((x): x is CleanRow => x != null);
 }
 
+/** WO-67 — as linhas da reserva para os vencimentos com lacuna, uma requisição por vencimento. */
+async function linhasDaReserva(
+  ticker: string,
+  expiries: Array<{ date: string; du: number; dte: number }>,
+  datas: string[]
+): Promise<LinhaCadeia[]> {
+  const chave = `${ticker}|${datas.join(",")}`;
+  const hit = completarCache.get(chave);
+  if (hit && Date.now() - hit.at < CACHE_COMPLETAR_MS) return hit.linhas;
+  const emCurso = completarEmCurso.get(chave);
+  if (emCurso) return emCurso;
+  const porData = new Map(expiries.map((e) => [e.date, e]));
+  const promessa = (async () => {
+    const partes = await Promise.all(
+      datas.map(async (data) => {
+        const exp = porData.get(data);
+        if (!exp) return [] as CleanRow[];
+        const j = await fetchJson({ idAcao: ticker, vencimentos: data, cotacoes: "true", listarVencimentos: "false" }, VENCIMENTO_TIMEOUT_MS);
+        return linhasDe(j?.data?.cotacoesOpcoes ?? [], exp);
+      })
+    );
+    const linhas = partes.flat();
+    completarCache.set(chave, { at: Date.now(), linhas });
+    return linhas;
+  })();
+  completarEmCurso.set(chave, promessa);
+  try {
+    return await promessa;
+  } finally {
+    completarEmCurso.delete(chave);
+  }
+}
+
 export async function GET(req: NextRequest) {
   const ticker = (req.nextUrl.searchParams.get("ticker") ?? "PETR4").toUpperCase().trim();
   const maxExp = Number(req.nextUrl.searchParams.get("maxExpiries") ?? 8);
@@ -307,6 +350,34 @@ export async function GET(req: NextRequest) {
       });
     }
     if (!catalogo) console.warn(`[opcoes] catálogo B3 indisponível para ${ticker}: strikes do terminal (${estadoCatalogo().ultimoErro ?? "sem detalhe"})`);
+    // WO-67: o feed da corretora não traz as séries criadas desde 01/08/2026 — justamente os strikes
+    // que nascem quando o papel anda, isto é, os do dinheiro. O catálogo da B3 diz quais faltam e a
+    // reserva traz o preço delas. Só na grade completa (a varredura lê o 1º mensal e não paga isto).
+    const avisosCompletar: string[] = [];
+    let lacuna: LacunaCadeia | null = null;
+    let completadas = 0;
+    const podeCompletar = catalogo && !soMensal && maxExp >= 8;
+    const faltantes = podeCompletar ? faltantesDoCatalogo(options, catalogo, ticker, expiries.map((e) => e.date), viaMt5.spot) : [];
+    if (faltantes.length) {
+      lacuna = lacunaDaCadeia(faltantes);
+      const bloqueio = bloqueioVigente();
+      if (bloqueio) {
+        avisosCompletar.push(`${faltantes.length} série(s) que a B3 lista hoje não vêm do terminal da corretora e não foram completadas: ${bloqueio}`);
+      } else {
+        try {
+          const daReserva = await linhasDaReserva(ticker, expiries, vencimentosACompletar(lacuna));
+          const mesclado = mesclarCompletadas(options, daReserva, faltantes, viaMt5.spot);
+          options = mesclado.options;
+          completadas = mesclado.completadas;
+          if (completadas < faltantes.length) {
+            avisosCompletar.push(`${faltantes.length - completadas} série(s) ausentes no terminal da corretora continuam sem preço (fora dos ${vencimentosACompletar(lacuna).length} vencimento(s) completados ou sem linha na reserva).`);
+          }
+        } catch (err: any) {
+          avisosCompletar.push(`Falha ao completar ${faltantes.length} série(s) ausentes no terminal: ${String(err?.message ?? err)}`);
+        }
+      }
+    }
+    if (!completadas) options = options.map((o) => ({ ...o, fonteLinha: "mt5" as const }));
     let dataMaisRecente: string | null = null;
     for (const o of options) if (o.lastTradeAt && (!dataMaisRecente || o.lastTradeAt > dataMaisRecente)) dataMaisRecente = o.lastTradeAt;
     const nowIso = new Date().toISOString();
@@ -321,10 +392,12 @@ export async function GET(req: NextRequest) {
       expiries,
       options,
       sourceGreeksAvailable: false,
-      falhas: catalogo ? ([] as string[]) : ["Catálogo de instrumentos da B3 indisponível: strikes do terminal, sem o ajuste por proventos."],
+      falhas: catalogo ? avisosCompletar : ["Catálogo de instrumentos da B3 indisponível: strikes do terminal, sem o ajuste por proventos.", ...avisosCompletar],
       fonte: "mt5" as const,
-      fonteDetalhe: `${detalheFonteMt5(viaMt5.spotTickAt, saude.servidor)}${catalogo ? ` · strikes B3 ${catalogo.data.slice(8, 10)}/${catalogo.data.slice(5, 7)}` : " · strikes do terminal (sem catálogo B3)"}`,
+      fonteDetalhe: `${detalheFonteMt5(viaMt5.spotTickAt, saude.servidor)}${catalogo ? ` · strikes B3 ${catalogo.data.slice(8, 10)}/${catalogo.data.slice(5, 7)}` : " · strikes do terminal (sem catálogo B3)"}${completadas ? ` · +${completadas} séries opcoes.net.br` : ""}`,
       catalogoB3: catalogo ? { data: catalogo.data, ...sobreposicao } : null,
+      // WO-67: o que a B3 lista hoje perto do dinheiro e o terminal da corretora não carrega.
+      completar: lacuna ? { faltavam: lacuna.total, completadas, fonte: "opcoes.net.br" as const, vencimentos: lacuna.porVencimento } : null,
       spotTickAt: viaMt5.spotTickAt,
       spotFonte: viaMt5.spotFonte,
       // Séries cujo cache diário (negócios, último negócio) a ponte ainda está completando (linhas provisórias).

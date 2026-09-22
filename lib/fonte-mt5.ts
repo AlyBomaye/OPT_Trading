@@ -112,6 +112,12 @@ export interface LinhaCadeia {
   /** ISO do último tick da série (só MT5). */
   tickAt?: string | null;
   /**
+   * WO-67: de onde veio ESTA linha. "mt5" = terminal da corretora (com oferta e hora do tick);
+   * "opcoes.net.br" = série que a B3 lista hoje e o terminal não carrega, completada pela reserva
+   * (último negócio, negócios e volume; sem bid/ask).
+   */
+  fonteLinha?: "mt5" | "opcoes.net.br";
+  /**
    * O cache diário da ponte (negócios, último negócio) ainda não cobria esta série: negócios e
    * último negócio são PROVISÓRIOS, derivados do tick (tick na sessão ⇒ ~1 negócio; tick antigo ⇒
    * 0, com a data do tick). O próximo pedido traz o número certo. Volume financeiro fica nulo.

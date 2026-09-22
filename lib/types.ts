@@ -17,6 +17,12 @@ export interface OptionQuote {
    * verificado). Ausente na fonte antiga (opcoes.net.br), que já traz o strike oficial.
    */
   strikeFonte?: "b3" | "mt5";
+  /**
+   * WO-67: de onde veio ESTA linha — "mt5" (terminal da corretora, com oferta e hora do tick) ou
+   * "opcoes.net.br" (série que a B3 lista hoje e o terminal não carrega, completada pela reserva:
+   * último negócio, negócios e volume, sem bid/ask).
+   */
+  fonteLinha?: "mt5" | "opcoes.net.br";
   /** K/Spot - 1 (informado pela fonte) */
   distStrikePct: number | null;
   /** Prêmio / cotação do ativo */

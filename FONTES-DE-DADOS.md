@@ -77,6 +77,26 @@ HTTP. Cache de apenas 60 s porque o dado é intradiário.
   se o parser voltar com zero opções para um ticker líquido, isso é sinal de layout mudado, não de
   papel sem opção. Ponto de atenção para um WO futuro.
 
+### 3a. O buraco do feed da corretora e a complementação (WO-67)
+
+Medido em 22/09/2026: o servidor MT5 da Genial **não publica as séries criadas a partir de
+01/08/2026**. Entre os 196 papéis que o terminal carrega, dessas séries novas chegam **7,4%**,
+contra **47,9%** das anteriores — ITUB4 0 de 792, VALE3 0 de 464, PRIO3 0 de 338. Não é cache local
+(o log do terminal registra `terminal synchronized with Genial …: 73448 symbols` a cada poucos
+minutos) nem filtro da plataforma (`symbol_info("PRIOI600W4")` devolve nada). Como strike novo nasce
+conforme o papel anda, o que falta é a faixa negociável: PRIO3 a 60,51 pulava de 57 para 61 no
+vencimento 25/09; PETR4 a 48,22 parava em 45,17.
+
+`lib/completar-cadeia.ts` cruza a cadeia do MT5 com o catálogo da B3 (§3b) e completa o que falta
+pelo opcoes.net.br, **só perto do dinheiro** (±15%), **só nos 4 vencimentos mais curtos com lacuna**
+e **só na grade completa** (a varredura não paga), com cache próprio de 5 min e uma requisição em
+curso por chave. Cada linha carrega `fonteLinha`; a completada não tem bid/ask (a reserva não
+publica oferta) e nunca recebe número inventado. O que sobra sem preço é declarado em `falhas`.
+
+- **Se cair:** a cadeia do MT5 é servida como está, com o buraco, e o motivo aparece na barra.
+- **Rotina:** nada a agendar. O conserto de verdade é do lado da corretora — vale cobrar da Genial a
+  publicação das séries novas no feed MT5.
+
 ### 3b. B3 — catálogo de instrumentos — `lib/catalogo-b3-servidor.ts` (WO-63)
 
 `InstrumentsConsolidatedFile` em arquivos.b3.com.br: o cadastro oficial de todo instrumento

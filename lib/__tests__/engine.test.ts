@@ -6812,6 +6812,128 @@ Líquido para 04/09/2026 5.134,69 D`;
     else { console.log(`✘ WO-66 Teste 5 falhou: docs=${docsOk}`); failures++; }
   }
 
+  // ---------------------------------------------------------------------------------------------
+  // WO-67 — completar a cadeia: o terminal da corretora não carrega as séries novas da B3
+  // ---------------------------------------------------------------------------------------------
+  {
+    const fs67 = await import("node:fs");
+    const path67 = await import("node:path");
+    const ler67 = (rel: string) => fs67.readFileSync(path67.join(process.cwd(), rel), "utf8");
+    const C = await import("../completar-cadeia");
+    type LC = import("../fonte-mt5").LinhaCadeia;
+
+    const serieB3 = (serie: string, tipo: "CALL" | "PUT", strike: number, vencimento: string, papel = "PRIO3") =>
+      ({ serie, papel, tipo, strike, vencimento, modelo: (tipo === "CALL" ? "A" : "E") as "A" | "E", lote: 100, inicio: "2026-08-10" });
+    const catalogo = {
+      data: "2026-09-22",
+      status: "Parcial",
+      total: 6,
+      series: Object.fromEntries([
+        serieB3("PRIOI600W4", "CALL", 60, "2026-09-25"),
+        serieB3("PRIOU600W4", "PUT", 60, "2026-09-25"),
+        serieB3("PRIOI610W4", "CALL", 61, "2026-09-25"),
+        serieB3("PRIOI750W4", "CALL", 75, "2026-09-25"),
+        serieB3("PRIOI600X4", "CALL", 60, "2026-11-19"),
+        serieB3("PETRI600", "CALL", 60, "2026-09-25", "PETR4"),
+      ].map((x) => [x.serie, x])),
+    };
+    const linha67 = (opTicker: string, tipo: "CALL" | "PUT", strike: number, extra: Partial<LC> = {}): LC => ({
+      opTicker, type: tipo, model: "A", moneyness: "OTM", strike, distStrikePct: 0.9, premioPctCot: 0.9,
+      last: 1.5, trades: 4, volumeFin: 9000, lastTradeAt: "2026-09-21", sourceIv: null, sourceDelta: null,
+      expiry: "2026-09-25", du: 3, dte: 3, bid: 1.4, ask: 1.6, mid: 1.5, tickAt: "2026-09-22T16:00:00-03:00", ...extra,
+    });
+
+    const naCadeia = [linha67("PRIOI610W4", "CALL", 61)];
+    const faltantes = C.faltantesDoCatalogo(naCadeia, catalogo as any, "PRIO3", ["2026-09-25"], 60.5);
+    // Só as que a B3 lista, deste papel, deste vencimento, dentro da banda, e que a cadeia não tem:
+    // 61 já está, 75 está fora da banda (±15 % de 60,5 = 51,4–69,6), 19/11 não foi pedido, PETR4 não é o papel.
+    const faltaOk = faltantes.length === 2 && faltantes[0].serie === "PRIOI600W4" && faltantes[0].tipo === "CALL"
+      && faltantes[1].serie === "PRIOU600W4" && faltantes.every((f) => f.strike === 60);
+    const semCatalogoOk = C.faltantesDoCatalogo(naCadeia, null, "PRIO3", ["2026-09-25"], 60.5).length === 0
+      && C.faltantesDoCatalogo(naCadeia, catalogo as any, "PRIO3", [], 60.5).length === 0
+      && C.faltantesDoCatalogo(naCadeia, catalogo as any, "PRIO3", ["2026-09-25"], 0).length === 0;
+
+    const lacuna = C.lacunaDaCadeia(faltantes);
+    const lacunaOk = lacuna.total === 2 && lacuna.porVencimento.length === 1 && lacuna.porVencimento[0].data === "2026-09-25"
+      && lacuna.porVencimento[0].faltam === 2 && lacuna.porVencimento[0].strikes.join(",") === "60";
+    const duas = C.lacunaDaCadeia([...faltantes, { serie: "PRIOI600X4", tipo: "CALL" as const, strike: 60, vencimento: "2026-11-19", modelo: "A" as const }]);
+    const tetoOk = C.vencimentosACompletar(duas, 1).join(",") === "2026-09-25" && C.vencimentosACompletar(duas).length === 2 && C.MAX_VENCIMENTOS_COMPLETAR === 4;
+
+    // A reserva sufixa o ano (PRIOI600W4_2026) e não publica oferta; a linha que a cadeia já tem não entra de novo.
+    const daReserva = [
+      linha67("PRIOI600W4_2026", "CALL", 60, { last: 1.65, trades: 4, volumeFin: 9994, bid: 9.9, ask: 9.9, mid: 9.9, tickAt: "x" }),
+      linha67("PRIOU600W4_2026", "PUT", 60, { last: 0.67, trades: 18, volumeFin: 29163 }),
+      linha67("PRIOI610W4_2026", "CALL", 61, { last: 99 }),
+    ];
+    const m = C.mesclarCompletadas(naCadeia, daReserva, faltantes, 60.5);
+    const call60 = m.options.find((o) => o.opTicker === "PRIOI600W4");
+    const put60 = m.options.find((o) => o.opTicker === "PRIOU600W4");
+    const mt5 = m.options.find((o) => o.opTicker === "PRIOI610W4");
+    const mesclaOk = m.completadas === 2 && m.options.length === 3
+      && call60?.fonteLinha === "opcoes.net.br" && call60?.strikeFonte === "b3" && call60?.last === 1.65
+      && call60?.bid == null && call60?.ask == null && call60?.mid == null && call60?.tickAt == null
+      // moneyness e distância refeitos contra o spot DESTA cadeia (60/60,5 − 1 = −0,83 % → ATM)
+      && call60?.moneyness === "ATM" && Math.abs((call60?.distStrikePct ?? 0) - (60 / 60.5 - 1)) < 1e-12
+      && put60?.model === "E" && put60?.volumeFin === 29163
+      && mt5?.fonteLinha === "mt5" && mt5?.last === 1.5 && mt5?.bid === 1.4
+      // ordenada por vencimento, strike e tipo
+      && m.options.map((o) => o.strike).join(",") === "60,60,61";
+    const semFaltaOk = (() => {
+      const r = C.mesclarCompletadas(naCadeia, daReserva, [], 60.5);
+      return r.completadas === 0 && r.options.length === 1 && r.options[0].fonteLinha === "mt5";
+    })();
+
+    if (faltaOk && semCatalogoOk && lacunaOk && tetoOk && mesclaOk && semFaltaOk) console.log("✔ WO-67 Teste 1: faltantesDoCatalogo acha o que a B3 lista hoje e a cadeia do terminal não tem (só do papel, só dos vencimentos pedidos, só dentro da banda; sem catálogo ou sem spot, nada); lacunaDaCadeia agrupa por vencimento com os strikes ordenados; vencimentosACompletar respeita o teto de 4; mesclarCompletadas casa pelo código sem o ano, ignora o que já existe, carimba fonteLinha, refaz moneyness contra o spot desta cadeia e ZERA bid/ask/mid/tick (a reserva não publica oferta)");
+    else { console.log(`✘ WO-67 Teste 1 falhou: falta=${faltaOk} semCat=${semCatalogoOk} lacuna=${lacunaOk} teto=${tetoOk} mescla=${mesclaOk} semFalta=${semFaltaOk} ${JSON.stringify({ faltantes, lacuna, completadas: m.completadas })}`); failures++; }
+  }
+
+  {
+    const fs67 = await import("node:fs");
+    const path67 = await import("node:path");
+    const ler67 = (rel: string) => fs67.readFileSync(path67.join(process.cwd(), rel), "utf8");
+    const rota = ler67("app/api/opcoes/route.ts");
+    const enrich = ler67("lib/enrich-chain.ts");
+    const tela = ler67("components/OptionChain.tsx");
+    const tipos = ler67("lib/types.ts");
+    const fm = ler67("lib/fonte-mt5.ts");
+
+    // Só na grade completa: a varredura (soMensal / maxExp pequeno) não paga requisição à reserva.
+    const soGradeCheia = /const podeCompletar = catalogo && !soMensal && maxExp >= 8;/.test(rota);
+    // Cache próprio e uma requisição em curso por chave (a grade MT5 recarrega a cada 15 s).
+    const cacheOk = /const CACHE_COMPLETAR_MS = 5 \* 60_000;/.test(rota) && /completarCache/.test(rota) && /completarEmCurso/.test(rota)
+      && /completarEmCurso\.set\(chave, promessa\)/.test(rota) && /completarEmCurso\.delete\(chave\)/.test(rota);
+    // Bloqueio da fonte respeitado e falha nunca derruba a resposta do MT5.
+    const defesaOk = /const bloqueio = bloqueioVigente\(\);/.test(rota) && /avisosCompletar\.push/.test(rota) && /catch \(err: any\) \{\s*\n\s*avisosCompletar\.push/.test(rota);
+    // O corpo declara a lacuna e a procedência aparece na barra.
+    const corpoOk = /completar: lacuna \? \{ faltavam: lacuna\.total, completadas, fonte: "opcoes\.net\.br" as const, vencimentos: lacuna\.porVencimento \} : null,/.test(rota)
+      && /\$\{completadas \? ` · \+\$\{completadas\} séries opcoes\.net\.br` : ""\}/.test(rota)
+      && /falhas: catalogo \? avisosCompletar :/.test(rota);
+    // A procedência chega à tela: o enriquecimento repassa strikeFonte (WO-63, que nunca chegava) e fonteLinha.
+    const enrichOk = /strikeFonte\?: "b3" \| "mt5";/.test(enrich) && /fonteLinha\?: "mt5" \| "opcoes\.net\.br";/.test(enrich)
+      && /strikeFonte: o\.strikeFonte,/.test(enrich) && /fonteLinha: o\.fonteLinha,/.test(enrich);
+    const tiposOk = /fonteLinha\?: "mt5" \| "opcoes\.net\.br";/.test(tipos) && /fonteLinha\?: "mt5" \| "opcoes\.net\.br";/.test(fm);
+    // A cadeia marca a série completada ao lado do strike e conta no rodapé.
+    const telaOk = /fonteLinha === "opcoes\.net\.br"/.test(tela) && /\+\{n\} série\(s\) completada\(s\) pelo opcoes\.net\.br/.test(tela);
+
+    if (soGradeCheia && cacheOk && defesaOk && corpoOk && enrichOk && tiposOk && telaOk) console.log("✔ WO-67 Teste 2: /api/opcoes completa a cadeia do MT5 com as séries que a B3 lista e o terminal não carrega — só na grade completa, com cache próprio de 5 min e uma requisição em curso por chave, respeitando o bloqueio da fonte e sem deixar falha derrubar a resposta; o corpo traz `completar`, a barra traz a contagem, e strikeFonte/fonteLinha finalmente chegam à tela, que marca a linha com + e conta no rodapé");
+    else { console.log(`✘ WO-67 Teste 2 falhou: grade=${soGradeCheia} cache=${cacheOk} defesa=${defesaOk} corpo=${corpoOk} enrich=${enrichOk} tipos=${tiposOk} tela=${telaOk}`); failures++; }
+  }
+
+  {
+    const fs67 = await import("node:fs");
+    const path67 = await import("node:path");
+    const ler67 = (rel: string) => fs67.readFileSync(path67.join(process.cwd(), rel), "utf8");
+    const manual = ler67("lib/manual-content.ts");
+    const fontes = ler67("FONTES-DE-DADOS.md");
+    const anti = ler67("ANTIGRAVITY.md");
+    const skill = ler67(".claude/skills/engenharia-da-plataforma/SKILL.md");
+    const wo67 = ler67("WO-67-PROMPT.md");
+    const docsOk = /completada pelo opcoes\.net\.br/.test(manual) && /01\/08\/2026/.test(fontes) && /WO-67/.test(anti)
+      && /WO-67/.test(skill) && /## Executado/.test(wo67) && !/_\(preenchido após a conferência\)_/.test(wo67);
+    if (docsOk) console.log("✔ WO-67 Teste 3: Manual, FONTES-DE-DADOS (o corte de 01/08/2026 no feed da corretora), ANTIGRAVITY, a skill de engenharia e a WO-67 registram a lacuna medida e como a cadeia é completada");
+    else { console.log(`✘ WO-67 Teste 3 falhou: docs=${docsOk}`); failures++; }
+  }
+
 }
 
 testesAssincronos()

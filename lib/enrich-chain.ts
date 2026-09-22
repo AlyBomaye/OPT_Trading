@@ -22,6 +22,10 @@ export interface ApiRow {
   model: "A" | "E";
   moneyness: "ITM" | "ATM" | "OTM" | null;
   strike: number;
+  /** WO-63: "b3" (catálogo oficial) ou "mt5" (strike original do terminal, não verificado). */
+  strikeFonte?: "b3" | "mt5";
+  /** WO-67: "mt5" ou "opcoes.net.br" (série ausente no terminal, completada pela reserva). */
+  fonteLinha?: "mt5" | "opcoes.net.br";
   distStrikePct: number | null;
   premioPctCot: number | null;
   last: number | null;
@@ -186,6 +190,10 @@ export function enrich(
       model: o.model,
       moneyness: o.moneyness,
       strike: o.strike,
+      // WO-63/WO-67: a procedência tem de chegar à tela — sem isto o aviso de strike não conferido
+      // e a marca da série completada ficam no corpo da resposta e nunca aparecem para o operador.
+      strikeFonte: o.strikeFonte,
+      fonteLinha: o.fonteLinha,
       distStrikePct: o.distStrikePct,
       premioPctCot: o.premioPctCot,
       last: o.last,

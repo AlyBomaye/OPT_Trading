@@ -126,6 +126,9 @@ export function OptionChain() {
                     {(call?.strikeFonte === "mt5" || put?.strikeFonte === "mt5") && (
                       <span className="ml-1 text-term-gold font-normal" title="Strike do terminal MT5: a série não está no catálogo da B3 de hoje, então pode faltar o ajuste por proventos. Confira na corretora antes de operar.">?</span>
                     )}
+                    {(call?.fonteLinha === "opcoes.net.br" || put?.fonteLinha === "opcoes.net.br") && (
+                      <span className="ml-1 text-term-cyan font-normal" title="Série que a B3 lista hoje e o terminal da corretora não carrega: preço do opcoes.net.br (último negócio, negócios e volume). Sem bid/ask — a marcação usa o último negócio, não o mid.">+</span>
+                    )}
                   </td>
                   <PutCells o={put} spot={chain.spot} onAdd={add} />
                 </tr>
@@ -137,6 +140,15 @@ export function OptionChain() {
       <div className="px-3 py-1.5 text-xxs text-term-dim">
         Clique <span className="text-term-up">C</span>/<span className="text-term-down">V</span> para comprar/vender a perna no
         Strategy Builder. Fundo verde = ITM.
+        {(() => {
+          // WO-67: as séries que o terminal da corretora não carrega e a reserva completou.
+          const n = chain.options.filter((o) => o.fonteLinha === "opcoes.net.br").length;
+          return n > 0 ? (
+            <span className="ml-2 text-term-cyan" title="O feed MT5 da corretora não traz as séries criadas desde 01/08/2026 — justamente os strikes que nascem quando o papel anda. O catálogo oficial da B3 diz quais faltam e o opcoes.net.br traz o preço. Marcadas com + ao lado do strike.">
+              · +{n} série(s) completada(s) pelo opcoes.net.br (ausentes no terminal)
+            </span>
+          ) : null;
+        })()}
         {(() => {
           // WO-56/WO-61: quantas séries têm bid e ask — ao vivo (MT5, `tickAt`) ou de fechamento (COTAHIST).
           const comOferta = chain.options.filter((o) => o.bid != null && o.ask != null);

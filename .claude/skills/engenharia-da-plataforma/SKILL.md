@@ -161,6 +161,18 @@ e diga no commit. Se a quebra não for intencional, o teste venceu.
   `emCurso` para a varredura não disparar 29 downloads); linha sem catálogo vai
   `strikeFonte: "mt5"`. Nunca calcular IV, gregas ou paridade com o strike cru do terminal.
 
+- **Séries que faltam (WO-67):** o feed da Genial não publica as séries criadas desde
+  01/08/2026 — só 7,4% delas chegam, contra 47,9% das antigas (ITUB4 0/792, VALE3 0/464,
+  PRIO3 0/338), e o que falta é a faixa no dinheiro (PRIO3 pulava de 57 para 61 com o papel a
+  60,51). Não é cache nem filtro: o terminal sincroniza 73.448 símbolos a cada poucos minutos e
+  `symbol_info` da série devolve nada. `lib/completar-cadeia.ts` (puro) acha a lacuna contra o
+  catálogo da B3 e `/api/opcoes` completa pelo opcoes.net.br: ±15% do spot, 4 vencimentos mais
+  curtos com lacuna, **só na grade completa** (`!soMensal && maxExp >= 8`), cache de 5 min com
+  uma requisição em curso por chave, bloqueio da fonte respeitado e falha que nunca derruba a
+  resposta do MT5. Linha completada sai `fonteLinha: "opcoes.net.br"` e **sem bid/ask** — não
+  marcar pelo mid. Ao mexer na cadeia, lembrar que `lib/enrich-chain.ts` precisa repassar cada
+  campo de procedência: `strikeFonte` existia desde a WO-63 e nunca chegava à tela.
+
 ## 5.3 Drivers do papel (WO-64)
 
 - **Catálogo** `lib/drivers-catalogo.ts` (puro): `SERIES` (código → fonte, símbolo, unidade,
