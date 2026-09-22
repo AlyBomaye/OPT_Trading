@@ -156,6 +156,14 @@ na mesma direção, com ≥ 2 estruturas → flag de book `DRIVER_CONCENTRADO`. 
 ou rolagem. Peso por delta em reais foi descartado: muda a cada tick e confunde aposta com
 sensibilidade. Nunca transformar "comprado em Brent" em hedge sugerido — é outra WO.
 
+**AJ 22/09/2026:** a tela da exposição ("O que move o book"), as flags na Ação do dia e os
+achados do agente foram retirados a pedido do operador ("achei horrível"). O cálculo fica puro e
+testado em `lib/drivers-book.ts` e `flagsDosDrivers` (sem tela). O que o Portfolio mostra é, no
+Perfil de Risco do Book, para cada ativo: pernas + payoff à esquerda e as **3 caixas** dos
+drivers de maior correlação à direita (`components/CaixasDriversDoAtivo.tsx`), com a direção da
+posição lida da inclinação da curva de P&L de hoje no spot (`direcaoPelaCurva`). Não repor a
+seção nem as flags sem pedido explícito.
+
 ## 8. Ao mudar código de risco
 
 - Reutilize `pnlAtDay` para reavaliação; não escreva outro BSM.

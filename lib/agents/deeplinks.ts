@@ -9,7 +9,6 @@ export const DEEP_LINKS = {
   "carteira.journal": "/portfolio#journal",
   "carteira.greeks": "/portfolio#greeks",
   "carteira.risk": "/portfolio#risk-profile",
-  "carteira.drivers": "/portfolio#drivers-book",
   "chain.skew": "/estrategia?modo=cadeia#skew",
   "chain.termo": "/estrategia?modo=cadeia#estrutura-a-termo",
   "chain.smile": "/estrategia?modo=cadeia#smile",

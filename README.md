@@ -93,7 +93,7 @@ Duas formas, mesmo efeito: rebuscar as fontes pesadas antes do pregão.
 | Tecla | Aba | O que faz |
 |---|---|---|
 | `C` | **Consultor** | Ciclo dos 13 agentes com progresso em tempo real, grade de cobertura por causa e relatório executivo do Gestor Global |
-| `1` | **Carteira** | Posições persistidas no navegador, P&L aberto e realizado, gregas líquidas reavaliadas com o chain atual, VaR 95% 1d, baldes de risco 20/50/30, export CSV/JSON; **"O que move o book"** (WO-66): exposição por driver e vento por estrutura |
+| `1` | **Carteira** | Posições persistidas no navegador, P&L aberto e realizado, gregas líquidas reavaliadas com o chain atual, VaR 95% 1d, baldes de risco 20/50/30, export CSV/JSON; no Perfil de Risco por ativo, os **3 drivers** de maior correlação ao lado do payoff (WO-66) |
 | `2` | **Notícias** | Feeds RSS agregados e deduplicados, buzz por ticker, radar de eventos por vencimento |
 | `3` | **Macro** | Sessões globais, impacto por driver no universo, painéis de mercado, **Boletim Focus** e Rates & FX (curva pré do Tesouro, Treasuries, cupom cambial, BRL/USD, NTN-B, IPCA e IGP-M) |
 | `4` | **Cockpit** | Diagnóstico matinal: choque do portfólio, skew e movimento esperado, regime GEX, foco do dia |

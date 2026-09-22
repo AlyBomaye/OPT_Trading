@@ -85,7 +85,7 @@ export const RESUMO_TELAS = [
   {
     modulo: "3. Portfolio",
     pergunta: "O que tenho aberto, o que o método manda fazer, onde está concentrado o risco?",
-    resposta: "Só gestão e análise — nada é gravado aqui. Ação do dia, as fichas por estrutura (as três perguntas do método respondidas hoje, com veredito), estruturas (Fechar e Rolar mandam um rascunho para a Boletagem), capital e baldes, limites com vigência, alocação e concentração (por setor, vencimento, tipo de estrutura, comprado × vendido), correlação entre os papéis do book (VaR direcional somado × diversificado), gregas líquidas, pernas, stress, VaR da grade e VaR histórico, journal, apuração fiscal, curva de patrimônio, arquivo de IV e encerradas. Abaixo do bloco de risco, 'O que move o book' (WO-66): cruza o viés de cada estrutura com os drivers do papel e mostra em que o book está comprado ou vendido — Brent, dólar, DI, minério —, pesado pelo prêmio em risco; três estruturas em três papéis podem ser uma aposta só, e a tela diz. Uma flag quando um driver concentra a aposta e outra quando os drivers sopram contra uma estrutura: aviso, nunca veto.",
+    resposta: "Só gestão e análise — nada é gravado aqui. Ação do dia, as fichas por estrutura (as três perguntas do método respondidas hoje, com veredito), estruturas (Fechar e Rolar mandam um rascunho para a Boletagem), capital e baldes, limites com vigência, alocação e concentração (por setor, vencimento, tipo de estrutura, comprado × vendido), correlação entre os papéis do book (VaR direcional somado × diversificado), gregas líquidas, pernas, stress, VaR da grade e VaR histórico, journal, apuração fiscal, curva de patrimônio, arquivo de IV e encerradas. No Perfil de Risco do Book (payoffs por ativo), cada ativo mostra as pernas e o payoff à esquerda e, à direita, os três drivers de maior correlação com o papel (WO-66): a série de 2 anos, o último valor com data, a variação em 21 pregões, a correlação e se o driver empurra a favor ou contra a direção da posição no ativo (lida da curva de P&L de hoje). Leitura, nunca veto.",
   },
   {
     modulo: "4. Chart Attack",
@@ -250,7 +250,7 @@ export const GLOSSARIO: Termo[] = [
   {
     termo: "Exposição por driver",
     definicao: "Em que o book está comprado ou vendido, pelo que explica cada papel: direção = sinal do beta × viés da estrutura (alta ou baixa), só para driver com correlação de pelo menos 0,25 em 252 pregões, pesada pelo prêmio em risco (o mesmo da Alocação). Estrutura sem lado (vol) não tem direção. Concentração quando um driver carrega metade ou mais do prêmio direcional com duas ou mais estruturas na mesma direção. Não é hedge sugerido nem veto.",
-    ondeAparece: "Portfolio — 'O que move o book'; flags 'Aposta concentrada' e 'Drivers contra a estrutura'; agente da Carteira",
+    ondeAparece: "Cálculo puro em lib/drivers-book.ts (sem tela desde 22/09/2026, a pedido do operador); o Portfolio mostra os 3 drivers de maior correlação de cada ativo no Perfil de Risco do Book",
   },
   {
     termo: "Driver do papel",

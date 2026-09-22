@@ -31,7 +31,9 @@ import { markInfo } from "@/store/market";
 import type { TabelaCustos } from "@/lib/boleta-calculos";
 import { allocatedCapital } from "@/lib/portfolio";
 import { sectorOf } from "@/lib/universe";
-import { fmtBRL, fmtCompact, fmtNum, fmtPct } from "@/lib/format";
+import { fmtBRL, fmtCompact, fmtDateBR, fmtNum, fmtPct } from "@/lib/format";
+import { useDriversDoBook } from "@/lib/hooks/useDriversDoBook";
+import { CaixasDriversDoAtivo, direcaoPelaCurva } from "@/components/CaixasDriversDoAtivo";
 import type { ChainData, Position } from "@/lib/types";
 import { mesmaSerie } from "@/lib/marcacao";
 
@@ -87,6 +89,9 @@ export function PerformanceCharts({
     }
     return Array.from(map.entries());
   }, [positions]);
+  // WO-66 (AJ): os drivers dos papéis abertos, para as 3 caixas ao lado do payoff de cada ativo.
+  const papeisAbertos = useMemo(() => openByUnderlying.map(([t]) => t), [openByUnderlying]);
+  const driversDoBook = useDriversDoBook(papeisAbertos);
 
   // Zeragem a custo zero, por perna aberta: preço atual vs. preço que cobre todos os custos.
   const zeragemData = useMemo(() => {
@@ -349,7 +354,9 @@ export function PerformanceCharts({
             <span>Perfil de Risco do Book (Payoffs Agregados no Vencimento por Ativo)</span>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          {/* WO-66 (AJ 22/09/2026): um ativo por linha — esquerda pernas + payoff, direita os 3 drivers de
+              maior correlação, nas caixas da altura do cartão. */}
+          <div className="grid grid-cols-1 gap-3">
             {openByUnderlying.map(([ticker, tickerLegs]) => {
               const chain = chainCache[ticker];
               // Sem cadeia não há spot — e desenhar com um número de preenchimento era mentir.
@@ -375,11 +382,34 @@ export function PerformanceCharts({
               const beMaisProximo = bes.length ? bes.reduce((m, b) => (Math.abs(b - spot) < Math.abs(m - spot) ? b : m), bes[0]) : null;
               const duMin = Math.min(...tickerLegs.map((l) => l.du ?? 0).filter((d) => d > 0));
 
+              const direcao = direcaoPelaCurva(curveData, spot, custoTotal);
+
               return (
-                <div key={ticker} className="p-2.5 rounded bg-term-panel2/40 border border-term-line/40 space-y-1">
+                <div key={ticker} className="p-2.5 rounded bg-term-panel2/40 border border-term-line/40">
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 items-stretch">
+                <div className="space-y-1 min-w-0">
                   <div className="flex items-center justify-between text-xs font-mono">
                     <span className="font-bold text-term-cyan">{ticker} ({tickerLegs.length} pernas)</span>
-                    <span className="text-term-dim text-xxs">Spot: {fmtBRL(spot)}</span>
+                    <span className="text-term-dim text-xxs">
+                      Spot: {fmtBRL(spot)} · posição {direcao === "ALTA" ? "de alta" : direcao === "BAIXA" ? "de baixa" : "sem lado"}
+                    </span>
+                  </div>
+                  {/* As pernas, compactas: lado · tipo · strike · vencimento × quantidade · entrada → marcação. */}
+                  <div className="text-[10px] font-mono space-y-0.5">
+                    {tickerLegs.map((l) => {
+                      const m = markInfo(l, chainCache);
+                      return (
+                        <div key={l.id} className="flex justify-between gap-2">
+                          <span>
+                            <span className={l.side === 1 ? "text-term-up" : "text-term-down"}>{l.side === 1 ? "C" : "V"}</span>{" "}
+                            {l.kind === "STOCK" ? "ação" : `${l.type} ${fmtNum(l.strike ?? 0)} ${l.expiry ? fmtDateBR(l.expiry) : ""}`} × {Math.abs(l.qty)}
+                          </span>
+                          <span className="text-term-dim" title="entrada → marcação">
+                            {fmtBRL(l.price)} → {m.price != null ? fmtBRL(m.price) : "sem marca"}
+                          </span>
+                        </div>
+                      );
+                    })}
                   </div>
                   {/* Indicadores: o que decide, em uma linha. */}
                   <div className="grid grid-cols-5 gap-1 text-[10px] font-mono">
@@ -411,6 +441,15 @@ export function PerformanceCharts({
                       </LineChart>
                     </ResponsiveContainer>
                   </div>
+                </div>
+                <CaixasDriversDoAtivo
+                  ticker={ticker}
+                  body={driversDoBook.porPapel[ticker]}
+                  erro={driversDoBook.erros[ticker]}
+                  carregando={driversDoBook.carregando}
+                  direcao={direcao}
+                />
+                </div>
                 </div>
               );
             })}

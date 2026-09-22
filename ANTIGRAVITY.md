@@ -707,14 +707,15 @@ com VaR95/ES rotulados + export CSV/JSON + export/import do arquivo de snapshots
 - **Bloco B (Analytics de performance)**: Agrupamento de pernas abertas no mesmo instante em estruturas (`groupTrades`), KPIs avançados de journal (`performanceStats`: Profit Factor, Expectancy R$ e R, Holding médio V/P, streaks, melhor/pior trade) e atribuição de P&L de 1ª ordem ($\Delta$, $\text{Vega}$, $\Theta$, resíduo).
 - **Bloco C (Gráficos e riscos)**: Suíte Recharts (`PerformanceCharts`) com Curva de patrimônio + Underwater (Drawdown), P&L mensal, Histograma de distribuição de P&L, P&L por estratégia, Alocação por setor vs limite de concentração, Perfil de risco acumulado por ativo objeto (payoffs do book) e Calendário de vencimentos.
 
-**WO-66 O que move o book (22/09/2026)**: `PainelDriversBook` depois da Correlação (fecha o
-bloco de perfil de risco): a exposição do book por driver — direção = sinal(beta) × viés da
-estrutura, só |corr| ≥ 0,25, pesada pelo prêmio em risco da Alocação; comprado/vendido/líquido,
-21p do driver e o vento do líquido — e o vento por estrutura com os 5 cartões (`CartaoDriver`,
-o mesmo da Estratégia) sob demanda. `lib/drivers-book.ts` (puro); `useDriversDoBook` chama
-`/api/drivers` só para os papéis abertos. Flags `VENTO_CONTRA` (por estrutura) e
-`DRIVER_CONCENTRADO` (book, ≥ 50 % com ≥ 2 estruturas) na Ação do dia; o agente da Carteira lê
-`driversBook` (texto) e escreve o achado. Aviso, nunca veto nem hedge.
+**WO-66 Drivers no Perfil de Risco (22/09/2026)**: no "Perfil de Risco do Book (Payoffs
+Agregados no Vencimento por Ativo)" (`PerformanceCharts` §6), um ativo por linha: à esquerda
+as pernas (lado, tipo, strike, vencimento × qtd, entrada → marcação) e o payoff; à direita as
+**3 caixas** dos drivers de maior correlação com o papel (`CaixasDriversDoAtivo`: série de 2
+anos, último valor, 21p, corr, a favor/contra a direção da posição lida da curva de P&L de hoje
+— `direcaoPelaCurva`). `useDriversDoBook` chama `/api/drivers` só para os papéis abertos. A
+exposição do book por driver (`lib/drivers-book.ts`, `flagsDosDrivers`) ficou como cálculo puro,
+sem tela, sem flags e sem achado de agente — a versão com seção própria foi retirada a pedido do
+operador no mesmo dia. Leitura, nunca veto nem hedge.
 
 ### 9.6 Notícias & Macro (`/noticias`, hotkey 6)
 
@@ -922,7 +923,7 @@ futuro, DI1 por liquidez, com Yahoo de reserva) e a **curva DI pelos contratos `
 Rates & FX. **WO-63 [CONCLUÍDO 21/09/2026]:** o strike vem do catálogo oficial da B3, não do
 terminal. **WO-64 [CONCLUÍDO 21/09/2026]:** drivers do papel na Estratégia, com o vento no
 semáforo. **WO-65 [CONCLUÍDO 21/09/2026]:** volume no Histórico. **WO-66 [CONCLUÍDO
-22/09/2026]:** o que move o book, no Portfolio. Próximos: Fase 2 da WO-64 (projeção dos drivers pelo mercado a termo) e, pelo
+22/09/2026]:** os 3 drivers de cada ativo no Perfil de Risco do Portfolio. Próximos: Fase 2 da WO-64 (projeção dos drivers pelo mercado a termo) e, pelo
 MAPA-SOFTWARE-PESSOAL.md, estado no banco e saúde visível, supervisor e acesso local, ponte em
 tempo real.
 

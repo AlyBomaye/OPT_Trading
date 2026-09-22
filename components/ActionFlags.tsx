@@ -3,7 +3,7 @@
 import { usePersistedState } from "@/lib/use-persisted-state";
 import { useState } from "react";
 import { AlertCircle, AlertTriangle, ChevronDown, ChevronUp, Info, RotateCcw, Settings, ShieldAlert } from "lucide-react";
-import { evaluateFlags, ordenarFlags, useFlagSettings, type PositionFlag, type FlagThresholds } from "@/lib/position-flags";
+import { evaluateFlags, useFlagSettings, type PositionFlag, type FlagThresholds } from "@/lib/position-flags";
 import type { ChainData, Position } from "@/lib/types";
 import type { DividendEvent } from "@/lib/universe";
 
@@ -13,8 +13,6 @@ interface ActionFlagsProps {
   divsByTicker: Record<string, DividendEvent[]>;
   capitalTotal: number;
   onSelectPosition?: (positionId: string) => void;
-  /** WO-66: flags medidas fora daqui (os drivers do book) — entram na mesma lista, na mesma ordem. */
-  extras?: PositionFlag[];
 }
 
 export function ActionFlags({
@@ -23,7 +21,6 @@ export function ActionFlags({
   divsByTicker,
   capitalTotal,
   onSelectPosition,
-  extras,
 }: ActionFlagsProps) {
   // Leitura do storage após a montagem: no inicializador do useState o primeiro render do
   // cliente divergia do servidor e quebrava a hidratação.
@@ -34,7 +31,7 @@ export function ActionFlags({
 
   const toggleOpen = () => setIsOpen((prev) => !prev);
 
-  const flags = ordenarFlags([...evaluateFlags(positions, chainCache, divsByTicker, capitalTotal, thresholds), ...(extras ?? [])]);
+  const flags = evaluateFlags(positions, chainCache, divsByTicker, capitalTotal, thresholds);
 
   const urgentes = flags.filter((f) => f.severity === "urgente").length;
   const atencao = flags.filter((f) => f.severity === "atencao").length;

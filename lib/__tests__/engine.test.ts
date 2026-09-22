@@ -6768,35 +6768,36 @@ Líquido para 04/09/2026 5.134,69 D`;
     else { console.log(`✘ WO-66 Teste 2 falhou: ${JSON.stringify(flags)} base=${base.length} com=${comDrivers.length}`); failures++; }
 
     const pagina = ler66("app/portfolio/page.tsx");
-    const painel = ler66("components/PainelDriversBook.tsx");
+    const perf = ler66("components/PerformanceCharts.tsx");
+    const caixas = ler66("components/CaixasDriversDoAtivo.tsx");
     const cartao = ler66("components/CartaoDriver.tsx");
     const painelEstr = ler66("components/PainelDrivers.tsx");
     const hook = ler66("lib/hooks/useDriversDoBook.ts");
-    const iCorr = pagina.indexOf("<PainelCorrelacao");
-    const iBook = pagina.indexOf("<PainelDriversBook");
-    const iGregas = pagina.indexOf("Gregas líquidas do book");
-    const telaOk = iCorr > 0 && iBook > iCorr && iGregas > iBook && /flags=\{flagsComDrivers\}/.test(pagina) && /flagsComDrivers\.filter\(\(f\) => f\.positionId === p\.id\)/.test(pagina)
-      && /useDriversDoBook\(papeisDoBook\)/.test(pagina) && /driversBook: \{/.test(pagina) && /extras=\{driverFlags\}/.test(pagina) && /ordenarFlags\(\[\.\.\.evaluateFlags\(positions, chainCache, divsByTicker, capitalTotal, thresholds\), \.\.\.\(extras \?\? \[\]\)\]\)/.test(ler66("components/ActionFlags.tsx")) && /alocacao\(\{ estruturas: paraAlocacao/.test(pagina) && /viesDaEstrutura\(e\.bias\)/.test(pagina)
-      && /export function CartaoDriver/.test(cartao) && /import \{ CartaoDriver \} from "@\/components\/CartaoDriver"/.test(painelEstr) && /import \{ CartaoDriver, fmtVarDriver \} from "@\/components\/CartaoDriver"/.test(painel) && !/function Cartao\(/.test(painelEstr)
-      && /id="drivers-book"/.test(painel) && /"portfolio-drivers-open"/.test(painel) && /STALE/.test(painel) && /medido até/.test(painel) && /nada aqui é veto nem hedge/.test(painel)
-      && /fetch\(`\/api\/drivers\?ticker=\$\{encodeURIComponent\(ticker\)\}`/.test(hook) && /const memoria = new Map<string, DriversBody>\(\)/.test(hook);
-    if (telaOk) console.log("✔ WO-66 Teste 3: o Portfolio monta 'O que move o book' depois da Correlação e antes das gregas, entrega as flags com drivers às fichas, às linhas e à Ação do dia (extras), o peso vem da mesma alocação da tela, o hook busca só os papéis do book e guarda em memória, o cartão é um só (CartaoDriver) nos dois painéis, e a seção diz STALE, a data da medida e que não é veto nem hedge");
-    else { console.log(`✘ WO-66 Teste 3 falhou: iCorr=${iCorr} iBook=${iBook} iGregas=${iGregas}`); failures++; }
+    const acao = ler66("components/ActionFlags.tsx");
+    const { top3Drivers, direcaoPelaCurva } = await import("../../components/CaixasDriversDoAtivo");
+    const tres = top3Drivers(drv.PETR4);
+    const doisComCorr = top3Drivers([driver("A", 0.3, 1, 0.1), driver("M", null, null, null, 0, "mensal"), driver("B", -0.9, -1, 0.1)]);
+    const curvaAlta = Array.from({ length: 41 }, (_, i) => ({ s: 40 + i * 0.5, t0: (40 + i * 0.5 - 50) * 100 }));
+    const curvaNeutra = Array.from({ length: 41 }, (_, i) => ({ s: 40 + i * 0.5, t0: Math.abs(40 + i * 0.5 - 50) * 100 }));
+    const puroOk = tres.map((d) => d.codigo).join(",") === "BRENT,XLE,EWZ" && doisComCorr.map((d) => d.codigo).join(",") === "B,A,M"
+      && direcaoPelaCurva(curvaAlta, 50, 1000) === "ALTA" && direcaoPelaCurva(curvaAlta.map((p) => ({ s: p.s, t0: -p.t0 })), 50, 1000) === "BAIXA" && direcaoPelaCurva(curvaNeutra, 50, 100000) === "NEUTRA" && direcaoPelaCurva([], 50, 100) === "NEUTRA";
+    const iPerfil = perf.indexOf("Perfil de Risco do Book (Payoffs Agregados");
+    const telaOk = puroOk && !/PainelDriversBook|driverFlags|flagsComDrivers|driversBook|exposicaoPorDriver/.test(pagina) && !/extras/.test(acao)
+      && /useDriversDoBook\(papeisAbertos\)/.test(perf) && /<CaixasDriversDoAtivo/.test(perf) && /direcaoPelaCurva\(curveData, spot, custoTotal\)/.test(perf)
+      && perf.indexOf('<div className="grid grid-cols-1 gap-3">', iPerfil) > iPerfil && /entrada → marcação/.test(perf) && /lg:grid-cols-2 gap-3 items-stretch/.test(perf)
+      && /export function top3Drivers/.test(caixas) && /export function direcaoPelaCurva/.test(caixas) && /votoDriver\(/.test(caixas) && /grid-cols-3 gap-2 items-stretch/.test(caixas) && /STALE/.test(caixas)
+      && /export function CartaoDriver/.test(cartao) && /import \{ CartaoDriver \} from "@\/components\/CartaoDriver"/.test(painelEstr)
+      && /fetch\(`\/api\/drivers\?ticker=\$\{encodeURIComponent\(ticker\)\}`/.test(hook) && !fs66.existsSync(path66.join(process.cwd(), "components", "PainelDriversBook.tsx"));
+    if (telaOk) console.log("✔ WO-66 Teste 3 (AJ): a seção 'O que move o book', as flags na Ação do dia e o driversBook saíram do Portfolio; o Perfil de Risco do Book mostra um ativo por linha com as pernas e o payoff à esquerda e as 3 caixas dos drivers de maior correlação à direita (top3Drivers completa com os demais; direcaoPelaCurva lê alta/baixa/sem lado da curva de hoje); o cartão da Estratégia continua um só");
+    else { console.log(`✘ WO-66 Teste 3 falhou: puro=${puroOk} tres=${tres.map((d) => d.codigo)} dois=${doisComCorr.map((d) => d.codigo)}`); failures++; }
 
     const { buildCarteiraReport } = await import("../agents/tab/carteira");
+    const carteiraSrc = ler66("lib/agents/tab/carteira.ts");
     const ctxBase = { positions: [], closed: [], capitalTotal: 2000, netGreeks: { delta: 0, gamma: 0, vega: 0, theta: 0 }, varGrid: { var95: 0, es: 0 }, journalStats: { n: 0, winRate: 0, payoffRatio: 0, realizedKelly: 0 } };
     const semDb = buildCarteiraReport(ctxBase);
-    const comDb = buildCarteiraReport({ ...ctxBase, driversBook: {
-      resumo: B.resumoDoBook(x, estruturas.length), concentracao: x.concentracao,
-      exposicao: x.exposicoes.map((e) => ({ driver: e.nome, liquido: e.liquido, comprados: e.comprados.map((p) => p.underlying), vendidos: e.vendidos.map((p) => p.underlying), vento: e.vento, var21: e.var21 })),
-      ventos: estruturas.flatMap((e) => { const v = x.ventos[e.chave]; return v ? [{ chave: e.chave, ticker: e.underlying, estrutura: e.nome, vies: e.vies, situacao: v.situacao, resumo: v.resumo, contra: v.votos.filter((q) => q.aFavor === false).map((q) => q.nome) }] : []; }),
-    } });
-    const achadoConc = comDb.achados.find((a) => a.id === "cart-driver-concentrado");
-    const achadoVento = comDb.achados.find((a) => a.id === "cart-vento-contra-c");
-    const agenteOk = !semDb.achados.some((a) => a.id.startsWith("cart-driver") || a.id.startsWith("cart-vento")) && achadoConc != null && /BRENT/.test(achadoConc.titulo) && achadoConc.deepLink === "/portfolio#drivers-book" && achadoConc.severidade === "atencao"
-      && achadoVento != null && /MGLU3/.test(achadoVento.titulo) && /DI_LONGO/.test(achadoVento.detalhe) && !comDb.achados.some((a) => a.id === "cart-info-01");
-    if (agenteOk) console.log("✔ WO-66 Teste 4: o agente da Carteira sem driversBook produz o relatório de sempre; com concentração e vento contra escreve os dois achados (atenção, com o link para a seção) e deixa de dizer que 'está tudo dentro dos parâmetros'");
-    else { console.log(`✘ WO-66 Teste 4 falhou: ${JSON.stringify({ sem: semDb.achados.map((a) => a.id), com: comDb.achados.map((a) => a.id), achadoConc, achadoVento })}`); failures++; }
+    const agenteOk = !/driversBook|cart-driver-concentrado|cart-vento-contra/.test(carteiraSrc) && !semDb.achados.some((a) => a.id.startsWith("cart-driver") || a.id.startsWith("cart-vento")) && !/carteira\.drivers/.test(ler66("lib/agents/deeplinks.ts"));
+    if (agenteOk) console.log("✔ WO-66 Teste 4 (AJ): o agente da Carteira voltou a não conhecer os drivers (sem contexto, sem achado, sem deep link) — a leitura é da tela, a pedido do operador");
+    else { console.log(`✘ WO-66 Teste 4 falhou: ${JSON.stringify(semDb.achados.map((a) => a.id))}`); failures++; }
 
     const manual = ler66("lib/manual-content.ts");
     const skillR = ler66(".claude/skills/risco-do-book/SKILL.md");
@@ -6805,9 +6806,9 @@ Líquido para 04/09/2026 5.134,69 D`;
     const readme = ler66("README.md");
     const wo64 = ler66("WO-64-PROMPT.md");
     const wo66 = ler66("WO-66-PROMPT.md");
-    const docsOk = /O que move o book/.test(manual) && /termo: "Exposição por driver"/.test(manual) && /## 7b\. Concentração por driver/.test(skillR) && /exposição do book por driver/.test(skillM)
-      && /WO-66 O que move o book/.test(anti) && /WO-66 \[CONCLUÍDO/.test(anti) && /O que move o book/.test(readme) && /WO-66/.test(wo64) && /## Executado/.test(wo66) && !/_\(preenchido na execução\)_/.test(wo66);
-    if (docsOk) console.log("✔ WO-66 Teste 5: Manual (Portfolio e glossário), skills (risco §7b, método §1), ANTIGRAVITY (§9.5 e roadmap), README, WO-64 (Fase 2) e o Executado da WO-66 registram a exposição por driver como aviso, nunca veto nem hedge");
+    const docsOk = /três drivers de maior correlação/.test(manual) && !/'O que move o book'/.test(manual) && /termo: "Exposição por driver"/.test(manual) && /## 7b\. Concentração por driver/.test(skillR) && /AJ 22\/09\/2026/.test(skillR) && /3 drivers de maior correlação/.test(skillM)
+      && /WO-66 Drivers no Perfil de Risco/.test(anti) && !/WO-66 O que move o book/.test(anti) && /WO-66 \[CONCLUÍDO/.test(anti) && /3 drivers/.test(readme) && !/O que move o book/.test(readme) && /WO-66/.test(wo64) && /## AJ — 22\/09\/2026/.test(wo66) && !/_\(preenchido após a conferência\)_/.test(wo66);
+    if (docsOk) console.log("✔ WO-66 Teste 5 (AJ): Manual, skills (risco §7b com o AJ, método §1), ANTIGRAVITY, README, WO-64 e a WO-66 dizem que o Portfolio mostra os 3 drivers de cada ativo no Perfil de Risco — e que a seção, as flags e os achados foram retirados");
     else { console.log(`✘ WO-66 Teste 5 falhou: docs=${docsOk}`); failures++; }
   }
 

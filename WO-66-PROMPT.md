@@ -188,3 +188,36 @@ movimento) e registrar em "Executado".
   seção diz quantas são.
 - Concentração exige ≥ 2 estruturas na mesma direção: um book de uma estrutura nunca "concentra".
 - A tabela é larga: em tela estreita rola na horizontal (o Portfolio é tela de desktop).
+
+## AJ — 22/09/2026: "achei horrível" — refeito como 3 caixas no Perfil de Risco
+
+O operador rejeitou a forma: seção própria, tabela de exposição, flags e achados. Pediu: dentro
+do "Perfil de Risco do Book (payoffs por ativo)", a estrutura (pernas) à esquerda e, à direita,
+**3 gráficos em caixa, contidos na altura do gráfico da esquerda, com os 3 principais drivers do
+papel**. Perguntas feitas e respondidas: um ativo por linha; pernas em lista compacta acima do
+payoff; os 3 drivers de **maior correlação medida**; remover **tudo** que ficou visível.
+
+### O que mudou
+
+- Removidos: `PainelDriversBook.tsx`, a seção no Portfolio, `extras` do `ActionFlags`, o
+  `driversBook` do contexto e os achados do agente da Carteira, o deep link `carteira.drivers`.
+- Mantidos, sem tela: `lib/drivers-book.ts` e `flagsDosDrivers`/`evaluateFlags(drivers)` (puros,
+  testados — Testes WO-66 · 1 e · 2), `useDriversDoBook`, `CartaoDriver` (a Estratégia usa).
+- Novo: `components/CaixasDriversDoAtivo.tsx` — `top3Drivers` (maior |corr| diária, completa
+  com os demais na ordem da tabela), `direcaoPelaCurva` (inclinação da curva de P&L de hoje em
+  ±1 % do spot; NEUTRA abaixo de 1 % do custo total), e a caixa: nome, corr, série de 2 anos,
+  último valor com data, 21p, chip a favor/contra/empurra/sem voto. `PerformanceCharts` §6 passa a
+  um ativo por linha, com as pernas listadas acima do payoff e as caixas à direita, na altura do
+  cartão.
+
+### Verificado (dev aberto com o book real, 22/09/2026, 11:30)
+
+- Portfolio sem "O que move o book", sem flag de driver na Ação do dia. No Perfil de Risco do
+  Book, um ativo por linha: PRIO3, PETR4 e BHIA3, cada um com as duas pernas listadas (C CALL
+  61,00 09/10/2026 × 100 · R$ 2,08 → R$ 2,09…), os cinco indicadores, o payoff e, à direita, as
+  três caixas — PETR4: XLE (corr 0,61), Brent (0,58), EWZ (0,26); PRIO3: XLE 0,57, Brent 0,55;
+  BHIA3: ICON 0,26 — com série, último valor, 21p e o chip a favor/contra.
+- Direção da posição pela curva: com o limiar inicial de 1 % do custo, o straddle de PETR4 saía
+  "de alta" (delta residual de 0,06); com 5 % do custo, PETR4 e PRIO3 (call + put) ficam "sem
+  lado" e BHIA3 (call 0,80 + put 0,80 com spot 1,05) "de alta" — o que a curva de fato diz.
+- Suíte verde (WO-66 · 1–5 refeitos), `typecheck` limpo.
