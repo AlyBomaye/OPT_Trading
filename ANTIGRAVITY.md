@@ -707,6 +707,15 @@ com VaR95/ES rotulados + export CSV/JSON + export/import do arquivo de snapshots
 - **Bloco B (Analytics de performance)**: Agrupamento de pernas abertas no mesmo instante em estruturas (`groupTrades`), KPIs avançados de journal (`performanceStats`: Profit Factor, Expectancy R$ e R, Holding médio V/P, streaks, melhor/pior trade) e atribuição de P&L de 1ª ordem ($\Delta$, $\text{Vega}$, $\Theta$, resíduo).
 - **Bloco C (Gráficos e riscos)**: Suíte Recharts (`PerformanceCharts`) com Curva de patrimônio + Underwater (Drawdown), P&L mensal, Histograma de distribuição de P&L, P&L por estratégia, Alocação por setor vs limite de concentração, Perfil de risco acumulado por ativo objeto (payoffs do book) e Calendário de vencimentos.
 
+**WO-70 Focus em dia na segunda (23/09/2026)**: o BCB publica em lote no primeiro dia útil da
+semana às 8h25 (medido: terça à noite a `Data` mais recente era a sexta). `/api/focus` só serve
+o cache quando `avaliarPublicacao` diz em dia; atrasada, volta à rede no máximo a cada 45 s, com
+uma busca em curso, e devolve `publicacao` (esperada, aguardando, tentadoEm,
+`proximaConsultaEmS`). `cadenciaDeConsulta` (`lib/focus.ts`, pura): 60 s na janela de segunda
+8h15–9h45, 5 min segunda fora dela, 10 min outros dias, 30 min em dia. A Macro reagenda por esse
+número e consulta ao voltar à aba; os painéis dizem AGUARDANDO O BOLETIM DE HOJE. O corte de
+"publicado" desceu de 9h00 para 8h25 (`DIVULGACAO_BRT`).
+
 **WO-69 Rates & FX (23/09/2026)**: Pré e NTN-B pela **ANBIMA** (`lib/anbima.ts` puro,
 `lib/anbima-servidor.ts` acumula um instantâneo por dia em `data/cache/anbima-arquivo.json`;
 Δ1M/Δ3M pelo Tesouro Transparente marcados `(TT)` até o arquivo acumular — `fonteHistorico` no
@@ -957,7 +966,8 @@ semáforo. **WO-65 [CONCLUÍDO 21/09/2026]:** volume no Histórico. **WO-66 [CON
 22/09/2026]:** a cadeia completada com as séries que o terminal da corretora não carrega.
 **WO-68 [CONCLUÍDO 22/09/2026]:** corrigir uma boleta pela fita, com estorno e boleta certa na mesma
 transação. **WO-69 [CONCLUÍDO 23/09/2026]:** Rates & FX pela ANBIMA, curva oficial americana, DAP
-ao vivo, cupom pela DI e câmbio em quatro pares. Próximos: Fase 2 da WO-64 (projeção dos drivers pelo mercado a termo) e, pelo
+ao vivo, cupom pela DI e câmbio em quatro pares. **WO-70 [CONCLUÍDO 23/09/2026]:** o Focus em dia na segunda de manhã
+(rota consciente da publicação, 60 s na janela das 8h15–9h45). Próximos: Fase 2 da WO-64 (projeção dos drivers pelo mercado a termo) e, pelo
 MAPA-SOFTWARE-PESSOAL.md, estado no banco e saúde visível, supervisor e acesso local, ponte em
 tempo real.
 

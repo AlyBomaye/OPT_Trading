@@ -7221,6 +7221,69 @@ Líquido para 04/09/2026 5.134,69 D`;
     else { console.log(`✘ WO-69 Teste 6 falhou: docs=${docsOk}`); failures++; }
   }
 
+  // ---------------------------------------------------------------------------------------------
+  // WO-70 — Boletim Focus em dia na segunda de manhã
+  // ---------------------------------------------------------------------------------------------
+  {
+    const F = await import("../focus");
+    // O corte desceu de 9h00 para 8h25: segunda 21/09/2026 às 8h20 ainda espera a sexta 11/09; às 8h30 já espera 18/09.
+    const corteOk = F.coletaEsperada(new Date("2026-09-21T08:20:00")) === "2026-09-11" && F.coletaEsperada(new Date("2026-09-21T08:30:00")) === "2026-09-18"
+      && F.DIVULGACAO_BRT.hora === 8 && F.DIVULGACAO_BRT.minuto === 25;
+    const seg0830 = new Date("2026-09-21T08:30:00");
+    const c1 = F.cadenciaDeConsulta("2026-09-11", seg0830); // atrasado, na janela → 60 s
+    const c2 = F.cadenciaDeConsulta("2026-09-18", seg0830); // em dia → 30 min
+    const c3 = F.cadenciaDeConsulta("2026-09-11", new Date("2026-09-21T12:00:00")); // segunda, BCB atrasou → 5 min
+    const c4 = F.cadenciaDeConsulta("2026-09-11", new Date("2026-09-22T12:00:00")); // terça atrasado (segunda feriado) → 10 min
+    const c5 = F.cadenciaDeConsulta("2026-09-11", new Date("2026-09-21T08:10:00")); // antes das 8h25: nada a esperar ainda
+    const c6 = F.cadenciaDeConsulta(null, seg0830); // sem dado nenhum, na janela → insiste
+    const cadenciaOk = !c1.emDia && c1.dentroDaJanela && c1.proximaEmS === 60
+      && c2.emDia && c2.proximaEmS === 1800
+      && !c3.emDia && !c3.dentroDaJanela && c3.proximaEmS === 300
+      && !c4.emDia && c4.proximaEmS === 600
+      && c5.emDia && c5.proximaEmS === 1800
+      && !c6.emDia && c6.proximaEmS === 60
+      && F.JANELA_PUBLICACAO_BRT.inicio === 8 * 60 + 15 && F.JANELA_PUBLICACAO_BRT.fim === 9 * 60 + 45;
+    if (corteOk && cadenciaOk) console.log("✔ WO-70 Teste 1: o boletim conta como publicado a partir das 8h25 (não 9h00); cadenciaDeConsulta insiste a cada 60 s na janela de segunda (8h15–9h45) enquanto falta o boletim, 5 min se o BCB atrasar na segunda, 10 min nos outros dias, e descansa 30 min quando em dia");
+    else { console.log(`✘ WO-70 Teste 1 falhou: corte=${corteOk} ${JSON.stringify({ c1, c2, c3, c4, c5, c6 })}`); failures++; }
+  }
+
+  {
+    const fs70 = await import("node:fs");
+    const path70 = await import("node:path");
+    const ler70 = (rel: string) => fs70.readFileSync(path70.join(process.cwd(), rel), "utf8");
+    const rota = ler70("app/api/focus/route.ts");
+    const pag = ler70("app/macro/page.tsx");
+    const painel = ler70("components/macro/PainelFocus.tsx");
+    // A rota sabe quando está atrasada, volta à rede sem martelar (45 s, uma busca em curso), reavalia a publicação a cada resposta e mantém as duas guardas de `forcar` (WO-38) e a separação das datas (WO-35).
+    const rotaOk = /const ESPACO_MIN_ATRASADO_MS = 45_000;/.test(rota) && /function podeServirCache\(/.test(rota)
+      && /avaliarPublicacao\(body\.dataDoDado\)\.emDia \|\| agora - ultimaTentativa < ESPACO_MIN_ATRASADO_MS/.test(rota)
+      && (rota.match(/if \(!forcar &&/g) ?? []).length === 2 && /podeServirCache\(memoria\.body, agora\)/.test(rota) && /podeServirCache\(disco\.payload, agora\)/.test(rota)
+      && /let emCurso: Promise<FocusRouteBody> \| null = null;/.test(rota) && /proximaConsultaEmS: cad\.proximaEmS/.test(rota) && /aguardando: !pub\.emDia/.test(rota)
+      && /buscadoEm: new Date\(\)\.toISOString\(\)/.test(rota) && !/dataDoDado: new Date\(/.test(rota);
+    // A tela reagenda pela sugestão da rota, consulta ao voltar à aba e diz o que está fazendo.
+    const pagOk = /Number\(j\?\.publicacao\?\.proximaConsultaEmS\)/.test(pag) && /document\.addEventListener\("visibilitychange", aoVoltar\)/.test(pag)
+      && /focus\.publicacao\?\.aguardando/.test(pag) && /nova consulta em \$\{focus\.publicacao\.proximaConsultaEmS\}s/.test(pag) && (pag.match(/aguardando=\{focus\.publicacao\?\.aguardando\}/g) ?? []).length === 2;
+    const painelOk = (painel.match(/AGUARDANDO O BOLETIM DE HOJE/g) ?? []).length === 2 && /aguardando\?: boolean/.test(painel);
+    if (rotaOk && pagOk && painelOk) console.log("✔ WO-70 Teste 2: /api/focus só serve o cache quando está em dia (ou tentou a rede há menos de 45 s), com uma busca em curso por vez, e devolve `publicacao` com a próxima consulta; a Macro reagenda por ela, consulta ao voltar à aba e os painéis dizem AGUARDANDO O BOLETIM DE HOJE; as guardas de forcar e a separação das datas continuam");
+    else { console.log(`✘ WO-70 Teste 2 falhou: rota=${rotaOk} pag=${pagOk} painel=${painelOk}`); failures++; }
+  }
+
+  {
+    const fs70 = await import("node:fs");
+    const path70 = await import("node:path");
+    const ler70 = (rel: string) => fs70.readFileSync(path70.join(process.cwd(), rel), "utf8");
+    const fontes = ler70("FONTES-DE-DADOS.md");
+    const manual = ler70("lib/manual-content.ts");
+    const anti = ler70("ANTIGRAVITY.md");
+    const skill = ler70(".claude/skills/engenharia-da-plataforma/SKILL.md");
+    const wo70 = ler70("WO-70-PROMPT.md");
+    const docsOk = /primeiro dia útil da semana/.test(fontes) && /45 s/.test(fontes) && /WO-70/.test(fontes)
+      && /WO-70/.test(manual) && /WO-70/.test(anti) && /WO-70/.test(skill)
+      && /## Executado/.test(wo70) && !/_\(preenchido após a conferência\)_/.test(wo70);
+    if (docsOk) console.log("✔ WO-70 Teste 3: FONTES-DE-DADOS, Manual, ANTIGRAVITY, a skill de engenharia e a WO-70 registram o lote semanal das 8h25 e a cadência de consulta");
+    else { console.log(`✘ WO-70 Teste 3 falhou: docs=${docsOk}`); failures++; }
+  }
+
 }
 
 testesAssincronos()

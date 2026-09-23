@@ -189,18 +189,27 @@ API aberta, sem chave, rápida (0,6 s por indicador). **Três armadilhas medidas
 1. **Encoding instável.** A mesma consulta devolve `Câmbio` ou `CÃ¢mbio` conforme a forma da query.
    O `$filter` só aceita a forma correta. Por isso consultamos um indicador por vez e rotulamos
    pela nossa tabela — o texto devolvido nunca é usado para exibir nem para casar.
-2. **Cadência semanal, não diária.** O boletim sai toda **segunda por volta das 8h25** e carrega
-   as expectativas coletadas até a **sexta anterior**. Medido: em 19/08 (quarta) a leitura mais
-   recente era 14/08 (sexta); em 06/08 (quinta), era 31/07. Durante a semana inteira, a coleta
-   mais nova possível é sempre aquela sexta — **não é atraso**. `avaliarPublicacao()` em
+2. **Cadência semanal, não diária.** O BCB publica **em lote, no primeiro dia útil da semana, às
+   8h25**, as estatísticas coletadas até a **sexta anterior** — a granularidade é diária (os dias
+   14 a 18/09 existem), mas o lote só sai na segunda (medido em 23/09/2026, terça à noite: a `Data`
+   mais recente era 18/09; em 19/08 era 14/08; em 06/08, 31/07). Durante a semana inteira, a
+   coleta mais nova possível é sempre aquela sexta — **não é atraso**. `avaliarPublicacao()` em
    `lib/focus.ts` compara o que temos com o que deveria existir e mede atraso em BOLETINS, não
    em dias; a tarja só fica âmbar quando falta boletim de verdade. `dataDoDado` é sempre a data
    de coleta, nunca a do fetch.
 3. **`baseCalculo`.** `0` = base de 30 dias (a do boletim), `1` = base de 5 dias úteis. Misturar as
    duas produz degraus que parecem revisão de expectativa e não são. Usamos sempre `0`.
+4. **Segunda de manhã (WO-70).** Um cache de 6 h deixava quem abria a Macro às 8h com o boletim da
+   semana passada até as 14h. A rota agora só serve o cache quando **está em dia**
+   (`avaliarPublicacao`); atrasada, volta à rede a cada pedido, **no máximo uma vez a cada 45 s** e
+   com uma busca em curso por vez, e devolve `publicacao.proximaConsultaEmS`. A Macro reagenda por
+   esse número (`cadenciaDeConsulta`): **60 s na janela de segunda, 8h15–9h45**, 5 min se o BCB
+   atrasar na segunda, 10 min nos outros dias (segunda feriado → o lote sai no primeiro dia útil),
+   30 min em dia; e consulta ao voltar à aba. O corte de "já publicado" é 8h25 (era 9h00).
 
 - **Se cair:** a seção Focus mostra a nota do que faltou; indicador que falha não derruba os outros.
-- **Rotina:** `npm run dados:sync`.
+- **Rotina:** `npm run dados:sync` (18h30, seg–sex) aquece o disco; a segunda de manhã não depende
+  dele — a tela aberta se atualiza sozinha.
 
 ---
 

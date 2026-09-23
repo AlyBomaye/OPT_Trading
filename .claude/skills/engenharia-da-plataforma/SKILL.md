@@ -166,6 +166,13 @@ e diga no commit. Se a quebra não for intencional, o teste venceu.
   `linhasRates` é Pré, Treasuries, DI, Cupom, NTN-B (a linha IPCA & IGP-M saiu no AJ) e a grade
   usa `slice(0,2)`, `slice(2,4)`, `slice(4,5)` + `CartoesCambio`. Na NTN-B o DAP é linha fina e
   coluna da mesma tabela — não há tabela extra.
+- **Focus (WO-70):** o BCB publica em lote no primeiro dia útil da semana às 8h25. `/api/focus`
+  só serve o cache quando `avaliarPublicacao` diz em dia; atrasada, volta à rede no máximo a
+  cada 45 s (`podeServirCache`, `emCurso`). Mantenha as duas guardas `if (!forcar &&` (WO-38) e
+  `buscadoEm: new Date().toISOString()` sem `dataDoDado: new Date(` (WO-35). A cadência da tela é
+  `cadenciaDeConsulta` (pura, `lib/focus.ts`): 60 s na janela 8h15–9h45 de segunda, 5/10 min
+  atrasado, 30 min em dia — a página reagenda por `publicacao.proximaConsultaEmS`. Não recrie
+  um poller de fundo: a rota já sabe quando está atrasada.
 - **Strike (WO-63):** o `option_strike` do terminal é o original da série, nunca ajustado por
   proventos (PETR4 estava 1,19 acima em toda série em 21/09/2026; até a descrição do símbolo
   fica velha). `/api/opcoes` sobrepõe strike, estilo e moneyness pelo catálogo oficial da B3

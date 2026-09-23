@@ -169,14 +169,38 @@ export default function MacroPage() {
     return () => { vivo = false; };
   }, []);
 
-  // O Focus sai uma vez por dia útil e com defasagem; a rota cacheia por 6h em memória e disco.
+  // WO-70: o Focus sai em lote no primeiro dia útil da semana, às 8h25. A rota diz em quantos
+  // segundos consultar de novo — 60 s na janela de segunda (8h15–9h45) enquanto o boletim não sai,
+  // 30 min quando em dia — e a aba, ao voltar a ficar visível, consulta na hora.
   useEffect(() => {
     let vivo = true;
-    fetch("/api/focus")
-      .then((r) => (r.ok ? r.json() : null))
-      .then((j) => { if (vivo && j) setFocus(j); })
-      .catch(() => undefined);
-    return () => { vivo = false; };
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    let ultima = 0;
+    const consultar = async () => {
+      if (!vivo) return;
+      ultima = Date.now();
+      let proximaEmS = 1800;
+      try {
+        const r = await fetch("/api/focus");
+        const j = r.ok ? await r.json() : null;
+        if (vivo && j) setFocus(j);
+        proximaEmS = Math.max(30, Number(j?.publicacao?.proximaConsultaEmS) || 1800);
+      } catch {
+        proximaEmS = 300;
+      }
+      if (timer) clearTimeout(timer);
+      if (vivo) timer = setTimeout(() => void consultar(), proximaEmS * 1000);
+    };
+    const aoVoltar = () => {
+      if (document.visibilityState === "visible" && Date.now() - ultima > 30_000) void consultar();
+    };
+    void consultar();
+    document.addEventListener("visibilitychange", aoVoltar);
+    return () => {
+      vivo = false;
+      if (timer) clearTimeout(timer);
+      document.removeEventListener("visibilitychange", aoVoltar);
+    };
   }, []);
 
   // WO-69: a curva americana para interpolar é a OFICIAL (14 vértices); o Yahoo (4) só na falta dela.
@@ -818,7 +842,12 @@ export default function MacroPage() {
             <span className="font-bold">[4] Boletim Focus — Expectativas de Mercado</span>
           </div>
           {focus?.dataDoDado && (
-            <span className="text-xxs text-term-dim font-mono">coleta {fmtDateBR(focus.dataDoDado)}</span>
+            <span className={clsx("text-xxs font-mono", focus.publicacao?.aguardando ? "text-term-gold" : "text-term-dim")} title={focus.publicacao?.motivo}>
+              coleta {fmtDateBR(focus.dataDoDado)}
+              {focus.publicacao?.aguardando
+                ? ` · ${focus.publicacao.motivo}${focus.publicacao.tentadoEm ? ` · tentado às ${new Date(focus.publicacao.tentadoEm).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}` : ""} · nova consulta em ${focus.publicacao.proximaConsultaEmS}s`
+                : ""}
+            </span>
           )}
         </div>
 
@@ -846,9 +875,9 @@ export default function MacroPage() {
             ) : (
               <>
                 {focus.series.map((s) => (
-                  <PainelFocus key={s.chave} serie={s} />
+                  <PainelFocus key={s.chave} serie={s} aguardando={focus.publicacao?.aguardando} />
                 ))}
-                <PainelCopom pontos={focus.copom} dataDoDado={focus.dataDoDado} />
+                <PainelCopom pontos={focus.copom} dataDoDado={focus.dataDoDado} aguardando={focus.publicacao?.aguardando} />
               </>
             )}
           </div>

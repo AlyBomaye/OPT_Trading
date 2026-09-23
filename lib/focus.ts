@@ -335,8 +335,14 @@ export async function buscarFocus(timeoutMs = 20000): Promise<FocusBody> {
  * certo ensina a ignorar o alarme — a mesma disciplina de causa do WO-34.
  * ========================================================================== */
 
-/** Hora de divulgação do boletim, em horário de Brasília. */
-const HORA_DIVULGACAO = 9;
+/**
+ * Divulgação do boletim, em horário de Brasília: **8h25** (WO-70 — era 9h00, o que deixava a rota
+ * achando que estava em dia com o dado velho entre 8h25 e 9h00). O servidor e o navegador do
+ * operador rodam em Brasília, e `coletaEsperada` usa o relógio local por isso.
+ */
+export const DIVULGACAO_BRT = { hora: 8, minuto: 25 };
+/** A janela em que a plataforma insiste (minutos do dia): de 8h15 a 9h45 da segunda-feira. */
+export const JANELA_PUBLICACAO_BRT = { inicio: 8 * 60 + 15, fim: 9 * 60 + 45 };
 
 function iso(d: Date): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
@@ -358,7 +364,7 @@ export function coletaEsperada(agora = new Date()): string {
   d.setDate(d.getDate() - recuoAteSegunda);
 
   // Segunda antes da divulgação: o boletim de hoje ainda não saiu.
-  if (diaSemana === 1 && agora.getHours() < HORA_DIVULGACAO) {
+  if (diaSemana === 1 && agora.getHours() * 60 + agora.getMinutes() < DIVULGACAO_BRT.hora * 60 + DIVULGACAO_BRT.minuto) {
     d.setDate(d.getDate() - 7);
   }
 
@@ -389,4 +395,40 @@ export function avaliarPublicacao(dataDoDado: string | null, agora = new Date())
     (new Date(`${esperada}T12:00:00`).getTime() - new Date(`${dataDoDado}T12:00:00`).getTime()) / 86_400_000
   );
   return { esperada, emDia: false, boletinsAtraso: Math.max(1, Math.round(diffDias / 7)) };
+}
+
+/* ========================================================================== *
+ * Cadência de consulta — WO-70
+ *
+ * O BCB publica o lote semanal no primeiro dia útil da semana, às 8h25. A rota que só confiava
+ * num cache de 6 h deixava quem abre a Macro às 8h de segunda com o boletim da semana passada
+ * até as 14h. Aqui está a régua, pura: quando insistir e com que frequência.
+ * ========================================================================== */
+
+/** Segundos até a próxima consulta, por situação. A janela de segunda é a pedida pelo operador. */
+export const CADENCIA_S = { emDia: 1800, janela: 60, segundaAtrasada: 300, atrasado: 600 };
+
+export interface CadenciaConsulta {
+  emDia: boolean;
+  /** Segunda-feira entre 08:15 e 09:45 (Brasília): a hora de insistir. */
+  dentroDaJanela: boolean;
+  /** Em quantos segundos consultar de novo. */
+  proximaEmS: number;
+  motivo: string;
+}
+
+/**
+ * Em dia → 30 min (o dado não muda até a próxima segunda). Atrasado dentro da janela de segunda →
+ * 60 s. Atrasado na segunda fora da janela → 5 min (o BCB atrasou). Atrasado nos outros dias →
+ * 10 min (segunda foi feriado: o lote sai no primeiro dia útil, sem hora garantida).
+ */
+export function cadenciaDeConsulta(dataDoDado: string | null, agora = new Date()): CadenciaConsulta {
+  const pub = avaliarPublicacao(dataDoDado, agora);
+  const minutos = agora.getHours() * 60 + agora.getMinutes();
+  const segunda = agora.getDay() === 1;
+  const dentroDaJanela = segunda && minutos >= JANELA_PUBLICACAO_BRT.inicio && minutos <= JANELA_PUBLICACAO_BRT.fim;
+  if (pub.emDia) return { emDia: true, dentroDaJanela, proximaEmS: CADENCIA_S.emDia, motivo: "em dia" };
+  if (dentroDaJanela) return { emDia: false, dentroDaJanela, proximaEmS: CADENCIA_S.janela, motivo: "aguardando o boletim de hoje (8h25)" };
+  if (segunda) return { emDia: false, dentroDaJanela, proximaEmS: CADENCIA_S.segundaAtrasada, motivo: "o boletim de hoje ainda não foi publicado" };
+  return { emDia: false, dentroDaJanela, proximaEmS: CADENCIA_S.atrasado, motivo: "atrasado — o lote sai no primeiro dia útil da semana" };
 }

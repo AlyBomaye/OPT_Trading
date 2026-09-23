@@ -54,7 +54,7 @@ function fmtDelta(v: number | null, casas: number): string {
   return `${v > 0 ? "+" : ""}${texto}`;
 }
 
-export function PainelFocus({ serie }: { serie: SerieFocus }) {
+export function PainelFocus({ serie, aguardando }: { serie: SerieFocus; aguardando?: boolean }) {
   const pub = avaliarPublicacao(serie.dataDoDado);
 
   const anosGrafico = serie.horizontes.slice(0, ANOS_NO_GRAFICO).map((h) => h.ano);
@@ -90,7 +90,7 @@ export function PainelFocus({ serie }: { serie: SerieFocus }) {
           }
         >
           {serie.dataDoDado ? `COLETA ${fmtDateBR(serie.dataDoDado)}` : "—"}
-          {pub.emDia ? " · EM DIA" : ` · ${pub.boletinsAtraso} BOLETIM(NS) ATRÁS`}
+          {pub.emDia ? " · EM DIA" : aguardando ? " · AGUARDANDO O BOLETIM DE HOJE" : ` · ${pub.boletinsAtraso} BOLETIM(NS) ATRÁS`}
         </span>
       </div>
 
@@ -194,9 +194,12 @@ export function PainelFocus({ serie }: { serie: SerieFocus }) {
 export function PainelCopom({
   pontos,
   dataDoDado,
+  aguardando,
 }: {
   pontos: Array<{ reuniao: string; mediana: number; respondentes: number | null }>;
   dataDoDado: string | null;
+  /** WO-70: atrasado e insistindo (a rota volta ao BCB a cada consulta). */
+  aguardando?: boolean;
 }) {
   const pub = avaliarPublicacao(dataDoDado);
 
@@ -209,7 +212,7 @@ export function PainelCopom({
         </span>
         <span className={clsx("tag bg-term-panel2 whitespace-nowrap", pub.emDia ? "text-term-cyan" : "text-term-gold")}>
           {dataDoDado ? `COLETA ${fmtDateBR(dataDoDado)}` : "—"}
-          {pub.emDia ? " · EM DIA" : ` · ${pub.boletinsAtraso} BOLETIM(NS) ATRÁS`}
+          {pub.emDia ? " · EM DIA" : aguardando ? " · AGUARDANDO O BOLETIM DE HOJE" : ` · ${pub.boletinsAtraso} BOLETIM(NS) ATRÁS`}
         </span>
       </div>
 
