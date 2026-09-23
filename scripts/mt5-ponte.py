@@ -56,7 +56,7 @@ except ImportError:  # pragma: no cover
     print("Biblioteca MetaTrader5 ausente: python -m pip install MetaTrader5")
     sys.exit(2)
 
-VERSAO_PONTE = "1.1.0"
+VERSAO_PONTE = "1.2.0"
 HOST = "127.0.0.1"
 PORTA = int(os.environ.get("PONTE_MT5_PORTA", "3200"))
 FUSO_SERVIDOR_S = 3 * 3600  # Brasília = UTC−3; o MT5 entrega epoch "como se fosse UTC"
@@ -636,16 +636,31 @@ def rota_macro(q: dict) -> dict:
     return {"series": series, "range": rng, "geradoEm": iso_servidor(agora_servidor()), "duracaoMs": int((time.time() - inicio) * 1000)}
 
 
+def e_contrato_futuro(nome: str, prefixo: str) -> bool:
+    """WO-69: DI1F27, DAPK27, DDIF30 - o contrato por vencimento, nunca os continuos ($, $D, @)."""
+    return nome.startswith(prefixo) and len(nome) == 6 and nome[3].isalpha() and nome[4:].isdigit()
+
+
 def e_contrato_di(nome: str) -> bool:
     # DI1F27, DI1N30… — nunca os contínuos (DI1$, DI1$D, DI1@…)
-    return nome.startswith("DI1") and len(nome) == 6 and nome[3].isalpha() and nome[4:].isdigit()
+    return e_contrato_futuro(nome, "DI1")
 
 
 def rota_curva_di(q: dict) -> dict:
+    return rota_curva_futuros("DI1")
+
+
+def rota_curva_dap(q: dict) -> dict:
+    """WO-69: cupom de IPCA (DAP) - a curva de juro REAL da B3, ao vivo. Mesma forma da DI:
+    12 contratos vivos, todos negociando (medido em 23/09/2026: DAPK27 a DAPQ60)."""
+    return rota_curva_futuros("DAP")
+
+
+def rota_curva_futuros(prefixo: str) -> dict:
     exigir_logado()
     inicio = time.time()
     agora = agora_servidor()
-    contratos = [s for s in (mt5.symbols_get("DI1*") or []) if e_contrato_di(s.name) and s.expiration_time >= agora]
+    contratos = [s for s in (mt5.symbols_get(f"{prefixo}*") or []) if e_contrato_futuro(s.name, prefixo) and s.expiration_time >= agora]
     contratos.sort(key=lambda s: s.expiration_time)
     novos = 0
     for s in contratos:
@@ -678,7 +693,7 @@ def rota_curva_di(q: dict) -> dict:
     return {"contratos": saida, "sessao": sessao, "geradoEm": iso_servidor(agora), "duracaoMs": int((time.time() - inicio) * 1000)}
 
 
-ROTAS = {"/saude": lambda q: rota_saude(), "/cotacao": rota_cotacao, "/cadeia": rota_cadeia, "/historico": rota_historico, "/ticks": rota_ticks, "/macro": rota_macro, "/curva-di": rota_curva_di}
+ROTAS = {"/saude": lambda q: rota_saude(), "/cotacao": rota_cotacao, "/cadeia": rota_cadeia, "/historico": rota_historico, "/ticks": rota_ticks, "/macro": rota_macro, "/curva-di": rota_curva_di, "/curva-dap": rota_curva_dap}
 
 
 # ---------------------------------------------------------------------------------------------

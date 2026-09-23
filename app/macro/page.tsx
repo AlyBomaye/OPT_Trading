@@ -36,6 +36,8 @@ import { construirProvenance } from "@/lib/provenance";
 import { curveSlope, sessionStatus } from "@/lib/macro";
 import { Sparkline } from "@/components/Sparkline";
 import { AgentPanel } from "@/components/AgentPanel";
+import { CartoesCambio, type JanelaFx, type ParCambio } from "@/components/macro/CartoesCambio";
+import { usePersistedState } from "@/lib/use-persisted-state";
 import { LinhaRates, type ColunaTabela } from "@/components/macro/LinhaRates";
 import { PainelCopom, PainelFocus } from "@/components/macro/PainelFocus";
 import { calcularCupomCambial, type VerticeCurva } from "@/lib/curvas";
@@ -177,8 +179,9 @@ export default function MacroPage() {
     return () => { vivo = false; };
   }, []);
 
-  // Curva US em anos, para interpolar no prazo de cada vértice brasileiro.
+  // WO-69: a curva americana para interpolar é a OFICIAL (14 vértices); o Yahoo (4) só na falta dela.
   const curvaUsEmAnos: VerticeCurva[] = useMemo(() => {
+    if (data?.curvaUs?.vertices?.length) return data.curvaUs.vertices;
     if (!data) return [];
     const mapa: [string, number][] = [["^IRX", 0.25], ["^FVX", 5], ["^TNX", 10], ["^TYX", 30]];
     return mapa
@@ -189,25 +192,23 @@ export default function MacroPage() {
       .filter((x): x is VerticeCurva => x != null);
   }, [data]);
 
+  // WO-69: o cupom cambial sai da DI (MT5, ao vivo) × Treasuries. Sem DI, cai no Pré — e diz isso.
+  const cupomBase: "di" | "pre" = data?.curvaDi?.vertices?.length ? "di" : "pre";
   const cupomCambial = useMemo(
-    () => calcularCupomCambial(curvas?.pre ?? [], curvaUsEmAnos),
-    [curvas, curvaUsEmAnos]
+    () => calcularCupomCambial(cupomBase === "di" ? data?.curvaDi?.vertices ?? [] : curvas?.pre ?? [], curvaUsEmAnos),
+    [cupomBase, data, curvas, curvaUsEmAnos]
   );
 
-  // BRL/USD: preço no gráfico, variação por janela na tabela.
-  const usdBrlSerie = useMemo(() => {
-    const s = data?.series.find((x) => x.symbol === "USDBRL=X");
-    if (!s) return null;
-    const serie = (s.sparkline ?? []).map((v, i) => ({ rotulo: String(i + 1), valor: v }));
-    const janelas = [
-      { rotulo: "1D", anos: 0, valor: s.chg1d != null ? s.chg1d * 100 : null },
-      { rotulo: "5D", anos: 0, valor: s.chg5d != null ? s.chg5d * 100 : null },
-      { rotulo: "1M", anos: 0, valor: s.chg1m != null ? s.chg1m * 100 : null },
-      { rotulo: "3M", anos: 0, valor: s.chg3m != null ? s.chg3m * 100 : null },
-      { rotulo: "6M", anos: 0, valor: s.chg6m != null ? s.chg6m * 100 : null },
-      { rotulo: "12M", anos: 0, valor: s.chg12m != null ? s.chg12m * 100 : null },
+  // WO-69: os quatro pares de câmbio, com a janela lembrada.
+  const [janelaFx, setJanelaFx] = usePersistedState<JanelaFx>("macro-cambio-janela", "3M");
+  const paresCambio: ParCambio[] = useMemo(() => {
+    const s = (sym: string) => data?.series.find((x) => x.symbol === sym);
+    return [
+      { titulo: "USD/BRL", simbolo: "USDBRL=X", unidade: "R$ por US$", serie: s("USDBRL=X"), decimais: 4, cor: "#f87171" },
+      { titulo: "EUR/BRL", simbolo: "EURBRL=X", unidade: "R$ por €", serie: s("EURBRL=X"), decimais: 4, cor: "#fbbf24" },
+      { titulo: "EUR/USD", simbolo: "EURUSD=X", unidade: "US$ por €", serie: s("EURUSD=X"), decimais: 4, cor: "#22d3ee" },
+      { titulo: "USD/CNY", simbolo: "USDCNY=X", unidade: "¥ por US$", serie: s("USDCNY=X"), decimais: 4, cor: "#a78bfa" },
     ];
-    return { serie, janelas, dataDoDado: s.dataDoDado ?? null };
   }, [data]);
 
   // Status das sessões
@@ -340,24 +341,79 @@ export default function MacroPage() {
 
     const out: any[] = [];
 
-    // 1 — Pré (Tesouro)
-    out.push({
-      ...daCurvaTesouro(
-        curvas?.pre ?? [], curvas?.historico?.pre, "Pré (Tesouro) — curva nominal BR", "#fbbf24",
-        "Curva dos títulos prefixados do Tesouro (LTN/NTN-F). Não é a curva de futuros DI1 da B3."
-      ),
-      fonte: "Tesouro Transparente",
-      dataDoDado: curvas?.dataBase ?? null,
-      vazio: "Curva do Tesouro indisponível nesta execução.",
-    });
+    // WO-69: Pré e NTN-B vêm da ANBIMA; Δ1M/Δ3M que ainda vêm do Tesouro Transparente (reserva,
+    // até o arquivo próprio acumular) levam (TT) no cabeçalho e a nota explica.
+    const fonteBr = curvas?.fonte ?? "Tesouro Transparente";
+    const fh = curvas?.fonteHistorico;
+    const colunasBr: ColunaTabela[] = colunasCurva.map((c) =>
+      (c.chave === "d21" || c.chave === "d63") && fh?.[c.chave] === "tesouro" ? { ...c, rotulo: `${c.rotulo} (TT)` } : c
+    );
+    const notaHistorico = fh && (fh.d21 === "tesouro" || fh.d63 === "tesouro")
+      ? ` Δ marcado (TT) compara com o Tesouro Transparente (data-base ${curvas?.tesouroDataBase ? fmtDateBR(curvas.tesouroDataBase) : "—"}) até o arquivo próprio da ANBIMA acumular 21 e 63 pregões — tem ${curvas?.arquivoAnbima ?? 0}.`
+      : "";
 
-    // WO-62 — DI futuros (B3) pelo terminal MT5: a curva que a plataforma nunca teve. Entra depois
-    // do par Pré/Treasuries, em largura inteira (nível + variações), com o contrato na tabela.
+    // 1 — Pré
+    const pre = daCurvaTesouro(
+      curvas?.pre ?? [], curvas?.historico?.pre,
+      fonteBr === "ANBIMA" ? "Pré (ANBIMA) — curva nominal BR" : "Pré (Tesouro) — curva nominal BR", "#fbbf24",
+      (fonteBr === "ANBIMA"
+        ? "Taxas indicativas da ANBIMA para LTN/NTN-F — a referência de mercado, publicada no próprio dia (~19h). Não é a curva de futuros DI1 da B3."
+        : "Curva dos títulos prefixados do Tesouro Direto (LTN/NTN-F), preço de varejo — a ANBIMA não respondeu. Não é a curva de futuros DI1 da B3.") + notaHistorico
+    );
+    out.push({ ...pre, tabela: { ...pre.tabela, colunas: colunasBr }, fonte: fonteBr, dataDoDado: curvas?.dataBase ?? null, vazio: "Curva pré indisponível nesta execução." });
+
+    // 2 — Treasuries US: a curva par OFICIAL (14 vértices, variações medidas no próprio arquivo).
+    // Yahoo (4 vértices reconstruídos de `hoje − variação`) só quando a oficial falta.
+    const oficial = data?.curvaUs ?? null;
+    if (oficial?.vertices?.length) {
+      const linha = daCurvaTesouro(
+        oficial.vertices, oficial.historico, "Treasuries US — curva nominal (oficial)", "#22d3ee",
+        "Curva par do Tesouro americano, 1M a 30Y. O arquivo do dia sai depois do fechamento de Nova York: durante o pregão é a de D-1."
+      );
+      const y10 = oficial.vertices.find((v) => v.vencimento === "10Y")?.taxa ?? null;
+      const y3m = oficial.vertices.find((v) => v.vencimento === "3M")?.taxa ?? null;
+      const inclinacao = curveSlope(y10, y3m);
+      out.push({
+        ...linha,
+        nota: `${linha.nota}${inclinacao.slope != null ? ` Curva ${inclinacao.label} (10Y−3M: ${fmtNum(inclinacao.slope, 2)}%).` : ""}${data?.motivos?.UST ? ` ${data.motivos.UST}` : ""}`,
+        fonte: oficial.fonte,
+        dataDoDado: oficial.dataDoDado,
+        vazio: "Curva americana indisponível.",
+      });
+    } else {
+      const tenores: [string, string][] = [["^IRX", "3M"], ["^FVX", "5Y"], ["^TNX", "10Y"], ["^TYX", "30Y"]];
+      const us = tenores.map(([sym, rotulo]) => {
+        const s = data?.series.find((x) => x.symbol === sym);
+        const hoje = s?.last ?? null;
+        const volta = (chg: number | null | undefined) => (hoje != null && chg != null ? hoje - chg / 100 : null);
+        const pp = (chg: number | null | undefined) => (chg != null ? chg / 100 : null);
+        return {
+          x: rotulo, hoje,
+          d1: volta(s?.chg1d), d5: volta(s?.chg5d), d21: volta(s?.chg1m), d63: volta(s?.chg3m),
+          vd1: pp(s?.chg1d), vd5: pp(s?.chg5d), vd21: pp(s?.chg1m), vd63: pp(s?.chg3m),
+        };
+      });
+      out.push({
+        titulo: "Treasuries US — curva nominal (Yahoo, reserva)",
+        fonte: "Yahoo Finance",
+        dataDoDado: data?.series.find((x) => x.symbol === "^TNX")?.dataDoDado ?? null,
+        nota: `A curva oficial do Tesouro americano não respondeu${data?.motivos?.UST ? ` (${data.motivos.UST})` : ""}: 4 vértices do Yahoo, com o 3M como taxa de desconto.${usYieldCurve?.slopeInfo.slope != null ? ` Curva ${usYieldCurve.slopeInfo.label} (10Y−3M: ${fmtNum(usYieldCurve.slopeInfo.slope, 2)}%).` : ""}`,
+        nivel: { dados: us.map((u) => ({ x: u.x, hoje: u.hoje })), xKey: "x", series: [{ chave: "hoje", nome: "Hoje", cor: "#22d3ee" }] },
+        variacao: {
+          dados: us, xKey: "x",
+          series: [{ chave: "hoje", nome: "Hoje", cor: "#22d3ee" }, ...HIST.map((h) => ({ chave: h.chave, nome: h.nome, cor: h.cor, tracejada: true, opacidade: h.op }))],
+        },
+        tabela: { colunas: colunasCurva, linhas: us.map((u) => ({ vertice: u.x, taxa: u.hoje, d1: u.vd1, d5: u.vd5, d21: u.vd21, d63: u.vd63 })) },
+        vazio: "Séries de Treasuries indisponíveis.",
+      });
+    }
+
+    // WO-62 — DI futuros (B3) pelo terminal MT5.
     const di = data?.curvaDi ?? null;
     const linhaDi = {
       ...daCurvaTesouro(
         di?.vertices ?? [], di?.historico, "DI futuros (B3) — curva de juros pelo MT5", "#22d3ee",
-        "Taxa dos contratos DI1 da B3 (F = jan, J = abr, N = jul, V = out), lida do terminal MetaTrader 5 da Genial. É a curva de futuros que o Pré (Tesouro) aproxima; a variação compara com o fechamento de N pregões antes da data do dado."
+        "Taxa dos contratos DI1 da B3 (F = jan, J = abr, N = jul, V = out), lida do terminal MetaTrader 5 da Genial. É a curva de futuros que o Pré aproxima; a variação compara com o fechamento de N pregões antes da data do dado."
       ),
       fonte: di?.fonte ?? "MT5 · Genial (futuros DI1 da B3)",
       dataDoDado: di?.dataDoDado ?? null,
@@ -367,120 +423,76 @@ export default function MacroPage() {
       linhaDi.tabela = { ...linhaDi.tabela, colunas: [{ chave: "contrato", rotulo: "CONTRATO", tipo: "texto" as const }, ...colunasCurva], linhas: di.vertices.map((v) => ({ contrato: v.contrato, vertice: rot(v.vencimento), taxa: v.taxa, d1: v.d1, d5: v.d5, d21: v.d21, d63: v.d63 })) };
     }
 
-    // 2 — Treasuries US: as curvas passadas são reconstruídas de `hoje − variação`, que é o
-    // método que este painel já usava para desenhar "1M atrás".
-    const tenores: [string, string][] = [["^IRX", "3M"], ["^FVX", "5Y"], ["^TNX", "10Y"], ["^TYX", "30Y"]];
-    const us = tenores.map(([sym, rotulo]) => {
-      const s = data?.series.find((x) => x.symbol === sym);
-      const hoje = s?.last ?? null;
-      const volta = (chg: number | null | undefined) => (hoje != null && chg != null ? hoje - chg / 100 : null);
-      // O grupo JURO já entrega as variações em bps; a tabela padronizada trabalha em pp.
-      const pp = (chg: number | null | undefined) => (chg != null ? chg / 100 : null);
-      return {
-        x: rotulo, hoje,
-        d1: volta(s?.chg1d), d5: volta(s?.chg5d), d21: volta(s?.chg1m), d63: volta(s?.chg3m),
-        vd1: pp(s?.chg1d), vd5: pp(s?.chg5d), vd21: pp(s?.chg1m), vd63: pp(s?.chg3m),
-      };
-    });
-    out.push({
-      titulo: "Treasuries US — curva nominal",
-      fonte: "Yahoo Finance",
-      dataDoDado: data?.series.find((x) => x.symbol === "^TNX")?.dataDoDado ?? null,
-      nota: usYieldCurve?.slopeInfo.slope != null
-        ? `Curva ${usYieldCurve.slopeInfo.label} (10Y−3M: ${fmtNum(usYieldCurve.slopeInfo.slope, 2)}%).`
-        : undefined,
-      nivel: {
-        dados: us.map((u) => ({ x: u.x, hoje: u.hoje })),
-        xKey: "x",
-        series: [{ chave: "hoje", nome: "Hoje", cor: "#22d3ee" }],
-      },
-      variacao: {
-        dados: us, xKey: "x",
-        series: [
-          { chave: "hoje", nome: "Hoje", cor: "#22d3ee" },
-          ...HIST.map((h) => ({ chave: h.chave, nome: h.nome, cor: h.cor, tracejada: true, opacidade: h.op })),
-        ],
-      },
-      tabela: {
-        colunas: colunasCurva,
-        linhas: us.map((u) => ({ vertice: u.x, taxa: u.hoje, d1: u.vd1, d5: u.vd5, d21: u.vd21, d63: u.vd63 })),
-      },
-      vazio: "Séries de Treasuries indisponíveis.",
-    });
-
-    // 2b — DI futuros (WO-62), primeira linha em largura inteira
+    // 3 — DI futuros
     out.push(linhaDi);
 
-    // 3 — Cupom cambial: derivado nas duas pontas, por isso EST.
+    // 4 — Cupom cambial = DI (MT5) × Treasuries (oficial). Derivado nas duas pontas, por isso EST.
+    const contratoDe = new Map((di?.vertices ?? []).map((v) => [v.vencimento, v.contrato]));
+    const usData = oficial?.dataDoDado ?? data?.series.find((x) => x.symbol === "^TNX")?.dataDoDado ?? null;
+    const brData = cupomBase === "di" ? di?.dataDoDado ?? null : curvas?.dataBase ?? null;
+    // O derivado só é tão fresco quanto a ponta mais velha.
+    const cupomData = brData && usData ? (brData < usData ? brData : usData) : brData ?? usData;
     out.push({
-      titulo: "Cupom cambial — diferencial BR × US",
-      fonte: "derivado (pré × Treasuries)",
-      dataDoDado: curvas?.dataBase ?? null,
+      titulo: cupomBase === "di" ? "Cupom cambial — DI × Treasuries" : "Cupom cambial — Pré × Treasuries",
+      fonte: cupomBase === "di" ? "derivado (DI futuros MT5 × Treasuries)" : "derivado (pré × Treasuries)",
+      dataDoDado: cupomData,
       estimado: true,
-      nota: "Derivado: (1+pré)/(1+US)−1, com a curva US interpolada para o prazo de cada vértice brasileiro. Fora do intervalo dos Treasuries o vértice fica em —.",
-      nivel: {
-        dados: cupomCambial.map((c) => ({ x: rot(c.vencimento), hoje: c.cupom })),
-        xKey: "x",
-        series: [{ chave: "hoje", nome: "Cupom", cor: "#a78bfa" }],
-      },
+      nota: `Derivado: (1+BR)/(1+US)−1, com a curva americana interpolada no prazo de cada vértice. BR de ${brData ? fmtDateBR(brData) : "—"}${cupomBase === "di" ? " (DI, ao vivo)" : " (Pré — a DI não respondeu)"}, US de ${usData ? fmtDateBR(usData) : "—"}. Fora do intervalo dos Treasuries o vértice fica em —.`,
+      nivel: { dados: cupomCambial.map((c) => ({ x: rot(c.vencimento), hoje: c.cupom })), xKey: "x", series: [{ chave: "hoje", nome: "Cupom", cor: "#a78bfa" }] },
       variacao: {
         dados: cupomCambial.map((c) => ({ x: rot(c.vencimento), hoje: c.cupom, taxaBr: c.taxaBr, taxaUs: c.taxaUs })),
         xKey: "x",
         series: [
           { chave: "hoje", nome: "Cupom", cor: "#a78bfa" },
-          { chave: "taxaBr", nome: "Pré BR", cor: "#fbbf24", tracejada: true, opacidade: 0.7 },
+          { chave: "taxaBr", nome: cupomBase === "di" ? "DI" : "Pré BR", cor: "#fbbf24", tracejada: true, opacidade: 0.7 },
           { chave: "taxaUs", nome: "US interp.", cor: "#22d3ee", tracejada: true, opacidade: 0.7 },
         ],
       },
       tabela: {
         colunas: [
-          { chave: "vertice", rotulo: "VÉRTICE", tipo: "texto" },
-          { chave: "taxaBr", rotulo: "PRÉ BR", tipo: "taxa" },
+          { chave: "vertice", rotulo: cupomBase === "di" ? "CONTRATO · VENC." : "VÉRTICE", tipo: "texto" },
+          { chave: "taxaBr", rotulo: cupomBase === "di" ? "DI" : "PRÉ BR", tipo: "taxa" },
           { chave: "taxaUs", rotulo: "US", tipo: "taxa" },
           { chave: "taxa", rotulo: "CUPOM", tipo: "taxa" },
         ] as ColunaTabela[],
-        linhas: cupomCambial.map((c) => ({ vertice: rot(c.vencimento), taxaBr: c.taxaBr, taxaUs: c.taxaUs, taxa: c.cupom })),
+        linhas: cupomCambial.map((c) => ({ vertice: `${contratoDe.get(c.vencimento) ?? ""} ${rot(c.vencimento)}`.trim(), taxaBr: c.taxaBr, taxaUs: c.taxaUs, taxa: c.cupom })),
       },
-      vazio: "Precisa da curva pré e dos Treasuries para calcular.",
+      vazio: "Precisa da curva DI (ou pré) e dos Treasuries para calcular.",
     });
 
-    // 4 — BRL/USD: não é curva. Preço à esquerda, variação por janela à direita.
+    // 5 — NTN-B (ANBIMA) com a curva DAP do MT5 por cima: a mesma taxa real, pelo mercado de futuros, ao vivo.
+    const ntnb = daCurvaTesouro(
+      curvas?.ntnb ?? [], curvas?.historico?.ntnb,
+      fonteBr === "ANBIMA" ? "NTN-B (ANBIMA) — curva real BR · DAP ao vivo" : "NTN-B (Tesouro) — curva real BR · DAP ao vivo", "#34d399",
+      (fonteBr === "ANBIMA" ? "Taxa real (acima do IPCA) indicativa da ANBIMA para as NTN-B." : "Taxa real (acima do IPCA) dos títulos Tesouro IPCA+ — a ANBIMA não respondeu.") + notaHistorico
+    );
+    const dap = data?.curvaDap ?? null;
+    if (dap?.vertices?.length) {
+      const porX = new Map<string, any>(ntnb.variacao.dados.map((d: any) => [d.x, d]));
+      for (const v of dap.vertices) {
+        const x = rot(v.vencimento);
+        porX.set(x, { ...(porX.get(x) ?? { x }), dap: v.taxa });
+      }
+      ntnb.variacao = {
+        ...ntnb.variacao,
+        dados: Array.from(porX.values()).sort((a, b) => (a.x < b.x ? -1 : 1)),
+        series: [...ntnb.variacao.series, { chave: "dap", nome: `DAP · MT5${dap.dataDoDado ? ` ${fmtDateBR(dap.dataDoDado)}` : ""}`, cor: "#22d3ee" }],
+      };
+      ntnb.nota += " A linha DAP é o cupom de IPCA — o futuro de juro real da B3 — lido do terminal MT5 ao vivo; os contratos vencem nas datas das NTN-B.";
+    }
     out.push({
-      titulo: "BRL/USD — preço e variações",
-      fonte: "Yahoo Finance",
-      dataDoDado: usdBrlSerie?.dataDoDado ?? null,
-      nota: "Esquerda: preço nos últimos pregões. Direita: variação acumulada por janela.",
-      nivel: {
-        dados: (usdBrlSerie?.serie ?? []).map((p) => ({ x: p.rotulo, hoje: p.valor })),
-        xKey: "x",
-        series: [{ chave: "hoje", nome: "USD/BRL", cor: "#f87171" }],
-        unidade: "",
-      },
-      variacao: {
-        dados: (usdBrlSerie?.janelas ?? []).map((j) => ({ x: j.rotulo, hoje: j.valor })),
-        xKey: "x",
-        series: [{ chave: "hoje", nome: "Variação", cor: "#f87171" }],
-        unidade: "%",
-      },
-      tabela: {
-        colunas: [
-          { chave: "vertice", rotulo: "JANELA", tipo: "texto" },
-          { chave: "variacao", rotulo: "VARIAÇÃO", tipo: "pct" },
-        ] as ColunaTabela[],
-        linhas: (usdBrlSerie?.janelas ?? []).map((j) => ({ vertice: j.rotulo, variacao: j.valor })),
-      },
-      vazio: "Série USD/BRL indisponível nesta execução.",
-    });
-
-    // 5 — NTN-B
-    out.push({
-      ...daCurvaTesouro(
-        curvas?.ntnb ?? [], curvas?.historico?.ntnb, "NTN-B — curva real BR", "#34d399",
-        "Taxa real (acima do IPCA) dos títulos Tesouro IPCA+."
-      ),
-      fonte: "Tesouro Transparente",
+      ...ntnb,
+      tabela: { ...ntnb.tabela, colunas: colunasBr },
+      fonte: fonteBr,
       dataDoDado: curvas?.dataBase ?? null,
       vazio: "Curva NTN-B indisponível nesta execução.",
+      tabelaExtra: dap?.vertices?.length
+        ? {
+            titulo: `Cupom de IPCA (DAP) — contratos no MT5${dap.dataDoDado ? ` · ${fmtDateBR(dap.dataDoDado)}` : ""}`,
+            colunas: [{ chave: "contrato", rotulo: "CONTRATO", tipo: "texto" as const }, ...colunasCurva],
+            linhas: dap.vertices.map((v) => ({ contrato: v.contrato, vertice: rot(v.vencimento), taxa: v.taxa, d1: v.d1, d5: v.d5, d21: v.d21, d63: v.d63 })),
+          }
+        : undefined,
     });
 
     // 6 — IPCA & IGP-M: série mensal e acumulados COMPOSTOS.
@@ -534,7 +546,7 @@ export default function MacroPage() {
     });
 
     return out;
-  }, [curvas, data, cupomCambial, usdBrlSerie, usYieldCurve]);
+  }, [curvas, data, cupomCambial, cupomBase, usYieldCurve]);
 
   return (
     <div className="p-4 space-y-4 max-w-7xl mx-auto font-mono">
@@ -810,15 +822,26 @@ export default function MacroPage() {
 
         {ratesOpen && (
           <div className="p-3 space-y-3">
-            {/* WO-34 §A: Pré e Treasuries dividem a primeira linha, cada um só com o painel de
-                variações — o nível já se lê na coluna TAXA da tabela. As demais seguem em
-                largura inteira com os dois painéis. */}
+            {/* WO-69: blocos de dois — Pré | Treasuries · DI | Cupom · NTN-B | Câmbio — e a
+                inflação em largura inteira. Nos cinco cartões de curva só o painel de variações:
+                o nível se lê na coluna TAXA da tabela (WO-34 §A). */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
               {linhasRates.slice(0, 2).map((l) => (
                 <LinhaRates key={l.titulo} {...l} modo="somenteVariacao" />
               ))}
             </div>
-            {linhasRates.slice(2).map((l) => (
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+              {linhasRates.slice(2, 4).map((l) => (
+                <LinhaRates key={l.titulo} {...l} modo="somenteVariacao" />
+              ))}
+            </div>
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+              {linhasRates.slice(4, 5).map((l) => (
+                <LinhaRates key={l.titulo} {...l} modo="somenteVariacao" />
+              ))}
+              <CartoesCambio pares={paresCambio} janela={janelaFx} onJanela={setJanelaFx} motivos={data?.motivos} />
+            </div>
+            {linhasRates.slice(5).map((l) => (
               <LinhaRates key={l.titulo} {...l} />
             ))}
           </div>

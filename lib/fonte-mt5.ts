@@ -343,6 +343,13 @@ export async function curvaDiMt5(): Promise<{ contratos: ContratoDi[]; sessao: s
   return j;
 }
 
+/** WO-69: os contratos DAP (cupom de IPCA — juro real) vigentes pela ponte. Mesma forma da DI. */
+export async function curvaDapMt5(): Promise<{ contratos: ContratoDi[]; sessao: string } | null> {
+  const j = await buscarJsonPonte<{ contratos: ContratoDi[]; sessao: string }>("/curva-dap", TIMEOUT_CURVA_DI_MS);
+  if (!j || !Array.isArray(j.contratos) || j.contratos.length === 0) return null;
+  return j;
+}
+
 export interface VerticeDi extends VerticeCurva {
   contrato: string;
   bid: number | null;
@@ -367,7 +374,7 @@ const OFFSETS: Record<Horizonte, number> = { d1: 1, d5: 5, d21: 21, d63: 63 };
  * a taxa de agora com o fechamento de N pregões ANTES da data do dado (o candle do próprio dia
  * não conta como "1D atrás"). Sem fechamento naquele ponto → `null`, nunca zero.
  */
-export function montarCurvaDi(contratos: ContratoDi[], hojeIso: string): CurvaDi {
+export function montarCurvaDi(contratos: ContratoDi[], hojeIso: string, fonte = "MT5 · Genial (futuros DI1 da B3)"): CurvaDi {
   const ordenados = [...contratos].filter((c) => c.taxa > 0 && c.vencimento > hojeIso).sort((a, b) => (a.vencimento < b.vencimento ? -1 : 1));
   const datasTick = ordenados.map((c) => c.tickAt?.slice(0, 10)).filter((d): d is string => !!d).sort();
   const dataDoDado = datasTick.length ? datasTick[datasTick.length - 1] : hojeIso;
@@ -400,7 +407,7 @@ export function montarCurvaDi(contratos: ContratoDi[], hojeIso: string): CurvaDi
       d63: delta.d63 ?? null,
     };
   });
-  return { dataDoDado, fonte: "MT5 · Genial (futuros DI1 da B3)", vertices, historico, datasComparacao };
+  return { dataDoDado, fonte, vertices, historico, datasComparacao };
 }
 
 /** "MT5 · Genial · tick 16:54:57" — o que a barra de veracidade mostra. */

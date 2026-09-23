@@ -2189,7 +2189,9 @@ async function testesWo33() {
   const iniBloco = srcMacro.indexOf("const linhasRates = useMemo");
   const fimBloco = srcMacro.indexOf("}, [curvas, data, cupomCambial", iniBloco);
   const bloco = srcMacro.slice(iniBloco, fimBloco);
-  const ordemLinhas = ["Pré (Tesouro)", "Treasuries US", "Cupom cambial", "BRL/USD", "NTN-B", "IPCA & IGP-M"];
+  // WO-69: Pré e NTN-B vêm da ANBIMA; a DI (WO-62) ficou entre Treasuries e cupom; o BRL/USD saiu do
+  // bloco e virou os quatro cartões de câmbio (CartoesCambio), renderizados ao lado da NTN-B.
+  const ordemLinhas = ["Pré (ANBIMA)", "Treasuries US", "DI futuros (B3)", "Cupom cambial", "NTN-B (ANBIMA)", "IPCA & IGP-M"];
   const idx = ordemLinhas.map((t) => bloco.indexOf(t));
   const linhasEmOrdem = idx.every((v, i) => v > 0 && (i === 0 || v > idx[i - 1]));
   // WO-46 §3 inverteu a ordem das secoes (Rates antes do Impacto, que agora fecha a pagina).
@@ -6453,7 +6455,8 @@ Líquido para 04/09/2026 5.134,69 D`;
     const iPre = pag.indexOf('"Pré (Tesouro) — curva nominal BR"');
     const iDi = pag.indexOf('"DI futuros (B3) — curva de juros pelo MT5"');
     const iPush = pag.indexOf("out.push(linhaDi);");
-    const iCupom = pag.indexOf("// 3 — Cupom cambial");
+    // WO-69: o cupom virou o item 4 (a DI é o 3); o que o teste guarda é a ordem DI → cupom.
+    const iCupom = pag.indexOf("// 4 — Cupom cambial");
     const pagOk = iPre > 0 && iDi > iPre && iPush > iDi && iCupom > iPush && /data\?\.curvaDi/.test(pag) && /chave: "contrato", rotulo: "CONTRATO"/.test(pag) && /Curva DI indisponível/.test(pag)
       && /s\.fonte === "mt5" && <span/.test(pag) && /Não é a curva de futuros DI1 da B3\./.test(pag);
     if (pagOk) console.log("✔ WO-62 Teste 3: Rates & FX ganha a linha 'DI futuros (B3) — curva de juros pelo MT5' em largura inteira, depois do par Pré/Treasuries, com o contrato na tabela e o aviso quando a ponte falta; as séries vindas do terminal levam o chip MT5; o Pré continua rotulado como Tesouro");
@@ -7036,6 +7039,180 @@ Líquido para 04/09/2026 5.134,69 D`;
       && /WO-68/.test(anti) && /## Executado/.test(wo68) && !/_\(preenchido após a conferência\)_/.test(wo68);
     if (docsOk) console.log("✔ WO-68 Teste 3: a skill de boletagem, o Manual, o ANTIGRAVITY e a WO-68 dizem que corrigir é estorno + boleta certa, e que o append-only continua de pé");
     else { console.log(`✘ WO-68 Teste 3 falhou: docs=${docsOk}`); failures++; }
+  }
+
+  // ---------------------------------------------------------------------------------------------
+  // WO-69 — Rates & FX: ANBIMA, curva oficial americana, DAP ao vivo, cupom pela DI, câmbio em 4 pares
+  // ---------------------------------------------------------------------------------------------
+  {
+    const A = await import("../anbima");
+    // Um arquivo ms<aammdd>.txt reduzido, no layout real (separador @, vírgula decimal, AAAAMMDD).
+    const arquivo = [
+      "ANBIMA - Associação Brasileira das Entidades dos Mercados Financeiro e de Capitais",
+      "",
+      "Titulo@Data Referencia@Codigo SELIC@Data Base/Emissao@Data Vencimento@Tx. Compra@Tx. Venda@Tx. Indicativas@PU@Desvio padrao@Interv. Ind. Inf. (D0)@Interv. Ind. Sup. (D0)@Interv. Ind. Inf. (D+1)@Interv. Ind. Sup. (D+1)@Criterio",
+      "LTN@20260922@100000@20240705@20261001@13,6997@13,6766@13,6881@996,442771@0,00629252769164@13,5324@13,8952@13,5311@13,898@Calculado",
+      "LTN@20260922@100000@20250110@20270401@13,3281@13,3089@13,3162@938,010425@0,0031757579552@13,1355@13,6012@13,1192@13,5817@Calculado",
+      "NTN-F@20260922@950199@20200110@20270101@13,5000@13,4800@13,4900@1000,1@0,001@13,4@13,6@13,4@13,6@Calculado",
+      "LTN@20260922@100000@20230707@20270101@13,4100@13,3900@13,4000@960,5@0,001@13,3@13,5@13,3@13,5@Calculado",
+      "LFT@20260922@210100@20200101@20290301@0,0100@0,0080@0,0090@16000,1@0,0001@0@0,02@0@0,02@Calculado",
+      "NTN-B@20260922@760199@20000715@20290515@7,4900@7,4600@7,4766@4500,12@0,002@7,4@7,6@7,4@7,6@Calculado",
+      "NTN-B@20260922@760199@20000715@20350515@7,5600@7,5300@7,5450@4300,5@0,002@7,5@7,6@7,5@7,6@Calculado",
+    ].join("\r\n");
+    const { snapshot, falhas } = A.parseAnbimaMercadoSecundario(arquivo);
+    const parseOk = !!snapshot && snapshot.dataReferencia === "2026-09-22"
+      // 20261001 está a 9 dias: descartado (< 3 meses), com o aviso; 20270101 tem LTN e NTN-F → a LTN (zero-cupom) prevalece
+      && snapshot.pre.map((p) => `${p.vencimento}=${p.taxa}`).join(",") === "2027-01-01=13.4,2027-04-01=13.3162"
+      && snapshot.ntnb.map((p) => `${p.vencimento}=${p.taxa}`).join(",") === "2029-05-15=7.4766,2035-05-15=7.545"
+      && falhas.length === 1 && /1 vértice\(s\) a menos de 3 meses/.test(falhas[0]);
+    const layoutOk = A.parseAnbimaMercadoSecundario("<html>erro</html>").snapshot === null && A.parseAnbimaMercadoSecundario("").falhas.length === 1;
+    const nomeOk = A.nomeArquivoAnbima("2026-09-22") === "ms260922.txt" && A.nomeArquivoAnbima("2027-01-05") === "ms270105.txt";
+    // 1 pregão antes de terça 22/09 é segunda 21/09; 5 pregões antes é 15/09 (o mesmo que a rota devolveu ao vivo).
+    const calendarioOk = A.dataNPregoesAntes("2026-09-22", 1) === "2026-09-21" && A.dataNPregoesAntes("2026-09-22", 5) === "2026-09-15" && A.dataNPregoesAntes("2026-09-21", 1) === "2026-09-18";
+    if (parseOk && layoutOk && nomeOk && calendarioOk) console.log("✔ WO-69 Teste 1: parseAnbimaMercadoSecundario lê o layout real (separador @, vírgula, AAAAMMDD), junta LTN e NTN-F com a LTN prevalecendo, separa a NTN-B, ignora LFT, descarta a ponta curta com aviso e devolve null quando o layout não bate; nomeArquivoAnbima e dataNPregoesAntes batem com o calendário da B3");
+    else { console.log(`✘ WO-69 Teste 1 falhou: parse=${parseOk} layout=${layoutOk} nome=${nomeOk} cal=${calendarioOk} ${JSON.stringify({ snapshot, falhas })}`); failures++; }
+  }
+
+  {
+    const A = await import("../anbima");
+    type S = import("../anbima").SnapshotAnbima;
+    const snap = (data: string, pre: number, ntnb: number): S => ({ dataReferencia: data, pre: [{ vencimento: "2027-04-01", taxa: pre }], ntnb: [{ vencimento: "2029-05-15", taxa: ntnb }] });
+    const hoje = snap("2026-09-22", 13.3162, 7.4766);
+    const d1 = A.dataNPregoesAntes("2026-09-22", 1);
+    const d5 = A.dataNPregoesAntes("2026-09-22", 5);
+    const d21 = A.dataNPregoesAntes("2026-09-22", 21);
+    const arquivo: Record<string, S> = { [hoje.dataReferencia]: hoje, [d1]: snap(d1, 13.3341, 7.4344), [d5]: snap(d5, 13.3687, 7.52) };
+    const tesouro = {
+      dataBase: "2026-09-18",
+      datasComparacao: { d1: "2026-09-17", d5: "2026-09-11", d21: "2026-08-19", d63: null },
+      pre: [], ntnb: [],
+      historico: {
+        pre: { d1: [{ vencimento: "2027-04-01", taxa: 13.2 }], d5: [], d21: [{ vencimento: "2027-04-01", taxa: 13.1 }], d63: [] },
+        ntnb: { d1: [], d5: [], d21: [{ vencimento: "2029-05-15", taxa: 8.05 }], d63: [] },
+      },
+      falhas: [],
+    };
+    const { curvas, fonteHistorico } = A.montarCurvasAnbima(hoje, arquivo, tesouro as any);
+    const p = curvas.pre[0];
+    const n = curvas.ntnb[0];
+    // Δ1D e Δ5D pelo arquivo (mesmos números que a rota devolveu ao vivo em 23/09); Δ1M pelo Tesouro, com a data que ELE usou; Δ3M sem nada → null.
+    const deltasOk = Math.abs((p.d1 ?? 0) - -0.0179) < 1e-9 && Math.abs((p.d5 ?? 0) - -0.0525) < 1e-9 && Math.abs((p.d21 ?? 0) - 0.2162) < 1e-9 && p.d63 === null
+      && Math.abs((n.d21 ?? 0) - -0.5734) < 1e-9 && n.d1 != null;
+    const fontesOk = fonteHistorico.d1 === "anbima" && fonteHistorico.d5 === "anbima" && fonteHistorico.d21 === "tesouro" && fonteHistorico.d63 === null
+      && curvas.datasComparacao.d1 === d1 && curvas.datasComparacao.d21 === "2026-08-19" && curvas.datasComparacao.d63 === null
+      // o Tesouro tem d1, mas Δ1D NUNCA mistura fontes: o arquivo tinha o pregão, e é ele que vale
+      && curvas.historico.pre.d1[0].taxa === 13.3341 && curvas.historico.pre.d21[0].taxa === 13.1;
+    // Quando o arquivo já tem o pregão de 21 dias úteis atrás, Δ1M vira ANBIMA e o Tesouro sai de cena.
+    const cheio = A.montarCurvasAnbima(hoje, { ...arquivo, [d21]: snap(d21, 13.0, 7.9) }, tesouro as any);
+    const acumuladoOk = cheio.fonteHistorico.d21 === "anbima" && cheio.curvas.datasComparacao.d21 === d21 && Math.abs((cheio.curvas.pre[0].d21 ?? 0) - 0.3162) < 1e-9;
+    const semTesouroOk = A.montarCurvasAnbima(hoje, arquivo, null).fonteHistorico.d21 === null && A.montarCurvasAnbima(hoje, arquivo, null).curvas.pre[0].d21 === null;
+    if (deltasOk && fontesOk && acumuladoOk && semTesouroOk) console.log("✔ WO-69 Teste 2: montarCurvasAnbima mede Δ1D/Δ5D contra o pregão exato do arquivo próprio, completa Δ1M/Δ3M com o Tesouro Transparente (marcado 'tesouro', com a data que ele usou) só enquanto o arquivo não tem o pregão, nunca mistura fontes em Δ1D, e devolve null (não zero) onde não há referência");
+    else { console.log(`✘ WO-69 Teste 2 falhou: deltas=${deltasOk} fontes=${fontesOk} acumulado=${acumuladoOk} semTesouro=${semTesouroOk} ${JSON.stringify({ p, n, fonteHistorico, datas: curvas.datasComparacao })}`); failures++; }
+  }
+
+  {
+    const T = await import("../treasury-us");
+    const csv = [
+      'Date,"1 Mo","1.5 Month","2 Mo","3 Mo","4 Mo","6 Mo","1 Yr","2 Yr","3 Yr","5 Yr","7 Yr","10 Yr","20 Yr","30 Yr"',
+      "09/23/2026,3.99,4.07,4.10,4.19,4.30,4.31,4.49,4.85,4.97,4.99,5.05,5.11,5.45,5.40",
+      "09/22/2026,3.97,4.04,4.09,4.16,4.26,4.26,4.43,4.71,4.81,4.83,4.89,4.96,5.33,5.29",
+      "09/21/2026,3.96,,4.08,4.15,4.25,4.25,4.42,4.70,4.80,4.82,4.88,4.95,5.32,5.28",
+    ].join("\n");
+    const { dias, tenores, falhas } = T.parseTreasuryCsv(csv);
+    const parseOk = falhas.length === 0 && dias.length === 3 && dias[0].data === "2026-09-21" && dias[2].data === "2026-09-23"
+      && dias[2].taxas["10Y"] === 5.11 && dias[2].taxas["3M"] === 4.19 && dias[0].taxas["1.5M"] === undefined && tenores.length === 14;
+    const tenorOk = JSON.stringify(T.tenorDe('"3 Mo"')) === JSON.stringify({ rotulo: "3M", anos: 0.25 }) && JSON.stringify(T.tenorDe("1.5 Month")) === JSON.stringify({ rotulo: "1.5M", anos: 0.125 })
+      && T.tenorDe("10 Yr")?.anos === 10 && T.tenorDe("Date") === null;
+    const curva = T.montarCurvaUs(dias, tenores);
+    const v10 = curva.vertices.find((v) => v.vencimento === "10Y");
+    const curvaOk = curva.dataDoDado === "2026-09-23" && curva.vertices.length === 14 && curva.vertices[0].vencimento === "1M" && curva.vertices[13].vencimento === "30Y"
+      && Math.abs((v10?.d1 ?? 0) - 0.15) < 1e-9 && v10?.d5 === null && curva.datasComparacao.d1 === "2026-09-22" && curva.datasComparacao.d5 === null
+      && curva.historico.d1.find((h) => h.vencimento === "3M")?.taxa === 4.16 && T.montarCurvaUs([], []).vertices.length === 0;
+    // Yahoo continua a reserva, e os quatro símbolos dele continuam na Macro.
+    if (parseOk && tenorOk && curvaOk) console.log("✔ WO-69 Teste 3: parseTreasuryCsv lê o CSV oficial (14 vencimentos, célula vazia vira ausência), tenorDe converte '3 Mo'/'1.5 Month'/'10 Yr' em anos, e montarCurvaUs ordena por prazo, mede Δ1D contra o pregão anterior do próprio arquivo e devolve null onde não há histórico");
+    else { console.log(`✘ WO-69 Teste 3 falhou: parse=${parseOk} tenor=${tenorOk} curva=${curvaOk} ${JSON.stringify({ n: dias.length, t: tenores.length, v10, datas: curva.datasComparacao })}`); failures++; }
+  }
+
+  {
+    const P = await import("../ptax");
+    const usd = P.parsePtax({ value: [
+      { cotacaoVenda: 5.15, dataHoraCotacao: "2026-09-22 10:05:00.000", tipoBoletim: "Abertura" },
+      { cotacaoVenda: 5.1620, dataHoraCotacao: "2026-09-22 13:04:22.361", tipoBoletim: "Fechamento" },
+      { cotacaoVenda: 5.1414, dataHoraCotacao: "2026-09-23 13:04:22.361", tipoBoletim: "Fechamento" },
+      { cotacaoVenda: "x", dataHoraCotacao: "2026-09-24 13:04:22.361", tipoBoletim: "Fechamento" },
+    ] });
+    const eur = P.parsePtax({ value: [
+      { cotacaoVenda: 5.8576, dataHoraCotacao: "2026-09-23 13:04:22.361", tipoBoletim: "Fechamento" },
+      { cotacaoVenda: 5.8700, dataHoraCotacao: "2026-09-22 13:04:22.361", tipoBoletim: "Fechamento" },
+    ] });
+    const cruz = P.cruzarPtax(eur, usd);
+    const ptaxOk = usd.length === 2 && usd[0].data === "2026-09-22" && usd[0].venda === 5.162 && usd[1].venda === 5.1414
+      && eur[0].data === "2026-09-22" && cruz.length === 2 && Math.abs(cruz[1].venda - 5.8576 / 5.1414) < 1e-6
+      && /CotacaoMoedaPeriodo\(moeda=@moeda/.test(P.urlPtaxPeriodo("USD", "2025-09-23", "2026-09-23")) && /@dataInicial='09-23-2025'/.test(P.urlPtaxPeriodo("USD", "2025-09-23", "2026-09-23"))
+      && P.parsePtax(null).length === 0;
+    if (ptaxOk) console.log("✔ WO-69 Teste 4: parsePtax fica só com o boletim de Fechamento, um por dia, em ordem, descartando valor inválido; cruzarPtax dá EUR/USD = EUR/BRL ÷ USD/BRL nas datas comuns; a URL do Olinda leva as datas em MM-DD-AAAA");
+    else { console.log(`✘ WO-69 Teste 4 falhou: ${JSON.stringify({ usd, eur, cruz })}`); failures++; }
+  }
+
+  {
+    const fs69 = await import("node:fs");
+    const path69 = await import("node:path");
+    const ler69 = (rel: string) => fs69.readFileSync(path69.join(process.cwd(), rel), "utf8");
+    const ponte = ler69("scripts/mt5-ponte.py");
+    const fm = ler69("lib/fonte-mt5.ts");
+    const macro = ler69("app/api/macro/route.ts");
+    const curvasBr = ler69("app/api/curvas-br/route.ts");
+    const pag = ler69("app/macro/page.tsx");
+    const lr = ler69("components/macro/LinhaRates.tsx");
+    const cc = ler69("components/macro/CartoesCambio.tsx");
+    const anbSrv = ler69("lib/anbima-servidor.ts");
+
+    const ponteOk = /VERSAO_PONTE = "1\.2\.0"/.test(ponte) && /def rota_curva_dap/.test(ponte) && /def rota_curva_futuros\(prefixo: str\)/.test(ponte)
+      && /"\/curva-dap": rota_curva_dap/.test(ponte) && /e_contrato_futuro\(s\.name, prefixo\)/.test(ponte) && !/order_send|mt5\.login/.test(ponte);
+    const fmOk = /export async function curvaDapMt5/.test(fm) && /"\/curva-dap"/.test(fm) && /export function montarCurvaDi\(contratos: ContratoDi\[\], hojeIso: string, fonte = /.test(fm);
+    // A rota Macro: EURBRL com PTAX, datas1y em toda série, reserva PTAX DEPOIS do Yahoo falhar, DAP e Treasuries no corpo — e o Promise.all da WO-62 intacto.
+    const macroOk = /symbol: "EURBRL=X", nome: "EUR \/ BRL", grupo: "MOEDA", ptax: "EUR"/.test(macro) && /symbol: "USDBRL=X"[^\n]*ptax: "USD"/.test(macro) && /symbol: "EURUSD=X"[^\n]*ptax: "EURUSD"/.test(macro)
+      && /datas1y: candles\.map\(\(c\) => c\.date\)/.test(macro) && /fonte\?: "mt5" \| "yahoo" \| "ptax"/.test(macro)
+      && /const yahoo = await fetchYahooSymbol\(cfg\);/.test(macro) && /if \(cfg\.ptax && \(!yahoo\.ok \|\| yahoo\.stale\)\)/.test(macro) && /serieDeFechamentos\(cfg, candles\.map\(\(c\) => c\.close\), candles, "ptax"\)/.test(macro)
+      && /curvaDap: CurvaDi \| null/.test(macro) && /curvaUs: CurvaUs \| null/.test(macro) && /await Promise\.all\(\[curvaDapMt5\(\), curvaTreasuryOficial\(\)\]\)/.test(macro)
+      && /await Promise\.all\(\[macroMt5\(simbolosMt5\), curvaDiMt5\(\), fetchBrasilMacro\(\)\]\)/.test(macro) && /motivos\["DAP"\]/.test(macro) && /motivos\["UST"\]/.test(macro);
+    // /api/curvas-br: ANBIMA primeiro, Tesouro como reserva, fonteHistorico no corpo.
+    const curvasOk = /await Promise\.all\(\[curvasAnbima\(forcar\), curvasTesouro\(forcar\)\]\)/.test(curvasBr) && /if \(anbima\.hoje\)/.test(curvasBr) && /fonte: "ANBIMA"/.test(curvasBr)
+      && /fonte: "Tesouro Transparente"/.test(curvasBr) && /fonteHistorico: Record<Horizonte, FonteHistorico>/.test(curvasBr) && /arquivoAnbima/.test(curvasBr)
+      && /const DIAS_SEMENTE = 6/.test(anbSrv) && /const CHAVE_ARQUIVO = "anbima-arquivo"/.test(anbSrv) && /emCurso/.test(anbSrv);
+    // A tela: blocos de dois, os cinco cartões de curva só com variações, o câmbio ao lado da NTN-B, a inflação inteira; cupom pela DI; DAP sobre a NTN-B; (TT) nas colunas do Tesouro.
+    const iBloco1 = pag.indexOf("linhasRates.slice(0, 2)");
+    const iBloco2 = pag.indexOf("linhasRates.slice(2, 4)");
+    const iBloco3 = pag.indexOf("linhasRates.slice(4, 5)");
+    const iCambio = pag.indexOf("<CartoesCambio pares={paresCambio} janela={janelaFx} onJanela={setJanelaFx}");
+    const iResto = pag.indexOf("linhasRates.slice(5)");
+    const pagOk = iBloco1 > 0 && iBloco2 > iBloco1 && iBloco3 > iBloco2 && iCambio > iBloco3 && iResto > iCambio
+      && /"Pré \(ANBIMA\) — curva nominal BR"/.test(pag) && /"Treasuries US — curva nominal \(oficial\)"/.test(pag) && /"Cupom cambial — DI × Treasuries"/.test(pag)
+      && /calcularCupomCambial\(cupomBase === "di" \? data\?\.curvaDi\?\.vertices \?\? \[\] : curvas\?\.pre \?\? \[\], curvaUsEmAnos\)/.test(pag)
+      && /if \(data\?\.curvaUs\?\.vertices\?\.length\) return data\.curvaUs\.vertices;/.test(pag)
+      && /chave: "dap", nome: `DAP · MT5/.test(pag) && /tabelaExtra: dap\?\.vertices\?\.length/.test(pag) && /rotulo: `\$\{c\.rotulo\} \(TT\)`/.test(pag)
+      && /usePersistedState<JanelaFx>\("macro-cambio-janela", "3M"\)/.test(pag) && /simbolo: "EURBRL=X"/.test(pag) && !/BRL\/USD — preço e variações/.test(pag);
+    const lrOk = /tabelaExtra\?: \{ titulo: string; colunas: ColunaTabela\[\]; linhas: any\[\] \}/.test(lr) && /function TabelaRates\(/.test(lr) && (lr.match(/<TabelaRates /g) ?? []).length === 2;
+    const ccOk = /\{ chave: "1M", pregoes: 21 \}/.test(cc) && /\{ chave: "1A", pregoes: 252 \}/.test(cc) && /export function recortarJanela/.test(cc) && /<Chip rotulo="1A" valor=\{s\?\.chg12m\} \/>/.test(cc)
+      && /grid grid-cols-1 sm:grid-cols-2 gap-2/.test(cc) && /s\.fonte === "ptax"/.test(cc) && /STALE/.test(cc);
+    if (ponteOk && fmOk && macroOk && curvasOk && pagOk && lrOk && ccOk) console.log("✔ WO-69 Teste 5: a ponte 1.2.0 expõe /curva-dap sobre a mesma rota da DI; a Macro leva EURBRL com reserva PTAX depois do Yahoo, datas em toda série, e DAP e Treasuries oficial no corpo sem tocar no Promise.all da WO-62; /api/curvas-br põe a ANBIMA na frente com o Tesouro de reserva e fonteHistorico; a tela vai em blocos de dois (Pré|Treasuries · DI|Cupom · NTN-B|Câmbio · inflação), o cupom sai da DI, o DAP sobe sobre a NTN-B com tabela extra, (TT) marca as colunas do Tesouro, e os quatro cartões têm janela lembrada e chips");
+    else { console.log(`✘ WO-69 Teste 5 falhou: ponte=${ponteOk} fm=${fmOk} macro=${macroOk} curvas=${curvasOk} pag=${pagOk} lr=${lrOk} cc=${ccOk}`); failures++; }
+  }
+
+  {
+    const fs69 = await import("node:fs");
+    const path69 = await import("node:path");
+    const ler69 = (rel: string) => fs69.readFileSync(path69.join(process.cwd(), rel), "utf8");
+    const fontes = ler69("FONTES-DE-DADOS.md");
+    const manual = ler69("lib/manual-content.ts");
+    const anti = ler69("ANTIGRAVITY.md");
+    const skill = ler69(".claude/skills/engenharia-da-plataforma/SKILL.md");
+    const wo69 = ler69("WO-69-PROMPT.md");
+    const docsOk = /ANBIMA/.test(fontes) && /curva par oficial/.test(fontes) && /\/curva-dap/.test(fontes) && /PTAX/.test(fontes)
+      && /ANBIMA/.test(manual) && /DAP/.test(manual) && /WO-69/.test(anti) && /WO-69/.test(skill)
+      && /## Executado/.test(wo69) && !/_\(preenchido após a conferência\)_/.test(wo69);
+    if (docsOk) console.log("✔ WO-69 Teste 6: FONTES-DE-DADOS (ANBIMA, curva oficial americana, /curva-dap, PTAX), Manual, ANTIGRAVITY, a skill de engenharia e a WO-69 registram as fontes novas e o que foi medido");
+    else { console.log(`✘ WO-69 Teste 6 falhou: docs=${docsOk}`); failures++; }
   }
 
 }

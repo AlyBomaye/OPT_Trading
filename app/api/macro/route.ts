@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { gravarCache, lerCache } from "@/lib/cache-disco";
 import { curvaDiMt5, macroMt5, montarCurvaDi, type CurvaDi, type SerieMacroMt5 } from "@/lib/fonte-mt5";
+import { curvaDapMt5 } from "@/lib/fonte-mt5";
+import { curvaTreasuryOficial } from "@/lib/treasury-us-servidor";
+import type { CurvaUs } from "@/lib/treasury-us";
+import { seriePtax } from "@/lib/ptax-servidor";
 import { rollingHV } from "@/lib/historical";
 import { sessionInfo } from "@/lib/session";
 import {
@@ -27,6 +31,8 @@ export interface MacroSymbolConfig {
   mt5?: string;
   escala?: number;
   soMt5?: boolean;
+  /** WO-69: reserva PTAX (fechamento oficial do BCB) quando o Yahoo falha — USD, EUR ou o cruzamento EUR/USD. */
+  ptax?: "USD" | "EUR" | "EURUSD";
 }
 
 const MACRO_SYMBOLS: MacroSymbolConfig[] = [
@@ -49,10 +55,11 @@ const MACRO_SYMBOLS: MacroSymbolConfig[] = [
   { symbol: "BIT$", nome: "Bitcoin futuro B3 (R$)", grupo: "FUTURO", mt5: "BIT$", soMt5: true },
 
   // MOEDAS
-  { symbol: "USDBRL=X", nome: "USD / BRL", grupo: "MOEDA" },
+  { symbol: "USDBRL=X", nome: "USD / BRL", grupo: "MOEDA", ptax: "USD" },
+  { symbol: "EURBRL=X", nome: "EUR / BRL", grupo: "MOEDA", ptax: "EUR" },
   { symbol: "DOL$", nome: "Dólar futuro B3 (R$/US$)", grupo: "MOEDA", mt5: "DOL$", escala: 0.001, soMt5: true },
   { symbol: "DX-Y.NYB", nome: "DXY (Índice Dólar)", grupo: "MOEDA" },
-  { symbol: "EURUSD=X", nome: "EUR / USD", grupo: "MOEDA" },
+  { symbol: "EURUSD=X", nome: "EUR / USD", grupo: "MOEDA", ptax: "EURUSD" },
   { symbol: "USDCNY=X", nome: "USD / CNY", grupo: "MOEDA" },
 
   // COMMODITIES
@@ -90,6 +97,8 @@ export interface MacroSeries {
   tendencia: "ALTA" | "BAIXA" | "LATERAL" | null;
   sparkline: number[];
   closes1y: number[];
+  /** WO-69: a data de cada fechamento de `closes1y` — a tela recorta janelas por ela. */
+  datas1y?: string[];
   updatedAt: string;
   /**
    * WO-30 §2.1: data do PREGÃO a que `last` se refere (YYYY-MM-DD), lida do timestamp
@@ -99,7 +108,7 @@ export interface MacroSeries {
   dataDoDado: string | null;
   ok: boolean;
   /** WO-62: de onde a série veio nesta rodada. */
-  fonte?: "mt5" | "yahoo";
+  fonte?: "mt5" | "yahoo" | "ptax";
   /** 16/09/2026: `true` quando a rede falhou e este é o último dado bom guardado (memória ou disco). */
   stale?: boolean;
   /** Por que a busca falhou desta vez (HTTP 429, timeout…). Só quando `ok` é false ou `stale` é true. */
@@ -135,6 +144,10 @@ export interface MacroBody {
   motivos: Record<string, string>;
   /** WO-62: a curva de futuros DI1 da B3 pelo terminal MT5; `null` sem ponte (motivo em `motivos.DI1`). */
   curvaDi: CurvaDi | null;
+  /** WO-69: cupom de IPCA (DAP) pelo MT5 — a curva de juro real, ao vivo; `null` sem ponte (motivo em `motivos.DAP`). */
+  curvaDap: CurvaDi | null;
+  /** WO-69: a curva par oficial do Tesouro americano; `null` quando falhou e não havia disco (motivo em `motivos.UST`). */
+  curvaUs: CurvaUs | null;
 }
 
 let cache: { body: MacroBody; at: number } | null = null;
@@ -212,7 +225,7 @@ function descreverErro(e: unknown): string {
 type CandleSimples = { date: string; open: number; high: number; low: number; close: number; volume: number };
 
 /** Uma série pronta a partir dos fechamentos (Yahoo ou MT5) — retornos, HV, médias, sparkline. */
-function serieDeFechamentos(cfg: MacroSymbolConfig, validCloses: number[], candles: CandleSimples[], fonte: "mt5" | "yahoo"): MacroSeries {
+function serieDeFechamentos(cfg: MacroSymbolConfig, validCloses: number[], candles: CandleSimples[], fonte: "mt5" | "yahoo" | "ptax"): MacroSeries {
     const last = validCloses[validCloses.length - 1];
 
     // Para grupo JURO, as taxas são expressas em %, e as variações são em basis points (bps)
@@ -265,6 +278,7 @@ function serieDeFechamentos(cfg: MacroSymbolConfig, validCloses: number[], candl
       tendencia,
       sparkline,
       closes1y: validCloses,
+      datas1y: candles.map((c) => c.date),
       updatedAt: new Date().toISOString(),
       dataDoDado: candles.length ? candles[candles.length - 1].date || null : null,
       ok: true,
@@ -356,7 +370,17 @@ async function fetchSerie(cfg: MacroSymbolConfig, doMt5: Record<string, SerieMac
     if (viaMt5) return viaMt5;
     if (cfg.soMt5) return serieFalha(cfg, doMt5 ? (doMt5[cfg.mt5]?.motivo ?? "sem dado no terminal") : "ponte MT5 indisponível");
   }
-  return fetchYahooSymbol(cfg);
+  const yahoo = await fetchYahooSymbol(cfg);
+  // WO-69: reserva PTAX (fechamento oficial do BCB) quando o Yahoo falhou NESTA rodada. Vem antes
+  // do último dado bom porque é dado do dia, oficial; só o yuan não tem PTAX e fica no último bom.
+  if (cfg.ptax && (!yahoo.ok || yahoo.stale)) {
+    const viaPtax = await seriePtax(cfg.ptax).catch(() => null);
+    if (viaPtax?.length) {
+      const candles: CandleSimples[] = viaPtax.map((c) => ({ date: c.data, open: c.venda, high: c.venda, low: c.venda, close: c.venda, volume: 100 }));
+      return { ...serieDeFechamentos(cfg, candles.map((c) => c.close), candles, "ptax"), motivo: `Yahoo: ${yahoo.motivo ?? "falhou"} — reserva PTAX (fechamento oficial)` };
+    }
+  }
+  return yahoo;
 }
 
 /** Executa uma lista de tarefas com concorrência máxima limitada. */
@@ -446,12 +470,20 @@ export async function GET(_req: NextRequest) {
   const seriesResults = await poolAll(MACRO_SYMBOLS, (cfg) => fetchSerie(cfg, doMt5), 4);
   guardarUltimoBom(seriesResults);
   const curvaDi = di ? montarCurvaDi(di.contratos, sessionInfo().ultimaSessao) : null;
+  // WO-69: a curva real (DAP) e a curva par oficial americana. A ponte atende um pedido por vez —
+  // o DAP vai depois da DI, não junto com ela.
+  const [dap, us] = await Promise.all([curvaDapMt5(), curvaTreasuryOficial()]);
+  const curvaDap = dap ? montarCurvaDi(dap.contratos, sessionInfo().ultimaSessao, "MT5 · Genial (cupom de IPCA — DAP, B3)") : null;
+  const curvaUs = us.curva;
 
   const falhas = seriesResults.filter((s) => !s.ok).map((s) => s.symbol);
   const defasados = seriesResults.filter((s) => s.ok && s.stale).map((s) => s.symbol);
   const motivos: Record<string, string> = {};
   for (const s of seriesResults) if (s.motivo) motivos[s.symbol] = s.motivo;
   if (!curvaDi) motivos["DI1"] = "curva DI indisponível: ponte MT5 fora ou terminal deslogado";
+  if (!curvaDap) motivos["DAP"] = "curva DAP indisponível: ponte MT5 fora ou terminal deslogado";
+  if (!curvaUs) motivos["UST"] = us.falhas.join(" · ") || "curva oficial do Tesouro americano indisponível";
+  else if (us.stale) motivos["UST"] = us.falhas.join(" · ");
   if (falhas.length + defasados.length > 0) {
     const resumo = Object.entries(motivos).slice(0, 3).map(([k, v]) => `${k}: ${v}`).join(" · ");
     console.warn(`[macro] Yahoo: ${falhas.length} sem dado, ${defasados.length} servidos do último dado bom — ${resumo}`);
@@ -465,6 +497,8 @@ export async function GET(_req: NextRequest) {
     defasados,
     motivos,
     curvaDi,
+    curvaDap,
+    curvaUs,
   };
 
   cache = { body, at: Date.now() };

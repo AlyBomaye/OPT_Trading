@@ -11,10 +11,13 @@ demora.
 
 | Fonte | Rota | Tipo | Peso medido | Cadência | Fragilidade |
 |---|---|---|---|---|---|
-| **MetaTrader 5 (ponte local, WO-61)** | `/api/opcoes`, `/api/history` | JSON local (127.0.0.1:3200) | cadeia de PETR4: 1.811 séries em 2,6 s | **tempo real** | BAIXA (depende do terminal aberto e logado) |
+| **MetaTrader 5 (ponte local, WO-61)** | `/api/opcoes`, `/api/history`, `/api/macro` (`/curva-di`, `/curva-dap` desde a WO-69) | JSON local (127.0.0.1:3200) | cadeia de PETR4: 1.811 séries em 2,6 s; 20 DI1 e 12 DAP em ~1 s | **tempo real** | BAIXA (depende do terminal aberto e logado) |
 | **B3 — catálogo de instrumentos (WO-63)** | `/api/opcoes` (strikes da cadeia MT5) | CSV via token | **20 MB · 89 mil linhas**, 1 download/dia para o universo | 1×/dia útil, manhã (strikes do dia) | MÉDIA (mesmo token do `/api/oi`) |
 | **Drivers do papel (WO-64)** | `/api/drivers` | JSON local (MT5) · JSON (Yahoo cru, BCB SGS) | ~34 séries × 2 anos, 1 aquecimento/dia | diário (BCB mensal) | MÉDIA (Yahoo 429; depende da ponte) |
-| Tesouro Transparente | `/api/curvas-br` | CSV | **13,7 MB · 174 mil linhas** | 1×/dia útil, manhã | **ALTA** |
+| **ANBIMA — mercado secundário (WO-69)** | `/api/curvas-br` | TXT `@` | 7 KB/dia, ~6 pregões online | 1×/dia útil, ~19h (D0) | MÉDIA (arquivo acumulado em disco) |
+| **Tesouro americano — curva par (WO-69)** | `/api/macro` (`curvaUs`) | CSV | ~15 KB, o ano inteiro | 1×/dia útil, após NY | BAIXA |
+| BCB PTAX (WO-69) | `/api/macro` (reserva de USD/BRL, EUR/BRL, EUR/USD) | OData JSON | pequeno | diário, ~13h | BAIXA |
+| Tesouro Transparente | `/api/curvas-br` (reserva; Δ1M/Δ3M até o arquivo ANBIMA acumular) | CSV | **14,5 MB · 176 mil linhas** | 1×/dia útil, manhã, **~3 pregões atrasado** | **ALTA** |
 | B3 — posições em aberto | `/api/oi` | CSV via token | ~2.600 séries por ativo | 1×/dia útil (D-1) | **ALTA** |
 | opcoes.net.br | `/api/opcoes` | HTML | médio | intradiário | **ALTA** |
 | BCB Olinda — Boletim Focus | `/api/focus` | OData JSON | 500 KB (7 consultas) | **semanal** (segunda 8h25, cobre até a sexta anterior) | MÉDIA |
@@ -28,9 +31,29 @@ demora.
 
 ## As quatro que exigem rotina própria
 
-### 1. Tesouro Transparente — `/api/curvas-br`
+### 1. ANBIMA — mercado secundário — `/api/curvas-br` (WO-69)
 
-Alimenta a curva Pré, a NTN-B e, por derivação, o cupom cambial em Rates & FX.
+Alimenta as curvas **Pré** e **NTN-B** de Rates & FX. Arquivo diário
+`anbima.com.br/informacoes/merc-sec/arqs/ms<aammdd>.txt` (7 KB, separador `@`, decimais com
+vírgula, datas `AAAAMMDD`): taxas **indicativas** de LTN, NTN-F e NTN-B — a referência que o
+mercado usa para marcar carteira. Sai no próprio dia, por volta das 19h (o arquivo de 22/09/2026
+tinha `Last-Modified` 22/09 21:57 UTC); durante o pregão a curva é a de D-1, e a barra diz.
+
+Só os últimos ~6 pregões ficam online (22/08 e 24/06 → 404, medido em 23/09/2026). Por isso
+`lib/anbima-servidor.ts` **acumula** um instantâneo por dia em `data/cache/anbima-arquivo.json`
+(memória de 30 min, uma busca em curso por vez, no máximo 8 GETs por corrida) e semeia os 6
+pregões anteriores no primeiro uso. Enquanto o arquivo próprio não tem 21 e 63 pregões, **Δ1M e
+Δ3M vêm do Tesouro Transparente (§1b), marcados `(TT)` na coluna** — decisão do operador em
+23/09/2026; Δ1D e Δ5D são sempre ANBIMA.
+
+- **Se cair:** o Tesouro Transparente assume as duas curvas, rotulado; a barra diz "Pré (Tesouro)".
+- **Rotina:** `npm run dados:sync` (já chama `/api/curvas-br`) alimenta o arquivo todo dia útil.
+
+### 1b. Tesouro Transparente — reserva e Δ1M/Δ3M
+
+Era a fonte do Pré e da NTN-B até a WO-69 e chegava atrasado: em 23/09/2026 a última data-base
+dentro do arquivo era **18/09**, três pregões atrás. É o preço de VAREJO do Tesouro Direto, não a
+taxa de mercado.
 
 O arquivo é o **preço e taxa de todos os títulos do Tesouro Direto desde 2002**: 13,7 MB e 174 mil
 linhas para extrair a curva de um dia. Pior: **o CSV não é cronológico** — descobrimos no WO-32
@@ -43,8 +66,22 @@ tabela — ambos verificados em 04/08/2026. Por isso a curva nominal é rotulada
 terminal MetaTrader 5 pela ponte (`/curva-di`: os contratos `DI1` por vencimento, com taxa e 70
 fechamentos) e aparece em Rates & FX com nome próprio, "DI futuros (B3)". As duas convivem.
 
-- **Se cair:** Pré, NTN-B e cupom cambial somem de Rates & FX. O resto da Macro segue.
+- **Se cair:** Δ1M e Δ3M das curvas ficam em "—" até o arquivo ANBIMA acumular; e some a reserva.
 - **Rotina:** `npm run dados:sync` antes do pregão. `Last-Modified` observado ~10:20 UTC.
+
+### 1c. Tesouro americano — curva par oficial (WO-69)
+
+`home.treasury.gov/…/daily-treasury-rates.csv/<ano>/all?type=daily_treasury_yield_curve`: o ano
+inteiro num CSV de ~15 KB, 14 vencimentos (1M a 30Y), um pregão por linha. O dado de 23/09/2026
+estava lá às 18h de Brasília. `lib/treasury-us-servidor.ts`: memória 1 h, disco 24 h como reserva
+rotulada, o ano anterior entra quando o corrente ainda não tem 64 pregões. Substitui o Yahoo
+(`^IRX ^FVX ^TNX ^TYX`) como fonte da curva de Rates & FX: 14 vértices em vez de 4, variações
+medidas no próprio arquivo, o 3M como rendimento (o `^IRX` é taxa de desconto) e nenhum 429. O
+Yahoo continua nos cards da Macro e é a reserva da curva.
+
+- **Se cair:** a curva volta aos 4 vértices do Yahoo, com o aviso na nota do cartão.
+- **Rotina:** nada a agendar; a rota Macro (10 min) a mantém.
+
 
 ### 2. B3 — posições em aberto — `/api/oi`
 
@@ -58,6 +95,14 @@ brasileiro. A rota varre até 5 dias para trás procurando o arquivo mais recent
   proveniência como MANUAL.
 - **Rotina:** `npm run dados:sync`. O arquivo de um pregão passado nunca muda, então o cache de
   disco por data é permanente por construção.
+
+### 2b. BCB PTAX — reserva do câmbio (WO-69)
+
+`olinda.bcb.gov.br/olinda/servico/PTAX/versao/v1/odata/CotacaoMoedaPeriodo(...)`: os boletins do
+dia por moeda; a plataforma usa só o **Fechamento** (~13h). Existe para USD e EUR; **não existe para
+CNY** (0 boletins, medido). Entra quando o Yahoo falha na rodada, para USD/BRL, EUR/BRL e EUR/USD
+(cruzado EUR/BRL ÷ USD/BRL); o USD/CNY cai no último dado bom. `lib/ptax-servidor.ts`: memória 1 h,
+disco 7 dias.
 
 ### 3. opcoes.net.br — `/api/opcoes` (reserva desde a WO-61)
 

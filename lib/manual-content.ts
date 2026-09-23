@@ -100,7 +100,7 @@ export const RESUMO_TELAS = [
   {
     modulo: "6. Macro",
     pergunta: "O que o mundo fez enquanto a B3 estava fechada, e como isso chega aos meus papéis?",
-    resposta: "Sessões globais, painéis de índices, futuros, VIX, moedas e commodities (Ibovespa, S&P futuro, dólar futuro, Bitcoin futuro e DI vêm do terminal MT5 com o chip MT5; o resto do Yahoo), Rates & FX (pré do Tesouro, a curva DI dos futuros da B3 lida do MetaTrader 5, Treasuries, cupom cambial, NTN-B, inflação), Boletim Focus e impacto por driver no universo.",
+    resposta: "Sessões globais, painéis de índices, futuros, VIX, moedas e commodities (Ibovespa, S&P futuro, dólar futuro, Bitcoin futuro e DI vêm do terminal MT5 com o chip MT5; o resto do Yahoo), Rates & FX (pré e NTN-B pela ANBIMA com a curva DAP do MT5 ao vivo, a curva DI dos futuros da B3 lida do MetaTrader 5, Treasuries pela curva oficial do Tesouro americano, cupom cambial DI × Treasuries, câmbio em quatro pares, inflação), Boletim Focus e impacto por driver no universo.",
   },
   {
     modulo: "7. Scanner",
@@ -193,6 +193,10 @@ export const DADOS_LIMITACOES = [
   {
     titulo: "As reservas: opcoes.net.br e COTAHIST",
     texto: "Com o terminal fechado ou deslogado, a cadeia volta a vir do proxy anônimo do opcoes.net.br (último negócio com atraso de minutos, sem book) e as ofertas passam a ser as de fechamento do arquivo COTAHIST da B3; o histórico cai para Yahoo e brapi. Nada zera: a barra de veracidade diz de onde cada número veio, e a última grade boa fica guardada em disco para o caso de todas as fontes falharem (STALE, com a data).",
+  },
+  {
+    titulo: "Rates & FX: de onde vem cada curva (WO-69)",
+    texto: "Pré e NTN-B vêm da ANBIMA (taxas indicativas do mercado secundário, publicadas no próprio dia por volta das 19h — durante o pregão a curva é a de D-1, e a barra diz). Até 22/09/2026 vinham do Tesouro Transparente, que é preço de varejo e chegava três pregões atrasado; ele ficou como reserva e como origem de Δ1M e Δ3M enquanto a plataforma acumula um arquivo próprio da ANBIMA (um por dia útil) — essas colunas levam (TT) no cabeçalho até lá. A DI futuros e o cupom de IPCA (DAP, a linha ao vivo sobre a NTN-B) vêm do terminal MT5. Os Treasuries vêm da curva par oficial do Tesouro americano (14 vencimentos, sai após o fechamento de Nova York); o Yahoo é a reserva. O cupom cambial é DI × Treasuries, derivado (EST). O câmbio são quatro pares do Yahoo (USD/BRL, EUR/BRL, EUR/USD, USD/CNY) com janela 1M·3M·6M·1A e chips de variação; se o Yahoo falhar, dólar e euro caem para o boletim de fechamento do PTAX e o yuan para o último dado bom.",
   },
   {
     titulo: "Boletou errado? Corrigir a boleta (WO-68)",

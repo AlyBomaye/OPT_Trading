@@ -72,7 +72,8 @@ function curvasVazias(falhas: string[]): CurvasBr {
 }
 
 /** Vértices a menos disto do vencimento distorcem a ponta curta e são descartados. */
-const MIN_ANOS = 0.25;
+/** WO-69: exportado — a ANBIMA usa a mesma régua de ponta curta. */
+export const MIN_ANOS = 0.25;
 
 /** dd/mm/aaaa → YYYY-MM-DD. Devolve "" quando não reconhece. */
 export function dataBrParaIso(d: string): string {
@@ -91,7 +92,7 @@ export function taxaBrParaNumero(v: string): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
-function anosEntre(deIso: string, ateIso: string): number {
+export function anosEntre(deIso: string, ateIso: string): number {
   const de = new Date(deIso + "T00:00:00Z").getTime();
   const ate = new Date(ateIso + "T00:00:00Z").getTime();
   return (ate - de) / (365.25 * 24 * 3600 * 1000);

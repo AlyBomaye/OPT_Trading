@@ -55,6 +55,55 @@ interface Props {
    * termo gastava metade da largura sem acrescentar informação.
    */
   modo?: "duplo" | "somenteVariacao";
+  /** WO-69: uma segunda tabela sob a principal (os contratos DAP sob a NTN-B). */
+  tabelaExtra?: { titulo: string; colunas: ColunaTabela[]; linhas: any[] };
+}
+
+/** A tabela de um cartão: taxa, Δ em bps com cor, % com cor, texto. */
+function TabelaRates({ colunas, linhas }: { colunas: ColunaTabela[]; linhas: any[] }) {
+  return (
+    <table className="w-full text-xxs font-mono">
+      <thead className="sticky top-0 bg-term-panel z-10 border-b border-term-line">
+        <tr className="text-term-dim">
+          {colunas.map((c, i) => (
+            <th key={c.chave} className={clsx("py-1", i === 0 ? "text-left" : "text-right")}>
+              {c.rotulo}
+            </th>
+          ))}
+        </tr>
+      </thead>
+      <tbody>
+        {linhas.map((l, idx) => (
+          <tr key={idx} className="border-b border-term-line/20">
+            {colunas.map((c, i) => {
+              const bruto = l[c.chave];
+              let conteudo: string = bruto == null ? "—" : String(bruto);
+              let classe = "text-term-fg";
+              if (c.tipo === "taxa") {
+                conteudo = bruto == null ? "—" : `${fmtNum(Number(bruto), 2)}%`;
+                classe = "font-semibold";
+              } else if (c.tipo === "bps") {
+                const f = fmtBps(bruto);
+                conteudo = f.texto;
+                classe = f.classe;
+              } else if (c.tipo === "pct") {
+                const f = fmtPct(bruto);
+                conteudo = f.texto;
+                classe = f.classe;
+              } else if (i === 0) {
+                classe = "text-term-fg";
+              }
+              return (
+                <td key={c.chave} className={clsx("py-0.5", i === 0 ? "text-left" : "text-right", classe)}>
+                  {conteudo}
+                </td>
+              );
+            })}
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  );
 }
 
 /** Δ em pontos percentuais → bps na tela. `null` vira "—": zero afirmaria "não mudou". */
@@ -128,7 +177,7 @@ function Grafico({
   );
 }
 
-export function LinhaRates({ titulo, fonte, dataDoDado, estimado, nota, nivel, variacao, tabela, vazio, modo = "duplo" }: Props) {
+export function LinhaRates({ titulo, fonte, dataDoDado, estimado, nota, nivel, variacao, tabela, vazio, modo = "duplo", tabelaExtra }: Props) {
   const soVariacao = modo === "somenteVariacao";
   const sess = sessionInfo();
   const prov = construirProvenance(fonte, dataDoDado);
@@ -181,48 +230,16 @@ export function LinhaRates({ titulo, fonte, dataDoDado, estimado, nota, nivel, v
             <Grafico dados={variacao.dados} xKey={variacao.xKey} series={variacao.series} unidade={variacao.unidade} altura={200} />
 
             <div className="max-h-40 overflow-y-auto mt-2">
-              <table className="w-full text-xxs font-mono">
-                <thead className="sticky top-0 bg-term-panel z-10 border-b border-term-line">
-                  <tr className="text-term-dim">
-                    {tabela.colunas.map((c, i) => (
-                      <th key={c.chave} className={clsx("py-1", i === 0 ? "text-left" : "text-right")}>
-                        {c.rotulo}
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {tabela.linhas.map((l, idx) => (
-                    <tr key={idx} className="border-b border-term-line/20">
-                      {tabela.colunas.map((c, i) => {
-                        const bruto = l[c.chave];
-                        let conteudo: string = bruto == null ? "—" : String(bruto);
-                        let classe = "text-term-fg";
-                        if (c.tipo === "taxa") {
-                          conteudo = bruto == null ? "—" : `${fmtNum(Number(bruto), 2)}%`;
-                          classe = "font-semibold";
-                        } else if (c.tipo === "bps") {
-                          const f = fmtBps(bruto);
-                          conteudo = f.texto;
-                          classe = f.classe;
-                        } else if (c.tipo === "pct") {
-                          const f = fmtPct(bruto);
-                          conteudo = f.texto;
-                          classe = f.classe;
-                        } else if (i === 0) {
-                          classe = "text-term-fg";
-                        }
-                        return (
-                          <td key={c.chave} className={clsx("py-0.5", i === 0 ? "text-left" : "text-right", classe)}>
-                            {conteudo}
-                          </td>
-                        );
-                      })}
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+              <TabelaRates colunas={tabela.colunas} linhas={tabela.linhas} />
             </div>
+            {tabelaExtra && tabelaExtra.linhas.length > 0 && (
+              <div className="mt-2">
+                <div className="text-xxs text-term-dim uppercase tracking-wider mb-1">{tabelaExtra.titulo}</div>
+                <div className="max-h-40 overflow-y-auto">
+                  <TabelaRates colunas={tabelaExtra.colunas} linhas={tabelaExtra.linhas} />
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}
