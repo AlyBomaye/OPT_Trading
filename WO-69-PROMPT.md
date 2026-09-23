@@ -97,3 +97,10 @@ Medido no dev (3000) contra a ponte 1.2.0 e as fontes reais, às ~18h de Brasíl
   Treasuries e cupom). O `Promise.all` da WO-62 e `"/curva-di": rota_curva_di` ficaram literais.
 
 `npm run typecheck` limpo; suíte com WO-69 1–6 verde.
+
+## AJ — 23/09/2026
+
+*"ficou muito bom, único ajuste seria passar a tabela do cupom de ipca para a direita e colocar o
+gráfico à esquerda"*. No cartão da NTN-B, com a tabela extra presente, o painel vira duas colunas
+(`lg:grid-cols-2`): gráfico de variações e tabela da NTN-B à esquerda, contratos DAP à direita
+(`max-h-[26rem]`, rolagem nos dois eixos quando não couber). Sem tabela extra nada muda.

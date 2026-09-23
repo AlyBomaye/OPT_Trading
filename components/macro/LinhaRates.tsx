@@ -224,18 +224,21 @@ export function LinhaRates({ titulo, fonte, dataDoDado, estimado, nota, nivel, v
             </div>
           )}
 
-          {/* DIREITA — variações */}
-          <div>
-            <div className="text-xxs text-term-dim uppercase tracking-wider mb-1">Variações</div>
-            <Grafico dados={variacao.dados} xKey={variacao.xKey} series={variacao.series} unidade={variacao.unidade} altura={200} />
+          {/* DIREITA — variações. WO-69 AJ: com tabela extra, o gráfico (e a tabela principal) fica à
+              esquerda e a extra à direita — a pedido do operador, para o cartão não crescer para baixo. */}
+          <div className={clsx(tabelaExtra && tabelaExtra.linhas.length > 0 && "grid grid-cols-1 lg:grid-cols-2 gap-3")}>
+            <div>
+              <div className="text-xxs text-term-dim uppercase tracking-wider mb-1">Variações</div>
+              <Grafico dados={variacao.dados} xKey={variacao.xKey} series={variacao.series} unidade={variacao.unidade} altura={200} />
 
-            <div className="max-h-40 overflow-y-auto mt-2">
-              <TabelaRates colunas={tabela.colunas} linhas={tabela.linhas} />
+              <div className="max-h-40 overflow-y-auto mt-2">
+                <TabelaRates colunas={tabela.colunas} linhas={tabela.linhas} />
+              </div>
             </div>
             {tabelaExtra && tabelaExtra.linhas.length > 0 && (
-              <div className="mt-2">
+              <div className="min-w-0">
                 <div className="text-xxs text-term-dim uppercase tracking-wider mb-1">{tabelaExtra.titulo}</div>
-                <div className="max-h-40 overflow-y-auto">
+                <div className="max-h-[26rem] overflow-auto">
                   <TabelaRates colunas={tabelaExtra.colunas} linhas={tabelaExtra.linhas} />
                 </div>
               </div>
