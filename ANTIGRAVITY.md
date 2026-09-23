@@ -713,10 +713,10 @@ com VaR95/ES rotulados + export CSV/JSON + export/import do arquivo de snapshots
 corpo de `/api/curvas-br`). Treasuries pela **curva par oficial** do Tesouro americano
 (`lib/treasury-us.ts`, 14 vértices, `curvaUs` no corpo da Macro; Yahoo de reserva). **DAP**
 (cupom de IPCA) pela ponte (`/curva-dap`, ponte 1.2.0; `curvaDap` na Macro) como segunda
-série ao vivo sobre a NTN-B, com tabela extra. Cupom cambial = **DI × Treasuries**. Câmbio em
+série ao vivo sobre a NTN-B (linha fina) e coluna DAP na mesma tabela. Cupom cambial = **DI × Treasuries**. Câmbio em
 quatro pares (`CartoesCambio`: USD/BRL, EUR/BRL, EUR/USD, USD/CNY; `EURBRL=X` novo na Macro;
 `datas1y` em toda série; reserva **PTAX** via `lib/ptax*.ts` para dólar e euro). Layout em blocos
-de dois: Pré | Treasuries · DI | Cupom · NTN-B | Câmbio · inflação inteira.
+de dois: Pré | Treasuries · DI | Cupom · NTN-B | Câmbio (a linha IPCA & IGP-M saiu no AJ).
 
 **WO-68 Corrigir boleta (22/09/2026)**: a fita da Boletagem ganhou "corrigir" por linha
 (`UltimasBoletas` → `CorrigirBoleta`). `corrigirBoleta` (`lib/boletas.ts`) grava o ESTORNO da

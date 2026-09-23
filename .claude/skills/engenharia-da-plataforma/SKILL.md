@@ -163,8 +163,9 @@ e diga no commit. Se a quebra não for intencional, o teste venceu.
   rota_curva_di` e o `Promise.all([macroMt5…, curvaDiMt5(), fetchBrasilMacro()])` literais; DAP
   e Treasuries entram num segundo `Promise.all`. Câmbio: quatro pares do Yahoo com reserva PTAX
   (`lib/ptax*.ts`; o PTAX não tem CNY). A tela de Rates & FX é em blocos de dois; a ordem de
-  `linhasRates` é Pré, Treasuries, DI, Cupom, NTN-B, IPCA e a grade usa `slice(0,2)`,
-  `slice(2,4)`, `slice(4,5)` + `CartoesCambio`, `slice(5)`.
+  `linhasRates` é Pré, Treasuries, DI, Cupom, NTN-B (a linha IPCA & IGP-M saiu no AJ) e a grade
+  usa `slice(0,2)`, `slice(2,4)`, `slice(4,5)` + `CartoesCambio`. Na NTN-B o DAP é linha fina e
+  coluna da mesma tabela — não há tabela extra.
 - **Strike (WO-63):** o `option_strike` do terminal é o original da série, nunca ajustado por
   proventos (PETR4 estava 1,19 acima em toda série em 21/09/2026; até a descrição do símbolo
   fica velha). `/api/opcoes` sobrepõe strike, estilo e moneyness pelo catálogo oficial da B3

@@ -27,6 +27,9 @@ export interface SerieGrafico {
   cor: string;
   tracejada?: boolean;
   opacidade?: number;
+  /** WO-69 AJ: espessura própria (a linha DAP vai fina, para as tracejadas continuarem legíveis). */
+  espessura?: number;
+  semPontos?: boolean;
 }
 
 export interface ColunaTabela {
@@ -55,8 +58,6 @@ interface Props {
    * termo gastava metade da largura sem acrescentar informação.
    */
   modo?: "duplo" | "somenteVariacao";
-  /** WO-69: uma segunda tabela sob a principal (os contratos DAP sob a NTN-B). */
-  tabelaExtra?: { titulo: string; colunas: ColunaTabela[]; linhas: any[] };
 }
 
 /** A tabela de um cartão: taxa, Δ em bps com cor, % com cor, texto. */
@@ -163,10 +164,10 @@ function Grafico({
               dataKey={s.chave}
               name={s.nome}
               stroke={s.cor}
-              strokeWidth={s.tracejada ? 1.2 : 2}
+              strokeWidth={s.espessura ?? (s.tracejada ? 1.2 : 2)}
               strokeDasharray={s.tracejada ? "3 3" : undefined}
               strokeOpacity={s.opacidade ?? 1}
-              dot={s.tracejada ? false : { r: 2.5 }}
+              dot={s.tracejada || s.semPontos ? false : { r: 2.5 }}
               isAnimationActive={false}
               connectNulls
             />
@@ -177,7 +178,7 @@ function Grafico({
   );
 }
 
-export function LinhaRates({ titulo, fonte, dataDoDado, estimado, nota, nivel, variacao, tabela, vazio, modo = "duplo", tabelaExtra }: Props) {
+export function LinhaRates({ titulo, fonte, dataDoDado, estimado, nota, nivel, variacao, tabela, vazio, modo = "duplo" }: Props) {
   const soVariacao = modo === "somenteVariacao";
   const sess = sessionInfo();
   const prov = construirProvenance(fonte, dataDoDado);
@@ -224,25 +225,14 @@ export function LinhaRates({ titulo, fonte, dataDoDado, estimado, nota, nivel, v
             </div>
           )}
 
-          {/* DIREITA — variações. WO-69 AJ: com tabela extra, o gráfico (e a tabela principal) fica à
-              esquerda e a extra à direita — a pedido do operador, para o cartão não crescer para baixo. */}
-          <div className={clsx(tabelaExtra && tabelaExtra.linhas.length > 0 && "grid grid-cols-1 lg:grid-cols-2 gap-3")}>
-            <div>
-              <div className="text-xxs text-term-dim uppercase tracking-wider mb-1">Variações</div>
-              <Grafico dados={variacao.dados} xKey={variacao.xKey} series={variacao.series} unidade={variacao.unidade} altura={200} />
+          {/* DIREITA — variações: o gráfico e UMA tabela (WO-69 AJ: o DAP entrou como coluna). */}
+          <div>
+            <div className="text-xxs text-term-dim uppercase tracking-wider mb-1">Variações</div>
+            <Grafico dados={variacao.dados} xKey={variacao.xKey} series={variacao.series} unidade={variacao.unidade} altura={200} />
 
-              <div className="max-h-40 overflow-y-auto mt-2">
-                <TabelaRates colunas={tabela.colunas} linhas={tabela.linhas} />
-              </div>
+            <div className="max-h-40 overflow-y-auto mt-2">
+              <TabelaRates colunas={tabela.colunas} linhas={tabela.linhas} />
             </div>
-            {tabelaExtra && tabelaExtra.linhas.length > 0 && (
-              <div className="min-w-0">
-                <div className="text-xxs text-term-dim uppercase tracking-wider mb-1">{tabelaExtra.titulo}</div>
-                <div className="max-h-[26rem] overflow-auto">
-                  <TabelaRates colunas={tabelaExtra.colunas} linhas={tabelaExtra.linhas} />
-                </div>
-              </div>
-            )}
           </div>
         </div>
       )}

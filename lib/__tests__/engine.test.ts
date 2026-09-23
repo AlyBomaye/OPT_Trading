@@ -2170,11 +2170,14 @@ async function testesWo33() {
   const composto = Number(((meses.reduce((a, x) => a * (1 + x.valor / 100), 1) - 1) * 100).toFixed(4));
   const soma = meses.reduce((a, x) => a + x.valor, 0);
   const srcMacro = fs.readFileSync(path.join(raiz, "app", "macro", "page.tsx"), "utf-8");
-  const usaProduto = /reduce\(\(a, x\) => a \* \(1 \+ x\.valor \/ 100\), 1\)/.test(srcMacro);
-  if (Math.abs(composto - 3.0301) < 1e-4 && composto !== soma && usaProduto) {
-    console.log(`✔ WO-33 Teste 5: acumulado composto (${composto}%) difere da soma (${soma}%) e a página usa o produto`);
+  // WO-69 AJ (23/09/2026): a linha IPCA & IGP-M saiu do Rates & FX a pedido do operador, e com ela o
+  // acumulado. O que este teste guarda agora é a regra (composto ≠ soma) e que a linha não voltou por
+  // engano: quem a recolocar tem de usar o produto Π(1+i) − 1, nunca a soma.
+  const linhaSaiu = !/"IPCA & IGP-M — inflação"/.test(srcMacro);
+  if (Math.abs(composto - 3.0301) < 1e-4 && composto !== soma && linhaSaiu) {
+    console.log(`✔ WO-33 Teste 5: acumulado composto (${composto}%) difere da soma (${soma}%); a linha de inflação saiu do Rates & FX (WO-69 AJ)`);
   } else {
-    console.log(`✘ WO-33 Teste 5 falhou: composto=${composto}, soma=${soma}, usaProduto=${usaProduto}`);
+    console.log(`✘ WO-33 Teste 5 falhou: composto=${composto}, soma=${soma}, linhaSaiu=${linhaSaiu}`);
     failures++;
   }
 
@@ -2191,7 +2194,8 @@ async function testesWo33() {
   const bloco = srcMacro.slice(iniBloco, fimBloco);
   // WO-69: Pré e NTN-B vêm da ANBIMA; a DI (WO-62) ficou entre Treasuries e cupom; o BRL/USD saiu do
   // bloco e virou os quatro cartões de câmbio (CartoesCambio), renderizados ao lado da NTN-B.
-  const ordemLinhas = ["Pré (ANBIMA)", "Treasuries US", "DI futuros (B3)", "Cupom cambial", "NTN-B (ANBIMA)", "IPCA & IGP-M"];
+  // WO-69 AJ: a linha IPCA & IGP-M saiu do Rates & FX.
+  const ordemLinhas = ["Pré (ANBIMA)", "Treasuries US", "DI futuros (B3)", "Cupom cambial", "NTN-B (ANBIMA)"];
   const idx = ordemLinhas.map((t) => bloco.indexOf(t));
   const linhasEmOrdem = idx.every((v, i) => v > 0 && (i === 0 || v > idx[i - 1]));
   // WO-46 §3 inverteu a ordem das secoes (Rates antes do Impacto, que agora fecha a pagina).
@@ -7186,16 +7190,18 @@ Líquido para 04/09/2026 5.134,69 D`;
     const iBloco3 = pag.indexOf("linhasRates.slice(4, 5)");
     const iCambio = pag.indexOf("<CartoesCambio pares={paresCambio} janela={janelaFx} onJanela={setJanelaFx}");
     const iResto = pag.indexOf("linhasRates.slice(5)");
-    const pagOk = iBloco1 > 0 && iBloco2 > iBloco1 && iBloco3 > iBloco2 && iCambio > iBloco3 && iResto > iCambio
+    // WO-69 AJ: nada depois do Câmbio — a linha IPCA & IGP-M saiu.
+    const pagOk = iBloco1 > 0 && iBloco2 > iBloco1 && iBloco3 > iBloco2 && iCambio > iBloco3 && iResto === -1 && !/"IPCA & IGP-M — inflação"/.test(pag)
       && /"Pré \(ANBIMA\) — curva nominal BR"/.test(pag) && /"Treasuries US — curva nominal \(oficial\)"/.test(pag) && /"Cupom cambial — DI × Treasuries"/.test(pag)
       && /calcularCupomCambial\(cupomBase === "di" \? data\?\.curvaDi\?\.vertices \?\? \[\] : curvas\?\.pre \?\? \[\], curvaUsEmAnos\)/.test(pag)
       && /if \(data\?\.curvaUs\?\.vertices\?\.length\) return data\.curvaUs\.vertices;/.test(pag)
-      && /chave: "dap", nome: `DAP · MT5/.test(pag) && /tabelaExtra: dap\?\.vertices\?\.length/.test(pag) && /rotulo: `\$\{c\.rotulo\} \(TT\)`/.test(pag)
+      && /chave: "dap", nome: `DAP · MT5/.test(pag) && /espessura: 1, semPontos: true/.test(pag) && /\{ chave: "dap", rotulo: "DAP", tipo: "taxa" \}/.test(pag) && /rotulo: `\$\{c\.rotulo\} \(TT\)`/.test(pag)
       && /usePersistedState<JanelaFx>\("macro-cambio-janela", "3M"\)/.test(pag) && /simbolo: "EURBRL=X"/.test(pag) && !/BRL\/USD — preço e variações/.test(pag);
-    const lrOk = /tabelaExtra\?: \{ titulo: string; colunas: ColunaTabela\[\]; linhas: any\[\] \}/.test(lr) && /function TabelaRates\(/.test(lr) && (lr.match(/<TabelaRates /g) ?? []).length === 2;
+    // WO-69 AJ: uma tabela só (o DAP virou coluna) e a série DAP fina, sem pontos.
+    const lrOk = /function TabelaRates\(/.test(lr) && (lr.match(/<TabelaRates /g) ?? []).length === 1 && !/tabelaExtra/.test(lr) && /espessura\?: number/.test(lr) && /s\.tracejada \|\| s\.semPontos \? false/.test(lr);
     const ccOk = /\{ chave: "1M", pregoes: 21 \}/.test(cc) && /\{ chave: "1A", pregoes: 252 \}/.test(cc) && /export function recortarJanela/.test(cc) && /<Chip rotulo="1A" valor=\{s\?\.chg12m\} \/>/.test(cc)
       && /grid grid-cols-1 sm:grid-cols-2 gap-2/.test(cc) && /s\.fonte === "ptax"/.test(cc) && /STALE/.test(cc);
-    if (ponteOk && fmOk && macroOk && curvasOk && pagOk && lrOk && ccOk) console.log("✔ WO-69 Teste 5: a ponte 1.2.0 expõe /curva-dap sobre a mesma rota da DI; a Macro leva EURBRL com reserva PTAX depois do Yahoo, datas em toda série, e DAP e Treasuries oficial no corpo sem tocar no Promise.all da WO-62; /api/curvas-br põe a ANBIMA na frente com o Tesouro de reserva e fonteHistorico; a tela vai em blocos de dois (Pré|Treasuries · DI|Cupom · NTN-B|Câmbio · inflação), o cupom sai da DI, o DAP sobe sobre a NTN-B com tabela extra, (TT) marca as colunas do Tesouro, e os quatro cartões têm janela lembrada e chips");
+    if (ponteOk && fmOk && macroOk && curvasOk && pagOk && lrOk && ccOk) console.log("✔ WO-69 Teste 5: a ponte 1.2.0 expõe /curva-dap sobre a mesma rota da DI; a Macro leva EURBRL com reserva PTAX depois do Yahoo, datas em toda série, e DAP e Treasuries oficial no corpo sem tocar no Promise.all da WO-62; /api/curvas-br põe a ANBIMA na frente com o Tesouro de reserva e fonteHistorico; a tela vai em blocos de dois (Pré|Treasuries · DI|Cupom · NTN-B|Câmbio, sem a linha de inflação), o cupom sai da DI, o DAP sobe sobre a NTN-B como linha fina e coluna da mesma tabela, (TT) marca as colunas do Tesouro, e os quatro cartões têm janela lembrada e chips");
     else { console.log(`✘ WO-69 Teste 5 falhou: ponte=${ponteOk} fm=${fmOk} macro=${macroOk} curvas=${curvasOk} pag=${pagOk} lr=${lrOk} cc=${ccOk}`); failures++; }
   }
 

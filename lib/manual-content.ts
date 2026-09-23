@@ -100,7 +100,7 @@ export const RESUMO_TELAS = [
   {
     modulo: "6. Macro",
     pergunta: "O que o mundo fez enquanto a B3 estava fechada, e como isso chega aos meus papéis?",
-    resposta: "Sessões globais, painéis de índices, futuros, VIX, moedas e commodities (Ibovespa, S&P futuro, dólar futuro, Bitcoin futuro e DI vêm do terminal MT5 com o chip MT5; o resto do Yahoo), Rates & FX (pré e NTN-B pela ANBIMA com a curva DAP do MT5 ao vivo, a curva DI dos futuros da B3 lida do MetaTrader 5, Treasuries pela curva oficial do Tesouro americano, cupom cambial DI × Treasuries, câmbio em quatro pares, inflação), Boletim Focus e impacto por driver no universo.",
+    resposta: "Sessões globais, painéis de índices, futuros, VIX, moedas e commodities (Ibovespa, S&P futuro, dólar futuro, Bitcoin futuro e DI vêm do terminal MT5 com o chip MT5; o resto do Yahoo), Rates & FX (pré e NTN-B pela ANBIMA com a curva DAP do MT5 ao vivo, a curva DI dos futuros da B3 lida do MetaTrader 5, Treasuries pela curva oficial do Tesouro americano, cupom cambial DI × Treasuries, câmbio em quatro pares), Boletim Focus e impacto por driver no universo.",
   },
   {
     modulo: "7. Scanner",

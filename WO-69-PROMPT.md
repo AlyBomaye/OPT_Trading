@@ -66,7 +66,7 @@ Fontes testadas:
   corpo ganha `fonte` e `fonteHistorico`.
 - **`app/api/macro/route.ts`:** `EURBRL=X`; `datas1y` em toda série; reserva PTAX; `curvaDap` e
   `curvaUs` no corpo.
-- **`components/macro/LinhaRates.tsx`:** `tabelaExtra` (os contratos DAP sob a tabela da NTN-B).
+- **`components/macro/LinhaRates.tsx`:** série com espessura própria (a linha DAP vai fina, sem pontos).
 - **`components/macro/CartoesCambio.tsx` (novo):** os quatro pares, o seletor de janela, os chips.
 - **`app/macro/page.tsx`:** os blocos de dois; cupom pela DI; Treasuries pela oficial.
 - Testes WO-69 1–5; FONTES-DE-DADOS, Manual, ANTIGRAVITY, skill de engenharia.
@@ -100,7 +100,13 @@ Medido no dev (3000) contra a ponte 1.2.0 e as fontes reais, às ~18h de Brasíl
 
 ## AJ — 23/09/2026
 
-*"ficou muito bom, único ajuste seria passar a tabela do cupom de ipca para a direita e colocar o
-gráfico à esquerda"*. No cartão da NTN-B, com a tabela extra presente, o painel vira duas colunas
-(`lg:grid-cols-2`): gráfico de variações e tabela da NTN-B à esquerda, contratos DAP à direita
-(`max-h-[26rem]`, rolagem nos dois eixos quando não couber). Sem tabela extra nada muda.
+Primeira tentativa (a pedido: "tabela do cupom de IPCA para a direita, gráfico à esquerda"): o
+painel da NTN-B em duas colunas. Ficou "uma porcaria" — a tabela da NTN-B, espremida em metade de
+um cartão de meia largura, quebrou linha. Segunda, e final: **o gráfico e UMA tabela**, empilhados
+como antes. O DAP entrou como **coluna** ao lado da NTN-B (os contratos vencem nas datas das
+NTN-B, então a comparação no mesmo vencimento é natural e NTN-B − DAP é o prêmio do título sobre o
+futuro); a tabela dos contratos saiu. A linha DAP no gráfico ficou **fina e sem pontos**, para as
+tracejadas do histórico continuarem legíveis por baixo. `tabelaExtra` foi removido do `LinhaRates`.
+
+E, a pedido: **a linha IPCA & IGP-M saiu do Rates & FX**. Os blocos terminam no Câmbio. A inflação
+continua nos cartões do Brasil da Macro e no Focus.

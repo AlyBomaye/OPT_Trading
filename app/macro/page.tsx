@@ -461,12 +461,13 @@ export default function MacroPage() {
     });
 
     // 5 — NTN-B (ANBIMA) com a curva DAP do MT5 por cima: a mesma taxa real, pelo mercado de futuros, ao vivo.
-    const ntnb = daCurvaTesouro(
+    const ntnb: any = daCurvaTesouro(
       curvas?.ntnb ?? [], curvas?.historico?.ntnb,
       fonteBr === "ANBIMA" ? "NTN-B (ANBIMA) — curva real BR · DAP ao vivo" : "NTN-B (Tesouro) — curva real BR · DAP ao vivo", "#34d399",
       (fonteBr === "ANBIMA" ? "Taxa real (acima do IPCA) indicativa da ANBIMA para as NTN-B." : "Taxa real (acima do IPCA) dos títulos Tesouro IPCA+ — a ANBIMA não respondeu.") + notaHistorico
     );
     const dap = data?.curvaDap ?? null;
+    let tabelaNtnb: { colunas: ColunaTabela[]; linhas: any[] } = { ...ntnb.tabela, colunas: colunasBr };
     if (dap?.vertices?.length) {
       const porX = new Map<string, any>(ntnb.variacao.dados.map((d: any) => [d.x, d]));
       for (const v of dap.vertices) {
@@ -476,74 +477,30 @@ export default function MacroPage() {
       ntnb.variacao = {
         ...ntnb.variacao,
         dados: Array.from(porX.values()).sort((a, b) => (a.x < b.x ? -1 : 1)),
-        series: [...ntnb.variacao.series, { chave: "dap", nome: `DAP · MT5${dap.dataDoDado ? ` ${fmtDateBR(dap.dataDoDado)}` : ""}`, cor: "#22d3ee" }],
+        // WO-69 AJ: fina e sem pontos, para as tracejadas do histórico continuarem legíveis por baixo.
+        series: [...ntnb.variacao.series, { chave: "dap", nome: `DAP · MT5${dap.dataDoDado ? ` ${fmtDateBR(dap.dataDoDado)}` : ""}`, cor: "#22d3ee", espessura: 1, semPontos: true }],
       };
-      ntnb.nota += " A linha DAP é o cupom de IPCA — o futuro de juro real da B3 — lido do terminal MT5 ao vivo; os contratos vencem nas datas das NTN-B.";
-    }
-    out.push({
-      ...ntnb,
-      tabela: { ...ntnb.tabela, colunas: colunasBr },
-      fonte: fonteBr,
-      dataDoDado: curvas?.dataBase ?? null,
-      vazio: "Curva NTN-B indisponível nesta execução.",
-      tabelaExtra: dap?.vertices?.length
-        ? {
-            titulo: `Cupom de IPCA (DAP) — contratos no MT5${dap.dataDoDado ? ` · ${fmtDateBR(dap.dataDoDado)}` : ""}`,
-            colunas: [{ chave: "contrato", rotulo: "CONTRATO", tipo: "texto" as const }, ...colunasCurva],
-            linhas: dap.vertices.map((v) => ({ contrato: v.contrato, vertice: rot(v.vencimento), taxa: v.taxa, d1: v.d1, d5: v.d5, d21: v.d21, d63: v.d63 })),
-          }
-        : undefined,
-    });
-
-    // 6 — IPCA & IGP-M: série mensal e acumulados COMPOSTOS.
-    const acum = (serie: { valor: number }[] | undefined, n: number): number | null => {
-      if (!serie || serie.length < n) return null;
-      // Π(1+i) − 1. Somar as variações mensais dá outro número e seria errado.
-      const janela = serie.slice(-n);
-      return Number(((janela.reduce((a, x) => a * (1 + x.valor / 100), 1) - 1) * 100).toFixed(2));
-    };
-    const ipcaS = data?.brasil.ipcaMensalSeries ?? [];
-    const igpmS = data?.brasil.igpmSeries ?? [];
-    const serieInflacao = ipcaS.map((x, i) => ({
-      x: (x.data ?? "").slice(3),
-      ipca: x.valor,
-      igpm: igpmS[i]?.valor ?? null,
-    }));
-    const ultimo = (s: { valor: number }[]) => (s.length ? s[s.length - 1].valor : null);
-    const seriesInflacao = [
-      { chave: "ipca", nome: "IPCA m/m", cor: "#22d3ee" },
-      { chave: "igpm", nome: "IGP-M m/m", cor: "#fbbf24" },
-    ];
-    out.push({
-      titulo: "IPCA & IGP-M — inflação",
-      fonte: "BCB SGS",
-      dataDoDado: null,
-      nota: "Acumulados compostos: Π(1+i)−1, não soma das variações mensais.",
-      // Esquerda: a leitura mensal. Direita: o acumulado em 12 meses ao longo do tempo — é a
-      // série que mostra tendência, e repetir o mesmo gráfico nos dois lados não informaria nada.
-      nivel: { dados: serieInflacao, xKey: "x", series: seriesInflacao },
-      variacao: {
-        dados: (data?.brasil.ipca12mSeries ?? []).map((x) => ({ x: (x.data ?? "").slice(3), acum12: x.valor })),
-        xKey: "x",
-        series: [{ chave: "acum12", nome: "IPCA 12m", cor: "#22d3ee" }],
-      },
-      tabela: {
+      // WO-69 AJ: UMA tabela — NTN-B e DAP lado a lado no mesmo vencimento (os contratos vencem nas
+      // datas das NTN-B); os Δ continuam sendo os da NTN-B. Vencimento só do DAP entra com NTN-B em "—".
+      const linhasPorX = new Map<string, any>(tabelaNtnb.linhas.map((l: any) => [l.vertice, { ...l, ntnb: l.taxa }]));
+      for (const v of dap.vertices) {
+        const x = rot(v.vencimento);
+        linhasPorX.set(x, { ...(linhasPorX.get(x) ?? { vertice: x, ntnb: null, d1: null, d5: null, d21: null, d63: null }), dap: v.taxa });
+      }
+      tabelaNtnb = {
         colunas: [
-          { chave: "vertice", rotulo: "ÍNDICE", tipo: "texto" },
-          { chave: "mes", rotulo: "MÊS", tipo: "pct" },
-          { chave: "m3", rotulo: "3M", tipo: "pct" },
-          { chave: "m6", rotulo: "6M", tipo: "pct" },
-          { chave: "m12", rotulo: "12M", tipo: "pct" },
+          { chave: "vertice", rotulo: "VÉRTICE", tipo: "texto" },
+          { chave: "ntnb", rotulo: "NTN-B", tipo: "taxa" },
+          { chave: "dap", rotulo: "DAP", tipo: "taxa" },
+          ...colunasBr.filter((c) => c.chave !== "vertice" && c.chave !== "taxa"),
         ] as ColunaTabela[],
-        linhas: [
-          { vertice: "IPCA", mes: ultimo(ipcaS), m3: acum(ipcaS, 3), m6: acum(ipcaS, 6), m12: data?.brasil.ipca12m ?? acum(ipcaS, 12) },
-          { vertice: "IGP-M", mes: ultimo(igpmS), m3: acum(igpmS, 3), m6: acum(igpmS, 6), m12: acum(igpmS, 12) },
-          { vertice: "IPCA-15", mes: data?.brasil.ipca15 ?? null, m3: null, m6: null, m12: null },
-          { vertice: "INPC", mes: data?.brasil.inpc ?? null, m3: null, m6: null, m12: null },
-        ],
-      },
-      vazio: "Séries de inflação indisponíveis.",
-    });
+        linhas: Array.from(linhasPorX.values()).sort((a, b) => (a.vertice < b.vertice ? -1 : 1)),
+      };
+      ntnb.nota += " A linha e a coluna DAP são o cupom de IPCA — o futuro de juro real da B3 — lido do terminal MT5 ao vivo; os contratos vencem nas datas das NTN-B, e NTN-B − DAP é o prêmio do título sobre o futuro.";
+    }
+    out.push({ ...ntnb, tabela: tabelaNtnb, fonte: fonteBr, dataDoDado: curvas?.dataBase ?? null, vazio: "Curva NTN-B indisponível nesta execução." });
+
+    // WO-69 AJ: a linha IPCA & IGP-M saiu do Rates & FX a pedido do operador (23/09/2026).
 
     return out;
   }, [curvas, data, cupomCambial, cupomBase, usYieldCurve]);
@@ -822,9 +779,9 @@ export default function MacroPage() {
 
         {ratesOpen && (
           <div className="p-3 space-y-3">
-            {/* WO-69: blocos de dois — Pré | Treasuries · DI | Cupom · NTN-B | Câmbio — e a
-                inflação em largura inteira. Nos cinco cartões de curva só o painel de variações:
-                o nível se lê na coluna TAXA da tabela (WO-34 §A). */}
+            {/* WO-69: blocos de dois — Pré | Treasuries · DI | Cupom · NTN-B | Câmbio. Nos cinco
+                cartões de curva só o painel de variações: o nível se lê na coluna TAXA da tabela
+                (WO-34 §A). A linha IPCA & IGP-M saiu (AJ 23/09/2026). */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
               {linhasRates.slice(0, 2).map((l) => (
                 <LinhaRates key={l.titulo} {...l} modo="somenteVariacao" />
@@ -841,9 +798,6 @@ export default function MacroPage() {
               ))}
               <CartoesCambio pares={paresCambio} janela={janelaFx} onJanela={setJanelaFx} motivos={data?.motivos} />
             </div>
-            {linhasRates.slice(5).map((l) => (
-              <LinhaRates key={l.titulo} {...l} />
-            ))}
           </div>
         )}
 
